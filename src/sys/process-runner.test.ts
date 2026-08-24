@@ -56,7 +56,9 @@ describe('runProcess', () => {
   it('retains only the most recent 100 lines per stream', async () => {
     const result = await runProcess(
       process.execPath,
-      ['-e', 'for (let i = 0; i < 105; i++) console.log(i)'],
+      // Raw writes, not console.log: console.log formats through util.inspect, which colorizes
+      // numbers when FORCE_COLOR is set in the environment, ANSI codes and all.
+      ['-e', 'for (let i = 0; i < 105; i++) process.stdout.write(`${i}\\n`)'],
       recordingReporter([]),
       'test.run',
     )
