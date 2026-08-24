@@ -73,8 +73,8 @@ monorepo.
 
 ```sh
 pnpm install
-pnpm typecheck
-pnpm test
+make typecheck
+make test        # compiles to dist/, then runs the tests against it
 ```
 
 ## License

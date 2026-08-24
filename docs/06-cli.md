@@ -3,10 +3,13 @@
 ```
 dagr run [-v|--verbose] <fqt> [<fqt>...]
 dagr list
+dagr help [<command>]
+dagr --help
 ```
 
-Argument parsing uses [`@optique`](https://github.com/dahlia/optique), so `--help` is
-available and unknown arguments produce a usage error rather than being ignored.
+Argument parsing uses [`@optique`](https://github.com/dahlia/optique), so unknown arguments produce
+a usage error rather than being ignored. Help is opt-in in optique and this CLI enables both forms,
+so `dagr --help` lists the commands and `dagr help run` documents one of them.
 
 ## `dagr run <fqt> [<fqt>...]`
 

@@ -26,10 +26,25 @@ src/
     └── docker-extractor.ts     docker run + bind mount to pull files out
 ```
 
-Internal imports never use relative paths. `package.json` declares `"imports": { "#*": "./src/*" }`,
-so every module is referenced from the source root — `#report/reporter.js`, `#runner/index.js` —
-including imports between siblings in the same directory. Keep the `.js` extension; the package
-is ESM and `moduleResolution` is `NodeNext`.
+Internal imports never use relative paths. `package.json` declares a `#*` subpath map, so every
+module is referenced from the source root — `#report/reporter.js`, `#runner/index.js` — including
+imports between siblings in the same directory. Keep the `.js` extension; the package is ESM and
+`moduleResolution` is `NodeNext`.
+
+The map points at `./dist/*`, and there is deliberately only one target. Tests are the subtle part:
+they stay TypeScript and are run from `src/` by tsx, but their `#`-prefixed imports still resolve
+to `dist/`, so they exercise the very modules the container runs. That is why `make test` depends
+on `make build`. If tests resolved to `src/` while the entrypoint resolved to `dist/`, a wrong map
+would pass every test and still fail on the first real invocation — not a hypothetical, it shipped
+once in `9e567d2`.
+
+Tests are never compiled and never shipped: `make build` and the `Dockerfile` both use
+`tsconfig.build.json`, which excludes `src/**/*.test.ts`. The root `tsconfig.json` still includes
+them so `make typecheck` covers them. The two configs keep separate `tsBuildInfoFile`s so their
+incremental caches don't invalidate each other.
+
+The `Dockerfile` additionally runs `dagr list` against an empty fixture right after `tsc`, so any
+load-time breakage fails the image build rather than the first real invocation.
 
 ## The pipeline
 

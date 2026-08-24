@@ -8,6 +8,9 @@
     "moduleResolution": "NodeNext",
     "rootDir": "src",
     "outDir": "dist",
-    "types": ["node"]
+    "types": ["node"],
+    "sourceMap": true,
+    "incremental": true,
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   }
 }

@@ -3,6 +3,7 @@ import { multiple, withDefault } from "@optique/core/modifiers";
 import { argument, command, constant, flag } from "@optique/core/primitives";
 import { string } from "@optique/core/valueparser";
 import type { InferValue } from "@optique/core/parser";
+import { message } from "@optique/core/message";
 import { run } from "@optique/run";
 import { resolve } from "node:path";
 import type { PackageDef } from "#pkg/schema.js";
@@ -10,17 +11,31 @@ import { FQT, type Runner } from "#runner/index.js";
 import type { DockerImageExtractor } from "#wire.js";
 const runCommand = command('run', object({
   command: constant('run'),
-  verbose: withDefault(flag('-v', '--verbose'), false),
-  fqts: multiple(argument(string()), { min: 1 }),
-}))
-const listCommand = command('list', object({ command: constant('list') }))
+  verbose: withDefault(
+    flag('-v', '--verbose', {
+      description: message`Stream Docker output as it happens instead of only on failure.`,
+    }),
+    false,
+  ),
+  fqts: multiple(
+    argument(string({ metavar: 'TARGET' }), {
+      description: message`A target as package#facet#target; the package, or package and facet, may be omitted and taken from the working directory.`,
+    }),
+    { min: 1 },
+  ),
+}), {
+  brief: message`Build targets and their dependencies, then export their outputs.`,
+})
+const listCommand = command('list', object({ command: constant('list') }), {
+  brief: message`Print every target with its dependencies, in topological order.`,
+})
 const parser = or(runCommand, listCommand)
 
 export type Cmd = InferValue<typeof parser>
 export type RunCmd = InferValue<typeof runCommand>
 
 export function parseCmd(args: string[]): Cmd {
-  return run(parser, { args });
+  return run(parser, { args, programName: 'dagr', help: 'both' });
 }
 
 export interface CommandRunner {

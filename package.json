@@ -4,11 +4,7 @@
   "private": true,
   "type": "module",
   "imports": {
-    "#*": "./src/*"
-  },
-  "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "node --experimental-vm-modules --import tsx/esm --test --test-reporter=spec 'src/**/*.test.ts'"
+    "#*": "./dist/*"
   },
   "devDependencies": {
     "@tsconfig/strictest": "2.0.8",
