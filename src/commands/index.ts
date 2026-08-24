@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import type { PackageDef } from "../pkg/schema.js";
 import { FQT, type Runner } from "../runner/index.js";
 import type { DockerImageExtractor } from "../wire.js";
+import type { Logger } from "../logging.js";
 const runCommand = command('run', object({
   command: constant('run'),
   fqts: multiple(argument(string()), { min: 1 }),
@@ -26,8 +27,15 @@ export interface CommandRunner {
   execute(cmd: Cmd): Promise<void>;
 }
 
+export interface Output {
+  write(line: string): void;
+}
+
 export class ListCommandRunner implements CommandRunner {
-  constructor(private readonly packages: ReadonlyMap<string, PackageDef>) {}
+  constructor(
+    private readonly packages: ReadonlyMap<string, PackageDef>,
+    private readonly output: Output,
+  ) {}
 
   async execute(): Promise<void> {
     const graph = new Map<string, readonly string[]>();
@@ -55,7 +63,7 @@ export class ListCommandRunner implements CommandRunner {
     for (const key of graph.keys()) visit(key);
     for (const key of sorted) {
       const deps = graph.get(key) ?? [];
-      console.log(`${key}[${deps.join(", ")}]`);
+      this.output.write(`${key}[${deps.join(", ")}]`);
     }
   }
 }
@@ -66,6 +74,7 @@ export class RunCommandRunner {
     private readonly extractor: DockerImageExtractor,
     private readonly root: string,
     private readonly currentPackage: string,
+    private readonly logger: Logger,
   ) {}
 
   async execute(cmd: RunCmd): Promise<void> {
@@ -86,7 +95,11 @@ export class RunCommandRunner {
         );
       }
 
-      console.log(`Done: ${result.fqt} (${result.imageTag})`);
+      this.logger.info('target.completed', {
+        target: result.fqt.toString(),
+        imageTag: result.imageTag,
+        imageDigest: result.imageDigest,
+      });
     }
   }
 }

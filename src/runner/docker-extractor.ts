@@ -1,13 +1,20 @@
-import { spawn } from 'node:child_process'
 import { basename } from 'node:path'
+import type { ProcessRunner } from '../process-runner.js'
 
 const MOUNT = '/host-out'
 
-export async function extractFromImage(imageTag: string, exportMap: Readonly<Record<string, string>>, destDir: string): Promise<void> {
+export async function extractFromImage(
+  imageTag: string,
+  exportMap: Readonly<Record<string, string>>,
+  destDir: string,
+  processRunner: ProcessRunner,
+): Promise<void> {
   for (const [src, dest] of Object.entries(exportMap)) {
-    await runCommand('docker', [
-      'run', '--rm', '-v', `${destDir}:${MOUNT}`, imageTag, 'sh', '-c', copyScript(src, dest),
-    ])
+    await processRunner.run(
+      'docker',
+      ['run', '--rm', '-v', `${destDir}:${MOUNT}`, imageTag, 'sh', '-c', copyScript(src, dest)],
+      { operation: 'image.extract', imageTag, src, dest, destDir },
+    )
   }
 }
 
@@ -38,14 +45,3 @@ export function copyScript(src: string, dest: string): string {
 }
 
 const trimSlashes = (path: string): string => path.replace(/\/+$/, '')
-
-function runCommand(cmd: string, args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { stdio: 'inherit' })
-    proc.on('close', code => {
-      if (code === 0) resolve()
-      else reject(new Error(`${cmd} ${args.join(' ')} exited with code ${code}`))
-    })
-    proc.on('error', reject)
-  })
-}

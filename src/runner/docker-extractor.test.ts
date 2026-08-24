@@ -1,6 +1,39 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { copyScript } from './docker-extractor.js'
+import type { ProcessRunner } from '../process-runner.js'
+import { copyScript, extractFromImage } from './docker-extractor.js'
+
+describe('extractFromImage', () => {
+  it('runs Docker with structured extraction context', async () => {
+    const calls: Parameters<ProcessRunner['run']>[] = []
+    const runner: ProcessRunner = {
+      run: async (...args) => {
+        calls.push(args)
+        return {
+          command: args[0],
+          args: args[1],
+          ...(args[2] ? { context: args[2] } : {}),
+          exitCode: 0,
+          signal: null,
+          stdoutTail: [],
+          stderrTail: [],
+          durationMs: 1,
+        }
+      },
+    }
+
+    await extractFromImage('pkg-ci-build', { '/out': 'dist' }, '/repo/pkg', runner)
+
+    assert.equal(calls[0]?.[0], 'docker')
+    assert.deepEqual(calls[0]?.[2], {
+      operation: 'image.extract',
+      imageTag: 'pkg-ci-build',
+      src: '/out',
+      dest: 'dist',
+      destDir: '/repo/pkg',
+    })
+  })
+})
 
 describe('copyScript', () => {
   it('replaces the destination when neither path has a trailing slash', () => {

@@ -30,8 +30,9 @@ What happens, in order:
 2. The target is looked up. Unknown target → `Error: Unknown target: <fqt>`.
 3. Dependencies are resolved recursively and built with `Promise.all`, so independent branches
    are launched together. Each FQT is built at most once per invocation.
-4. The target's own image is built. Docker's full build output streams to your terminal
-   (`stdio: 'inherit'`), so `RUN` step output, test failures, and compiler errors appear inline.
+4. The target's own image is built. Docker output is captured line by line and emitted as
+   structured `process.output` events, so `RUN` output and compiler errors retain their stream
+   and image-build context.
 5. If the target declared `EXPORT`, a throwaway container copies each mapped path to the
    package's directory on the host.
 6. A final line is printed:
@@ -42,6 +43,27 @@ Done: packages/ui#ci#build (packages_ui-ci-build)
 
 Exit code is non-zero if any dependency's Docker build fails; the error propagates and no
 further work is attempted.
+
+## Output and logs
+
+dagr keeps command results and operational logs separate:
+
+- **stdout** is reserved for command output. Today that is the target graph produced by
+  `dagr list`, so redirecting or piping it remains useful.
+- **stderr** carries one JSON object per line for operational events.
+
+Every log record has `timestamp`, `level`, and `event`; event-specific fields live under
+`data`:
+
+```json
+{"timestamp":"2026-08-24T12:00:00.000Z","level":"info","event":"target.completed","data":{"target":"packages/ui#ci#build","imageTag":"packages_ui-ci-build","imageDigest":"sha256:..."}}
+```
+
+Subprocesses are never attached directly to the terminal. dagr pipes both streams and emits
+each complete line as `process.output`, including `stream`, `command`, `args`, and an operation
+context such as `image.build` or `image.extract`. The most recent 100 lines from each stream
+are also retained and included in `ProcessExecutionError` when the command fails. This keeps
+failures diagnosable without allowing captured output to grow without bound.
 
 ## `dagr list`
 
