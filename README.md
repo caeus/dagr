@@ -2,6 +2,9 @@
 
 A monorepo task runner where **every target is a Docker image**.
 
+The name compresses **DAG runner** into `dagr`: target dependencies form a directed acyclic
+graph, and dagr runs it.
+
 There is no separate cache, no artifact store, and no lockfile of build outputs. A target
 declares a base image and a list of Dockerfile-ish steps; dagr renders that to a real
 Dockerfile, builds it, and tags the result. A target that depends on another receives the
