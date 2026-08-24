@@ -7,7 +7,7 @@ targets.
 
 ```js
 export default {
-  <suiteName>: {
+  <facetName>: {
     <targetName>: {
       deps: [ /* target references, strings */ ],
       run: ({ images, host }) => ({
