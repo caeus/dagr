@@ -301,11 +301,16 @@ WORKDIR /dagr
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY src/ ./src/
-COPY tsconfig.json ./
-RUN pnpm exec tsc
+COPY tsconfig.json tsconfig.build.json ./
+RUN pnpm exec tsc -p tsconfig.build.json
+RUN <smoke-run of `dagr list` against an empty fixture>
 ENV REPO_ROOT=/repo
 ENTRYPOINT ["node", "--experimental-vm-modules", "dist/index.js"]
 ```
+
+This is the Dockerfile in *this* repository, which compiles from a local checkout. A repo that
+consumes dagr writes a different one that clones this repository at a pinned SHA — see
+[10 — Adopting in a new monorepo](10-adopting-in-a-new-monorepo.md).
 
 The image carries the Docker CLI and buildx plugin but no daemon — `cli.sh` mounts the host
 socket. Dependencies are installed before `src/` is copied, so editing dagr's source only

@@ -13,10 +13,10 @@ that it builds from its own `Dockerfile` on first use.
 ## Install the launcher
 
 ```sh
-dagr/install.sh
+.dagr/install.sh
 ```
 
-That symlinks `dagr/dagr` into `~/.local/bin/dagr`. Make sure that directory is on your
+That symlinks `.dagr/dagr` into `~/.local/bin/dagr`. Make sure that directory is on your
 `PATH`:
 
 ```sh
@@ -26,21 +26,21 @@ export PATH="$HOME/.local/bin:$PATH"
 ## What the launcher does
 
 `dagr` is a three-line shell script with one job: find the monorepo. It records your current
-directory, then walks up the tree looking for a directory named `dagr`. When it finds
-one it execs `dagr/cli.sh`, passing your original directory through as `WORKING_DIR`.
+directory, then walks up the tree looking for a directory named `.dagr`. When it finds
+one it execs `.dagr/cli.sh`, passing your original directory through as `WORKING_DIR`.
 
 That means a single global `dagr` works across every monorepo that vendors dagr — the
-launcher resolves to whichever copy is above your cwd. If no ancestor contains a `dagr/`
+launcher resolves to whichever copy is above your cwd. If no ancestor contains a `.dagr/`
 directory, it fails with:
 
 ```
-error: not inside a monorepo (no dagr/ directory found in any parent)
+error: not inside a monorepo (no .dagr/ directory found in any parent)
 ```
 
 `cli.sh` then builds the dagr image and runs it:
 
 ```sh
-docker build -t dagr "$REPO_ROOT/dagr"
+docker build -t dagr "$DAGR_DIR"
 docker run --rm \
   -v "$REPO_ROOT:/repo" \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -50,7 +50,7 @@ docker run --rm \
 ```
 
 The `docker build` runs on every invocation. After the first time it is fully layer-cached,
-so it costs well under a second — but it does mean edits to `dagr/src/` take effect on
+so it costs well under a second — but it does mean edits to the pinned dagr commit take effect on
 the next `dagr` call with no separate build step.
 
 ## First run
@@ -87,11 +87,11 @@ resolution rules.
 
 ## Running dagr's own checks
 
-dagr is a normal pnpm package, so its own tests and typecheck run outside Docker:
+These run in a checkout of the dagr repository itself, not in a repo that consumes it, and they
+run outside Docker:
 
 ```sh
-cd dagr
 pnpm install
-pnpm typecheck
-pnpm test
+make typecheck
+make test        # compiles to dist/, then runs the tests against it
 ```

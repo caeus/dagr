@@ -15,14 +15,16 @@ without being able to touch the filesystem, the network, or the host process.
 ## Install
 
 ```sh
-dagr/install.sh
+.dagr/install.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-You need Docker with buildx. You do **not** need Node, pnpm, or TypeScript on the host — dagr
-runs in a container it builds from its own `Dockerfile` on first use. The `dagr` launcher walks
-up from your working directory to find the monorepo, so one global install serves every repo
-that vendors it.
+You need Docker with buildx. You do **not** need Node, pnpm, or TypeScript on the host — dagr runs
+in a container built on first use. The `dagr` launcher walks up from your working directory looking
+for a `.dagr/` directory, so one global install serves every repo that uses dagr.
+
+To set `.dagr/` up in a repo that doesn't have one yet — four files, one of which pins the dagr
+commit you want — see [10 — Adopting in a new monorepo](docs/10-adopting-in-a-new-monorepo.md).
 
 ## Use
 

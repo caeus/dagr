@@ -1,7 +1,10 @@
 #!/bin/sh
 set -e
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Derived from this script's own location rather than a hardcoded directory name, so the
+# directory can be renamed or vendored anywhere without editing this file.
+DAGR_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$DAGR_DIR/.." && pwd)"
 
 # dagr runs inside an Alpine container, so it cannot see the real platform. Detect it here
 # and pass it in, normalised to the values Node and package.json use.
@@ -18,7 +21,7 @@ if [ "$HOST_OS" = linux ]; then
   if ldd --version 2>&1 | grep -qi musl; then LIBC_ENV="-e HOST_LIBC=musl"; else LIBC_ENV="-e HOST_LIBC=glibc"; fi
 fi
 
-docker build -t dagr "$REPO_ROOT/dagr"
+docker build -t dagr "$DAGR_DIR"
 docker run --rm \
   -v "$REPO_ROOT:/repo" \
   -v /var/run/docker.sock:/var/run/docker.sock \

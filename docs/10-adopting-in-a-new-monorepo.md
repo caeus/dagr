@@ -1,33 +1,60 @@
 # Adopting dagr in a new monorepo
 
-dagr has no published package. You adopt it by copying the `dagr/` directory into your
-repository. That is deliberate: the tool is small enough to read end to end, and vendoring
-means your build system is versioned with the code it builds.
+dagr has no published package. You adopt it by copying four small files into a `.dagr/`
+directory at your repo root and pinning a dagr commit. You do **not** copy dagr's source: the
+image builds itself by cloning this repository at the SHA you pin, so upgrading is a one-line
+change and your build system is versioned as precisely as any other dependency.
 
 ## Checklist
 
-**1. Vendor the directory.**
+**1. Create `.dagr/` and copy the launcher files.** Three of them are copied verbatim:
 
 ```sh
-cp -R <source>/dagr <your-repo>/dagr
+mkdir <your-repo>/.dagr
+cp <source>/{cli.sh,dagr,install.sh} <your-repo>/.dagr/
 ```
 
-You need `Dockerfile`, `cli.sh`, `dagr`, `install.sh`, `package.json`, `pnpm-workspace.yaml`,
-`pnpm-lock.yaml`, `tsconfig.json`, and `src/`. The directory must be named `dagr` and sit
-at the repo root — the `dagr` launcher finds your repository by walking up until it sees a
-directory with that name.
+The directory must be named `.dagr` and sit at the repo root — the `dagr` launcher finds your
+repository by walking up until it sees a directory with that name. Nothing inside these three
+files needs editing; `cli.sh` derives its own location.
 
-**2. Install the launcher.** Once per machine, not once per repo:
+**2. Write `.dagr/Dockerfile`.** This is the one file you author, because it carries the pin:
+
+```dockerfile
+FROM node:22-alpine
+
+RUN apk add --no-cache docker-cli docker-cli-buildx git \
+ && corepack enable && corepack prepare pnpm@latest --activate
+
+WORKDIR /dagr
+
+# The pinned SHA is part of this layer's cache key, so bumping it here is what rebuilds dagr.
+# A moving ref like `main` would cache forever and silently keep running a stale build.
+RUN git clone https://github.com/caeus/dagr.git . \
+ && git checkout <dagr-commit-sha>
+
+RUN pnpm install --frozen-lockfile && pnpm exec tsc -p tsconfig.build.json
+
+ENV REPO_ROOT=/repo
+
+ENTRYPOINT ["node", "--experimental-vm-modules", "dist/index.js"]
+```
+
+Note `git` in the `apk add` line — the clone needs it, and dagr's own Dockerfile does not
+install it because that one compiles from a local checkout instead. To upgrade dagr later, change
+the SHA; nothing else moves.
+
+**3. Install the launcher.** Once per machine, not once per repo:
 
 ```sh
-dagr/install.sh
+.dagr/install.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-**3. Create `packages/`.** The loader reads this directory unconditionally, so a repo without it
+**4. Create `packages/`.** The loader reads this directory unconditionally, so a repo without it
 fails with `ENOENT`. Even if empty at first, it must exist.
 
-**4. Add a base-image package.** Almost every target wants the same starting image; make it a
+**5. Add a base-image package.** Almost every target wants the same starting image; make it a
 target so it is built once and shared:
 
 ```js
@@ -46,7 +73,7 @@ export default {
 }
 ```
 
-**5. Verify the plumbing before writing anything real:**
+**6. Verify the plumbing before writing anything real:**
 
 ```sh
 dagr list
@@ -67,12 +94,12 @@ dagr run packages/base#ci#node-pnpm
 If that produces an image, dagr is working: the loader found your package, the sandbox
 evaluated it, the renderer produced a Dockerfile, and the socket mount reached your daemon.
 
-**6. Add a real package.** Start with one package and one target, get it green, then add the
+**7. Add a real package.** Start with one package and one target, get it green, then add the
 next target to the same package. Resist writing a `stacks/` abstraction until you have two
 packages that actually want the same facet — the third similar target is when the factory pays
 for itself.
 
-**7. Extract shared logic into `lib/` and `stacks/`** once the duplication is real. See
+**8. Extract shared logic into `lib/` and `stacks/`** once the duplication is real. See
 [07 — Conventions and layout](07-conventions-and-layout.md#the-libstacks-pattern).
 
 ## Sizing the split between `install` and `build`
@@ -131,5 +158,6 @@ are each one small edit away from being different. The most likely ones:
 | A new step kind | the `Step` union in `src/pkg/schema.ts` **and** the switch in `src/runner/dockerfile-renderer.ts` |
 | A new command | a parser in `src/commands/index.ts`, a runner class, one branch in `CompositeCommandRunner` |
 
-Run `pnpm typecheck && pnpm test` in `dagr/` after any of these. The renderer and runner
-both have unit tests that do not require Docker.
+These live in dagr itself, so changing them means working in a checkout of this repository and
+pinning your own commit (or fork) in `.dagr/Dockerfile`. Run `make typecheck && make test` after
+any of them. The renderer and runner both have unit tests that do not require Docker.

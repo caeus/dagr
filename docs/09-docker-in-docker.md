@@ -84,7 +84,7 @@ checked out at a real host path:
 
 ```sh
 export WORKING_DIR="$PWD"
-dagr/cli.sh run packages/ui#ci#build
+.dagr/cli.sh run packages/ui#ci#build
 ```
 
 `cli.sh` derives `HOST_REPO_ROOT` from its own location, so as long as it runs on the machine

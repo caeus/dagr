@@ -40,7 +40,7 @@ which is which saves time.
 ```
 <repo root>/
 ├── dagr.index.js           # root package '.', for repo-wide targets (deploy, docs)
-├── dagr/                   # vendored dagr; the dagr launcher finds the repo by this
+├── .dagr/                  # four launcher files; the dagr launcher finds the repo by this
 │   ├── cli.sh
 │   ├── dagr
 │   ├── install.sh
