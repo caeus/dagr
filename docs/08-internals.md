@@ -7,11 +7,13 @@ docs don't explain.
 
 ```
 src/
-├── index.ts                    entrypoint: wire().catch(structured error log)
-├── logging.ts                  JSON-lines logger + error serialization
-├── process-runner.ts           captured child processes + bounded output tails
+├── index.ts                    entrypoint: wire().catch(reporter.failure)
 ├── wire.ts                     DI bindings + main()
-├── di-container.ts             the container (no external DI dependency)
+├── report/reporter.ts          human-readable stderr reporter
+├── sys/
+│   ├── process-runner.ts       captured child processes + bounded output tails
+│   ├── host-platform.ts        reads the real host os/arch/libc out of the env
+│   └── dispose-stack.ts        LIFO finalizers (no external DI dependency)
 ├── commands/index.ts           arg parsing + one runner class per command
 ├── pkg/
 │   ├── schema.ts               Zod schemas for PackageDef/FacetDef/TargetDef/Run/Step
@@ -23,6 +25,11 @@ src/
     ├── docker-builder.ts       docker buildx build
     └── docker-extractor.ts     docker run + bind mount to pull files out
 ```
+
+Internal imports never use relative paths. `package.json` declares `"imports": { "#*": "./src/*" }`,
+so every module is referenced from the source root — `#report/reporter.js`, `#runner/index.js` —
+including imports between siblings in the same directory. Keep the `.js` extension; the package
+is ESM and `moduleResolution` is `NodeNext`.
 
 ## The pipeline
 
@@ -167,9 +174,10 @@ target's `FROM` and the extractor can find it. The digest in `TargetResult` is t
 contents of the iidfile. All three temp files are removed in a `finally`.
 
 `--progress=plain` makes BuildKit output line-oriented. `ProcessRunner` pipes stdout and stderr,
-emits every complete line as a structured `process.output` event, and retains a bounded
-100-line tail per stream for failures. Docker often writes ordinary progress to stderr, so the
-stream is recorded as data instead of being treated as a log severity.
+hands every complete line to `Reporter.processLine` — which prints it only under `--verbose` —
+and retains a bounded 100-line tail per stream. The tail is what `ProcessExecutionError` carries,
+so a quiet run can still explain a failure. Docker writes ordinary progress to stderr, so the
+stream name is recorded as data and never treated as a severity.
 
 ## Extracting
 
@@ -209,7 +217,7 @@ builder.
 
 ## The DI container
 
-`src/di-container.ts` is a small, dependency-free async container. It exists so that
+`src/sys/dispose-stack.ts` is a small, dependency-free async container. It exists so that
 `main`'s third parameter can swap the entire object graph in tests.
 
 - `createKey<T>(description)` returns a branded `symbol`. The brand is phantom
@@ -234,9 +242,9 @@ The bindings in `wire.ts`:
 | `root` | `REPO_ROOT`, or dagr's parent directory |
 | `hostRoot` | `HOST_REPO_ROOT`, falling back to `root` |
 | `currentPackage` | `relative(hostRoot, WORKING_DIR ?? hostRoot)` |
-| `logger` | JSON-lines logger writing operational events to stderr |
+| `reporter` | human-readable progress and failure writer targeting stderr |
 | `output` | command-result writer targeting stdout |
-| `processRunner` | child-process runner capturing and logging both streams |
+| `processRunner` | child-process runner capturing both streams and feeding the reporter |
 | `packageLoader` | `{ loadPackages }` |
 | `packages` | `packageLoader.loadPackages(root)` |
 | `dockerfileRenderer` | `{ renderDockerfile }` |

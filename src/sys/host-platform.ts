@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { HostPlatform } from './pkg/schema.js'
+import type { HostPlatform } from '#pkg/schema.js'
 
 // dagr runs inside an Alpine container, so process.platform would describe that container
 // rather than the user's machine. cli.sh detects the real values and passes them in, and this

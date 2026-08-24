@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { renderDockerfile } from './dockerfile-renderer.js'
+import { renderDockerfile } from '#runner/dockerfile-renderer.js'
 
 describe('renderDockerfile', () => {
   it('renders FROM', () => {

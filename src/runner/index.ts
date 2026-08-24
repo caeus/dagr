@@ -1,5 +1,5 @@
-import type { HostPlatform, PackageDef } from '../pkg/schema.js'
-import { runTarget, type TargetRunnerDeps } from './target-runner.js'
+import type { HostPlatform, PackageDef } from '#pkg/schema.js'
+import { runTarget, type TargetRunnerDeps } from '#runner/target-runner.js'
 
 export class FQT {
   constructor(

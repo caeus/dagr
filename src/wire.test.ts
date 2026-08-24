@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { Module, toValue } from '@caeus/wyr'
-import type { Cmd, CommandRunner } from './commands/index.js'
-import { wire, type ModuleFactory } from './wire.js'
+import type { Cmd, CommandRunner } from '#commands/index.js'
+import { wire, type ModuleFactory } from '#wire.js'
 
 describe('wire', () => {
   it('parses arguments before building and compiling the injected module', async () => {

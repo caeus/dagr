@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { hostPlatform } from './host-platform.js'
+import { hostPlatform } from '#sys/host-platform.js'
 
 describe('hostPlatform', () => {
   it('reads os and arch from the environment', () => {

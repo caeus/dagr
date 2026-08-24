@@ -1,10 +1,10 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import type { ProcessRunner } from '../process-runner.js'
-import { copyScript, extractFromImage } from './docker-extractor.js'
+import type { ProcessRunner } from '#sys/process-runner.js'
+import { copyScript, extractFromImage } from '#runner/docker-extractor.js'
 
 describe('extractFromImage', () => {
-  it('runs Docker with structured extraction context', async () => {
+  it('runs Docker with a labelled extraction command', async () => {
     const calls: Parameters<ProcessRunner['run']>[] = []
     const runner: ProcessRunner = {
       run: async (...args) => {
@@ -12,7 +12,7 @@ describe('extractFromImage', () => {
         return {
           command: args[0],
           args: args[1],
-          ...(args[2] ? { context: args[2] } : {}),
+          label: args[2],
           exitCode: 0,
           signal: null,
           stdoutTail: [],
@@ -25,13 +25,7 @@ describe('extractFromImage', () => {
     await extractFromImage('pkg-ci-build', { '/out': 'dist' }, '/repo/pkg', runner)
 
     assert.equal(calls[0]?.[0], 'docker')
-    assert.deepEqual(calls[0]?.[2], {
-      operation: 'image.extract',
-      imageTag: 'pkg-ci-build',
-      src: '/out',
-      dest: 'dist',
-      destDir: '/repo/pkg',
-    })
+    assert.equal(calls[0]?.[2], 'image.extract pkg-ci-build')
   })
 })
 

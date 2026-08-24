@@ -1,0 +1,82 @@
+# dagr
+
+A monorepo task runner where **every target is a Docker image**.
+
+There is no separate cache, no artifact store, and no lockfile of build outputs. A target
+declares a base image and a list of Dockerfile-ish steps; dagr renders that to a real
+Dockerfile, builds it, and tags the result. A target that depends on another receives the
+dependency's **image tag** and uses it as its own `FROM` or as a `COPY --from=` source. Docker's
+layer cache is the only cache, and the dependency graph is expressed as image lineage.
+
+Build files are `dagr.index.js` — plain ES modules evaluated inside a `node:vm` sandbox, so they
+can compute their contents with real JavaScript (loops, templates, shared helper modules)
+without being able to touch the filesystem, the network, or the host process.
+
+## Install
+
+```sh
+dagr/install.sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+You need Docker with buildx. You do **not** need Node, pnpm, or TypeScript on the host — dagr
+runs in a container it builds from its own `Dockerfile` on first use. The `dagr` launcher walks
+up from your working directory to find the monorepo, so one global install serves every repo
+that vendors it.
+
+## Use
+
+```js
+// packages/greeter/dagr.index.js
+export default {
+  ci: {
+    build: {
+      deps: [],
+      run: () => ({
+        FROM: 'node:22-alpine',
+        steps: [
+          { WORKDIR: '/repo' },
+          { COPY: { src: 'src', dest: '/repo/src' } },
+          { RUN: 'node src/index.js > /out/greeting.txt' },
+        ],
+        IGNORE: ['node_modules', '.git'],
+        EXPORT: { '/out': 'dist' },
+      }),
+    },
+  },
+}
+```
+
+```sh
+dagr run packages/greeter#ci#build
+```
+
+That builds an image tagged `packages_greeter-ci-build` and copies the image's `/out` directory
+to `packages/greeter/dist` on your host:
+
+```
+  ▶ packages/greeter#ci#build
+  ✓ packages/greeter#ci#build  4.1s
+```
+
+Docker output is captured but hidden unless the build fails, in which case the tail is printed
+under the error. Pass `--verbose` to watch every line as it happens. `dagr list` prints the whole
+target graph in topological order without building anything.
+
+## Documentation
+
+The wiki lives in [`docs/`](docs/README.md) — concepts, the full `dagr.index.js` schema, the
+sandbox rules, the CLI reference, internals, and a checklist for adopting dagr in a new
+monorepo.
+
+## Development
+
+```sh
+pnpm install
+pnpm typecheck
+pnpm test
+```
+
+## License
+
+See [LICENSE](LICENSE).

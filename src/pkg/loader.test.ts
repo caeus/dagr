@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
-import { loadPackages } from './loader.js'
+import { loadPackages } from '#pkg/loader.js'
 
 async function fixture(
   marker: string,

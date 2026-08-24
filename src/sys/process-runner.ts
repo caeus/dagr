@@ -1,13 +1,13 @@
 import { spawn } from 'node:child_process'
 import type { Readable } from 'node:stream'
-import type { LogData, Logger } from './logging.js'
+import type { Reporter, Stream } from '#report/reporter.js'
 
 const TAIL_LINES = 100
 
 export interface ProcessResult {
   readonly command: string
   readonly args: readonly string[]
-  readonly context?: LogData
+  readonly label: string
   readonly exitCode: number
   readonly signal: NodeJS.Signals | null
   readonly stdoutTail: readonly string[]
@@ -16,13 +16,13 @@ export interface ProcessResult {
 }
 
 export interface ProcessRunner {
-  run(command: string, args: readonly string[], context?: LogData): Promise<ProcessResult>
+  run(command: string, args: readonly string[], label: string): Promise<ProcessResult>
 }
 
 export class ProcessExecutionError extends Error {
   readonly command: string
   readonly args: readonly string[]
-  readonly context?: LogData
+  readonly label: string
   readonly exitCode: number
   readonly signal: NodeJS.Signals | null
   readonly stdoutTail: readonly string[]
@@ -34,7 +34,7 @@ export class ProcessExecutionError extends Error {
     this.name = 'ProcessExecutionError'
     this.command = result.command
     this.args = result.args
-    if (result.context) this.context = result.context
+    this.label = result.label
     this.exitCode = result.exitCode
     this.signal = result.signal
     this.stdoutTail = result.stdoutTail
@@ -43,15 +43,15 @@ export class ProcessExecutionError extends Error {
   }
 }
 
-export function processRunner(logger: Logger): ProcessRunner {
-  return { run: (command, args, context) => runProcess(command, args, logger, context) }
+export function processRunner(reporter: Reporter): ProcessRunner {
+  return { run: (command, args, label) => runProcess(command, args, reporter, label) }
 }
 
 export function runProcess(
   command: string,
   args: readonly string[],
-  logger: Logger,
-  context?: LogData,
+  reporter: Reporter,
+  label: string,
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
     const startedAt = Date.now()
@@ -60,40 +60,27 @@ export function runProcess(
     const stdoutTail: string[] = []
     const stderrTail: string[] = []
 
-    const identity = context ? { command, args, context } : { command, args }
-    logger.debug('process.started', identity)
-    captureLines(proc.stdout, 'stdout', identity, stdoutTail, logger)
-    captureLines(proc.stderr, 'stderr', identity, stderrTail, logger)
+    captureLines(proc.stdout, 'stdout', label, stdoutTail, reporter)
+    captureLines(proc.stderr, 'stderr', label, stderrTail, reporter)
 
     proc.on('close', (code, signal) => {
       if (failedToSpawn) return
       const result: ProcessResult = {
         command,
         args,
-        ...(context ? { context } : {}),
+        label,
         exitCode: code ?? -1,
         signal,
         stdoutTail,
         stderrTail,
         durationMs: Date.now() - startedAt,
       }
-      logger.debug('process.completed', {
-        ...identity,
-        exitCode: result.exitCode,
-        signal,
-        durationMs: result.durationMs,
-      })
       if (result.exitCode === 0) resolve(result)
       else reject(new ProcessExecutionError(result))
     })
 
     proc.on('error', (error) => {
       failedToSpawn = true
-      logger.error('process.spawn_failed', {
-        ...identity,
-        error: error.message,
-        durationMs: Date.now() - startedAt,
-      })
       reject(error)
     })
   })
@@ -101,10 +88,10 @@ export function runProcess(
 
 function captureLines(
   stream: Readable,
-  streamName: 'stdout' | 'stderr',
-  identity: LogData,
+  streamName: Stream,
+  label: string,
   tail: string[],
-  logger: Logger,
+  reporter: Reporter,
 ): void {
   stream.setEncoding('utf8')
   let pending = ''
@@ -112,7 +99,7 @@ function captureLines(
   const emit = (line: string): void => {
     tail.push(line)
     if (tail.length > TAIL_LINES) tail.shift()
-    logger.info('process.output', { ...identity, stream: streamName, line })
+    reporter.processLine(label, streamName, line)
   }
 
   stream.on('data', (chunk: string) => {

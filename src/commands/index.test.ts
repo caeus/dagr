@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { DockerImageExtractor } from '../wire.js'
-import type { LogData, Logger } from '../logging.js'
-import type { Runner } from '../runner/index.js'
-import { parseCmd, RunCommandRunner } from './index.js'
+import type { DockerImageExtractor } from '#wire.js'
+import type { Runner } from '#runner/index.js'
+import { parseCmd, RunCommandRunner } from '#commands/index.js'
 
 describe('parseCmd', () => {
   it('accepts multiple run targets', () => {
@@ -11,8 +10,16 @@ describe('parseCmd', () => {
       parseCmd(['run', 'packages/a#ci#test', 'packages/b#ci#test']),
       {
         command: 'run',
+        verbose: false,
         fqts: ['packages/a#ci#test', 'packages/b#ci#test']
       }
+    )
+  })
+
+  it('accepts --verbose', () => {
+    assert.deepEqual(
+      parseCmd(['run', '--verbose', 'packages/a#ci#test']),
+      { command: 'run', verbose: true, fqts: ['packages/a#ci#test'] }
     )
   })
 })
@@ -20,7 +27,6 @@ describe('parseCmd', () => {
 describe('RunCommandRunner', () => {
   it('runs every target and applies package context to each one', async () => {
     const ran: string[] = []
-    const completed: LogData[] = []
     const runner: Runner = async (fqt) => {
       ran.push(fqt.toString())
       return {
@@ -32,24 +38,38 @@ describe('RunCommandRunner', () => {
     const extractor: DockerImageExtractor = {
       extractFromImage: async () => undefined
     }
-    const logger: Logger = {
-      debug: () => undefined,
-      info: (event, data) => {
-        if (event === 'target.completed' && data) completed.push(data)
-      },
-      warn: () => undefined,
-      error: () => undefined,
-    }
 
     await new RunCommandRunner(
       runner,
       extractor,
       '/',
       'packages/ui',
-      logger,
-    ).execute({ command: 'run', fqts: ['ci#lint', 'ci#test'] })
+    ).execute({ command: 'run', verbose: false, fqts: ['ci#lint', 'ci#test'] })
 
     assert.deepEqual(ran, ['packages/ui#ci#lint', 'packages/ui#ci#test'])
-    assert.deepEqual(completed.map((data) => data['target']), ran)
+  })
+
+  it('extracts exports to the package directory', async () => {
+    const extracted: Array<{ imageTag: string; destDir: string }> = []
+    const runner: Runner = async (fqt) => ({
+      fqt,
+      imageTag: 'pkg-ci-build',
+      imageDigest: 'sha256:test',
+      export: { '/out': 'dist' }
+    })
+    const extractor: DockerImageExtractor = {
+      extractFromImage: async (imageTag, _exportMap, destDir) => {
+        extracted.push({ imageTag, destDir })
+      }
+    }
+
+    await new RunCommandRunner(
+      runner,
+      extractor,
+      '/repo',
+      '',
+    ).execute({ command: 'run', verbose: false, fqts: ['pkg#ci#build'] })
+
+    assert.deepEqual(extracted, [{ imageTag: 'pkg-ci-build', destDir: '/repo/pkg' }])
   })
 })

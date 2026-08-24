@@ -1,16 +1,16 @@
 import { object, or } from "@optique/core/constructs";
-import { multiple } from "@optique/core/modifiers";
-import { argument, command, constant } from "@optique/core/primitives";
+import { multiple, withDefault } from "@optique/core/modifiers";
+import { argument, command, constant, flag } from "@optique/core/primitives";
 import { string } from "@optique/core/valueparser";
 import type { InferValue } from "@optique/core/parser";
 import { run } from "@optique/run";
 import { resolve } from "node:path";
-import type { PackageDef } from "../pkg/schema.js";
-import { FQT, type Runner } from "../runner/index.js";
-import type { DockerImageExtractor } from "../wire.js";
-import type { Logger } from "../logging.js";
+import type { PackageDef } from "#pkg/schema.js";
+import { FQT, type Runner } from "#runner/index.js";
+import type { DockerImageExtractor } from "#wire.js";
 const runCommand = command('run', object({
   command: constant('run'),
+  verbose: withDefault(flag('-v', '--verbose'), false),
   fqts: multiple(argument(string()), { min: 1 }),
 }))
 const listCommand = command('list', object({ command: constant('list') }))
@@ -74,7 +74,6 @@ export class RunCommandRunner {
     private readonly extractor: DockerImageExtractor,
     private readonly root: string,
     private readonly currentPackage: string,
-    private readonly logger: Logger,
   ) {}
 
   async execute(cmd: RunCmd): Promise<void> {
@@ -94,12 +93,6 @@ export class RunCommandRunner {
           packageDir,
         );
       }
-
-      this.logger.info('target.completed', {
-        target: result.fqt.toString(),
-        imageTag: result.imageTag,
-        imageDigest: result.imageDigest,
-      });
     }
   }
 }

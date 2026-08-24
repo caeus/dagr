@@ -1,9 +1,10 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { FQT, buildRunner } from './index.js'
-import type { TargetRunnerDeps } from './index.js'
-import type { BuildResult } from './docker-builder.js'
-import type { HostPlatform, PackageDef, RunContext } from '../pkg/schema.js'
+import { FQT, buildRunner } from '#runner/index.js'
+import type { TargetRunnerDeps } from '#runner/index.js'
+import type { BuildResult } from '#runner/docker-builder.js'
+import type { HostPlatform, PackageDef, RunContext } from '#pkg/schema.js'
+import type { Reporter } from '#report/reporter.js'
 
 describe('FQT.parse', () => {
   it('parses fully qualified package#facet#target', () => {
@@ -44,9 +45,18 @@ describe('buildRunner', () => {
 
   const stubHost: HostPlatform = { os: 'linux', arch: 'arm64', libc: 'musl' }
 
+  const silentReporter = (): Reporter => ({
+    targetStarted: () => undefined,
+    targetCompleted: () => undefined,
+    targetFailed: () => undefined,
+    processLine: () => undefined,
+    failure: () => undefined,
+  })
+
   const stubDeps: TargetRunnerDeps = {
     renderDockerfile: () => 'FROM scratch\n',
     buildDockerImage: stubBuild,
+    reporter: silentReporter(),
   }
 
   const makePackage = (): Map<string, PackageDef> =>
@@ -98,6 +108,42 @@ describe('buildRunner', () => {
     const runner = buildRunner('/', packages, stubDeps, stubHost)
     await runner(FQT.parse('pkg#ci#b'))
     assert.deepEqual(receivedArgs, [{ images: { a: 'pkg-ci-a' }, host: stubHost }])
+  })
+
+  it('reports every target it builds, including transitive deps', async () => {
+    const events: string[] = []
+    const runner = buildRunner('/', makePackage(), {
+      ...stubDeps,
+      reporter: {
+        ...silentReporter(),
+        targetStarted: (fqt) => events.push(`start ${fqt}`),
+        targetCompleted: (fqt) => events.push(`done ${fqt}`),
+      },
+    }, stubHost)
+
+    await runner(FQT.parse('pkg#ci#b'))
+
+    assert.deepEqual(events, [
+      'start pkg#ci#a',
+      'done pkg#ci#a',
+      'start pkg#ci#b',
+      'done pkg#ci#b',
+    ])
+  })
+
+  it('reports a failed target before propagating the error', async () => {
+    const events: string[] = []
+    const runner = buildRunner('/', makePackage(), {
+      ...stubDeps,
+      buildDockerImage: async () => { throw new Error('docker exploded') },
+      reporter: {
+        ...silentReporter(),
+        targetFailed: (fqt) => events.push(`failed ${fqt}`),
+      },
+    }, stubHost)
+
+    await assert.rejects(runner(FQT.parse('pkg#ci#a')), /docker exploded/)
+    assert.deepEqual(events, ['failed pkg#ci#a'])
   })
 
   it('throws on unknown target', async () => {

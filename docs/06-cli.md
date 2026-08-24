@@ -1,7 +1,7 @@
 # CLI reference
 
 ```
-dagr run <fqt> [<fqt>...]
+dagr run [-v|--verbose] <fqt> [<fqt>...]
 dagr list
 ```
 
@@ -30,15 +30,20 @@ What happens, in order:
 2. The target is looked up. Unknown target → `Error: Unknown target: <fqt>`.
 3. Dependencies are resolved recursively and built with `Promise.all`, so independent branches
    are launched together. Each FQT is built at most once per invocation.
-4. The target's own image is built. Docker output is captured line by line and emitted as
-   structured `process.output` events, so `RUN` output and compiler errors retain their stream
-   and image-build context.
+4. The target's own image is built. Docker output is captured line by line and kept as a
+   bounded tail; it is only printed if the build fails or you passed `--verbose`.
 5. If the target declared `EXPORT`, a throwaway container copies each mapped path to the
    package's directory on the host.
-6. A final line is printed:
+
+Each target reports itself as it goes, transitive dependencies included:
 
 ```
-Done: packages/ui#ci#build (packages_ui-ci-build)
+  ▶ packages/base#ci#node-pnpm
+  ✓ packages/base#ci#node-pnpm  4.1s
+  ▶ packages/ui#ci#install
+  ✓ packages/ui#ci#install  12.7s
+  ▶ packages/ui#ci#build
+  ✗ packages/ui#ci#build  3.2s
 ```
 
 Exit code is non-zero if any dependency's Docker build fails; the error propagates and no
@@ -46,24 +51,36 @@ further work is attempted.
 
 ## Output and logs
 
-dagr keeps command results and operational logs separate:
+dagr keeps command results and progress separate:
 
 - **stdout** is reserved for command output. Today that is the target graph produced by
   `dagr list`, so redirecting or piping it remains useful.
-- **stderr** carries one JSON object per line for operational events.
+- **stderr** carries progress and failures, written for a human to read. Colour is used only
+  when stderr is a terminal.
 
-Every log record has `timestamp`, `level`, and `event`; event-specific fields live under
-`data`:
+Subprocesses are never attached directly to the terminal. dagr pipes both streams and keeps the
+most recent 100 lines of each. Those lines are normally invisible; they surface in two cases:
 
-```json
-{"timestamp":"2026-08-24T12:00:00.000Z","level":"info","event":"target.completed","data":{"target":"packages/ui#ci#build","imageTag":"packages_ui-ci-build","imageDigest":"sha256:..."}}
+**On failure**, the captured tail is printed under the error, which is usually the Docker or
+compiler output you actually wanted:
+
+```
+  ✗ packages/ui#ci#build  3.2s
+error: docker exited with code 1
+  #8 3.001 src/app.ts(12,3): error TS2322: Type 'string' is not assignable to type 'number'.
+  #8 ERROR: process "pnpm build" did not complete successfully
+  (rerun with --verbose for full output)
 ```
 
-Subprocesses are never attached directly to the terminal. dagr pipes both streams and emits
-each complete line as `process.output`, including `stream`, `command`, `args`, and an operation
-context such as `image.build` or `image.extract`. The most recent 100 lines from each stream
-are also retained and included in `ProcessExecutionError` when the command fails. This keeps
-failures diagnosable without allowing captured output to grow without bound.
+**With `--verbose`**, every line is printed as it arrives, prefixed with the operation that
+produced it, so you can watch a slow build instead of guessing where it is stuck:
+
+```
+image.build packages_ui-ci-build │ #8 [4/4] RUN pnpm build
+image.build packages_ui-ci-build │ #8 DONE 12.2s
+```
+
+Nested errors print their `cause` chain indented beneath the message.
 
 ## `dagr list`
 

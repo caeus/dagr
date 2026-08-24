@@ -1,7 +1,7 @@
 import { writeFile, readFile, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ProcessRunner } from '../process-runner.js'
+import type { ProcessRunner } from '#sys/process-runner.js'
 
 export interface BuildResult {
   readonly tag: string
@@ -31,7 +31,7 @@ export async function buildDockerImage(
         'buildx', 'build', '--progress=plain', '--load', '-t', tag,
         '--iidfile', iidfilePath, '-f', dockerfilePath, contextPath,
       ],
-      { operation: 'image.build', imageTag: tag, contextPath },
+      `image.build ${tag}`,
     )
     const digest = (await readFile(iidfilePath, 'utf-8')).trim()
     return { tag, digest }

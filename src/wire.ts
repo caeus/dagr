@@ -1,16 +1,16 @@
 import { relative, resolve } from 'node:path'
 import { Module, toClass, toFactory, toValue, type ValidModule } from '@caeus/wyr'
-import { AsyncDisposeStack } from './di-container.js'
-import { logger as defaultLogger, type Logger } from './logging.js'
-import { processRunner, type ProcessRunner } from './process-runner.js'
-import { loadPackages, type PackageLoader } from './pkg/loader.js'
-import type { HostPlatform, PackageDef, Run } from './pkg/schema.js'
-import { hostPlatform } from './host-platform.js'
-import { buildRunner, type Runner } from './runner/index.js'
-import type { BuildResult } from './runner/docker-builder.js'
-import { renderDockerfile } from './runner/dockerfile-renderer.js'
-import { buildDockerImage } from './runner/docker-builder.js'
-import { extractFromImage } from './runner/docker-extractor.js'
+import { AsyncDisposeStack } from '#sys/dispose-stack.js'
+import { consoleReporter, type Reporter } from '#report/reporter.js'
+import { processRunner, type ProcessRunner } from '#sys/process-runner.js'
+import { loadPackages, type PackageLoader } from '#pkg/loader.js'
+import type { HostPlatform, PackageDef, Run } from '#pkg/schema.js'
+import { hostPlatform } from '#sys/host-platform.js'
+import { buildRunner, type Runner } from '#runner/index.js'
+import type { BuildResult } from '#runner/docker-builder.js'
+import { renderDockerfile } from '#runner/dockerfile-renderer.js'
+import { buildDockerImage } from '#runner/docker-builder.js'
+import { extractFromImage } from '#runner/docker-extractor.js'
 import {
   CompositeCommandRunner,
   ListCommandRunner,
@@ -19,7 +19,7 @@ import {
   type Cmd,
   type CommandRunner,
   type Output
-} from './commands/index.js'
+} from '#commands/index.js'
 
 export interface DockerfileRenderer {
   renderDockerfile(run: Run): string
@@ -54,7 +54,7 @@ export type ModuleFactory = (
 
 export function defaultModule(
   env: NodeJS.ProcessEnv,
-  _parsedArgs: Cmd,
+  cmd: Cmd,
   _stack: AsyncDisposeStack
 ) {
   return Module({
@@ -73,13 +73,17 @@ export function defaultModule(
       (env: NodeJS.ProcessEnv, hostRoot: string) =>
         relative(hostRoot, env['WORKING_DIR'] ?? hostRoot)
     ),
-    logger: toValue(defaultLogger satisfies Logger),
+    reporter: toValue(
+      consoleReporter({
+        verbose: cmd.command === 'run' && cmd.verbose === true
+      }) satisfies Reporter
+    ),
     output: toValue({
       write: (line: string) => process.stdout.write(`${line}\n`)
     } satisfies Output),
     processRunner: toFactory(
-      ['logger'],
-      (logger: Logger): ProcessRunner => processRunner(logger)
+      ['reporter'],
+      (reporter: Reporter): ProcessRunner => processRunner(reporter)
     ),
     packageLoader: toValue({ loadPackages } satisfies PackageLoader),
     dockerfileRenderer: toValue({ renderDockerfile } satisfies DockerfileRenderer),
@@ -106,13 +110,14 @@ export function defaultModule(
       (env: NodeJS.ProcessEnv): HostPlatform => hostPlatform(env)
     ),
     runner: toFactory(
-      ['root', 'packages', 'dockerfileRenderer', 'dockerImageBuilder', 'hostPlatform'],
+      ['root', 'packages', 'dockerfileRenderer', 'dockerImageBuilder', 'hostPlatform', 'reporter'],
       (
         root: string,
         packages: ReadonlyMap<string, PackageDef>,
         renderer: DockerfileRenderer,
         builder: DockerImageBuilder,
-        host: HostPlatform
+        host: HostPlatform,
+        reporter: Reporter
       ): Runner =>
         buildRunner(
           root,
@@ -120,14 +125,15 @@ export function defaultModule(
           {
             renderDockerfile: (run) => renderer.renderDockerfile(run),
             buildDockerImage: (content, tag, context, ignore) =>
-              builder.buildDockerImage(content, tag, context, ignore)
+              builder.buildDockerImage(content, tag, context, ignore),
+            reporter
           },
           host
         )
     ),
     listCommandRunner: toClass(['packages', 'output'], ListCommandRunner),
     runCommandRunner: toClass(
-      ['runner', 'dockerImageExtractor', 'hostRoot', 'currentPackage', 'logger'],
+      ['runner', 'dockerImageExtractor', 'hostRoot', 'currentPackage'],
       RunCommandRunner
     ),
     commandRunner: toClass(

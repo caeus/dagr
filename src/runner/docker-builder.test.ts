@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { writeFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
-import type { ProcessRunner } from '../process-runner.js'
-import { buildDockerImage } from './docker-builder.js'
+import type { ProcessRunner } from '#sys/process-runner.js'
+import { buildDockerImage } from '#runner/docker-builder.js'
 
 describe('buildDockerImage', () => {
-  it('uses plain progress and structured image-build context', async () => {
+  it('uses plain progress and labels the build for reporting', async () => {
     const calls: Parameters<ProcessRunner['run']>[] = []
     const runner: ProcessRunner = {
       run: async (...args) => {
@@ -16,7 +16,7 @@ describe('buildDockerImage', () => {
         return {
           command: args[0],
           args: args[1],
-          ...(args[2] ? { context: args[2] } : {}),
+          label: args[2],
           exitCode: 0,
           signal: null,
           stdoutTail: [],
@@ -36,10 +36,6 @@ describe('buildDockerImage', () => {
 
     assert.equal(result.digest, 'sha256:test')
     assert(calls[0]?.[1].includes('--progress=plain'))
-    assert.deepEqual(calls[0]?.[2], {
-      operation: 'image.build',
-      imageTag: 'pkg-ci-build',
-      contextPath: '/repo/pkg',
-    })
+    assert.equal(calls[0]?.[2], 'image.build pkg-ci-build')
   })
 })

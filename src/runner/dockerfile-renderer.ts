@@ -1,4 +1,4 @@
-import type { Run } from '../pkg/schema.js'
+import type { Run } from '#pkg/schema.js'
 
 export function renderDockerfile({ FROM, steps }: Run): string {
   return [

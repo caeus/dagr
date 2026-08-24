@@ -3,7 +3,7 @@ import { readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
-import { PackageDef } from './schema.js'
+import { PackageDef } from '#pkg/schema.js'
 
 const PACKAGE_FILE = 'dagr.index.js'
 const IMPORT_FILE = /^dagr\..+\.(?:js|json|yaml|toml)$/

@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import type { ProcessRunner } from '../process-runner.js'
+import type { ProcessRunner } from '#sys/process-runner.js'
 
 const MOUNT = '/host-out'
 
@@ -13,7 +13,7 @@ export async function extractFromImage(
     await processRunner.run(
       'docker',
       ['run', '--rm', '-v', `${destDir}:${MOUNT}`, imageTag, 'sh', '-c', copyScript(src, dest)],
-      { operation: 'image.extract', imageTag, src, dest, destDir },
+      `image.extract ${imageTag}`,
     )
   }
 }
