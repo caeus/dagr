@@ -1,6 +1,8 @@
 import { relative, resolve } from 'node:path'
 import { Module, toClass, toFactory, toValue, type ValidModule } from '@caeus/wyr'
 import { AsyncDisposeStack } from './di-container.js'
+import { logger as defaultLogger, type Logger } from './logging.js'
+import { processRunner, type ProcessRunner } from './process-runner.js'
 import { loadPackages, type PackageLoader } from './pkg/loader.js'
 import type { HostPlatform, PackageDef, Run } from './pkg/schema.js'
 import { hostPlatform } from './host-platform.js'
@@ -15,7 +17,8 @@ import {
   RunCommandRunner,
   parseCmd,
   type Cmd,
-  type CommandRunner
+  type CommandRunner,
+  type Output
 } from './commands/index.js'
 
 export interface DockerfileRenderer {
@@ -70,10 +73,30 @@ export function defaultModule(
       (env: NodeJS.ProcessEnv, hostRoot: string) =>
         relative(hostRoot, env['WORKING_DIR'] ?? hostRoot)
     ),
+    logger: toValue(defaultLogger satisfies Logger),
+    output: toValue({
+      write: (line: string) => process.stdout.write(`${line}\n`)
+    } satisfies Output),
+    processRunner: toFactory(
+      ['logger'],
+      (logger: Logger): ProcessRunner => processRunner(logger)
+    ),
     packageLoader: toValue({ loadPackages } satisfies PackageLoader),
     dockerfileRenderer: toValue({ renderDockerfile } satisfies DockerfileRenderer),
-    dockerImageBuilder: toValue({ buildDockerImage } satisfies DockerImageBuilder),
-    dockerImageExtractor: toValue({ extractFromImage } satisfies DockerImageExtractor),
+    dockerImageBuilder: toFactory(
+      ['processRunner'],
+      (runner: ProcessRunner): DockerImageBuilder => ({
+        buildDockerImage: (content, tag, context, ignore) =>
+          buildDockerImage(content, tag, context, ignore, runner)
+      })
+    ),
+    dockerImageExtractor: toFactory(
+      ['processRunner'],
+      (runner: ProcessRunner): DockerImageExtractor => ({
+        extractFromImage: (imageTag, exportMap, destDir) =>
+          extractFromImage(imageTag, exportMap, destDir, runner)
+      })
+    ),
     packages: toFactory(
       ['root', 'packageLoader'],
       (root: string, loader: PackageLoader) => loader.loadPackages(root)
@@ -102,9 +125,9 @@ export function defaultModule(
           host
         )
     ),
-    listCommandRunner: toClass(['packages'], ListCommandRunner),
+    listCommandRunner: toClass(['packages', 'output'], ListCommandRunner),
     runCommandRunner: toClass(
-      ['runner', 'dockerImageExtractor', 'hostRoot', 'currentPackage'],
+      ['runner', 'dockerImageExtractor', 'hostRoot', 'currentPackage', 'logger'],
       RunCommandRunner
     ),
     commandRunner: toClass(
