@@ -12,6 +12,18 @@ Build files are `dagr.index.js` — plain ES modules evaluated inside a `node:vm
 can compute their contents with real JavaScript (loops, templates, shared helper modules)
 without being able to touch the filesystem, the network, or the host process.
 
+## Philosophy
+
+### Open code, not a package
+
+dagr is distributed as source. Copy the `dagr/` directory into your repository and commit it.
+The repository owns the exact runner that interprets its build definitions, so there is no
+external dagr version to keep compatible with them.
+
+That copy is yours to read, modify, and evolve with the rest of the codebase. Updating dagr
+means applying a source diff and reviewing it like any other change. The global launcher never
+selects or downloads a version; it only finds and runs the copy owned by the current repository.
+
 ## Install
 
 ```sh
