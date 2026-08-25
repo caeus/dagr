@@ -34,6 +34,10 @@ module is referenced from the source root — `#report/reporter.js`, `#runner/in
 imports between siblings in the same directory. Keep the `.js` extension; the package is ESM and
 `moduleResolution` is `NodeNext`.
 
+Each Docker runner module owns the interface for its capability (`DockerImageBuilder`,
+`DockerImageCopier`, and so on). `wire.ts` imports those ports and composes them; runner and
+command modules never depend on the composition root.
+
 The map points at `./dist/*`, and there is deliberately only one target. Tests are the subtle part:
 they stay TypeScript and are run from `src/` by tsx, but their `#`-prefixed imports still resolve
 to `dist/`, so they exercise the very modules the container runs. That is why `make test` depends

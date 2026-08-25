@@ -11,15 +11,14 @@ import {
   type MountMaterializer,
   type PackageLoader,
 } from '#pkg/loader.js'
-import type { HostPlatform, PackageDef, Run } from '#pkg/schema.js'
+import type { HostPlatform, PackageDef } from '#pkg/schema.js'
 import { hostPlatform } from '#sys/host-platform.js'
 import { buildRunner, type Runner } from '#runner/index.js'
-import type { BuildResult } from '#runner/docker-builder.js'
-import { renderDockerfile } from '#runner/dockerfile-renderer.js'
-import { buildDockerImage } from '#runner/docker-builder.js'
-import { extractFromImage } from '#runner/docker-extractor.js'
-import { copyFromImage, type ImageCopy } from '#runner/docker-copier.js'
-import { inspectImageWorkdir } from '#runner/docker-inspector.js'
+import { renderDockerfile, type DockerfileRenderer } from '#runner/dockerfile-renderer.js'
+import { buildDockerImage, type DockerImageBuilder } from '#runner/docker-builder.js'
+import { extractFromImage, type DockerImageExtractor } from '#runner/docker-extractor.js'
+import { copyFromImage, type DockerImageCopier } from '#runner/docker-copier.js'
+import { inspectImageWorkdir, type DockerImageInspector } from '#runner/docker-inspector.js'
 import { DockerMountMaterializer } from '#runner/mount-materializer.js'
 import {
   CompositeCommandRunner,
@@ -31,44 +30,11 @@ import {
   type Output
 } from '#commands/index.js'
 
-export interface DockerfileRenderer {
-  renderDockerfile(run: Run): string
-}
-
-export interface DockerImageBuilder {
-  buildDockerImage(
-    content: string,
-    tag: string,
-    context: string,
-    ignore: readonly string[]
-  ): Promise<BuildResult>
-}
-
-export interface DockerImageExtractor {
-  extractFromImage(
-    imageTag: string,
-    exportMap: Readonly<Record<string, string>>,
-    destDir: string
-  ): Promise<void>
-}
-
-export interface DockerImageInspector {
-  inspectImageWorkdir(imageTag: string): Promise<string>
-}
-
-export interface DockerImageCopier {
-  copyFromImage(imageTag: string, copies: readonly ImageCopy[]): Promise<void>
-}
-
-export interface WiredCommand {
-  readonly commandRunner: CommandRunner
-}
-
 export type ModuleFactory = (
   env: NodeJS.ProcessEnv,
   parsedArgs: Cmd,
   stack: AsyncDisposeStack
-) => ValidModule<WiredCommand>
+) => ValidModule<{ readonly commandRunner: CommandRunner }>
 
 export function defaultModule(
   env: NodeJS.ProcessEnv,

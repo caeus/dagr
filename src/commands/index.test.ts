@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { DockerImageExtractor } from '#wire.js'
+import type { DockerImageExtractor } from '#runner/docker-extractor.js'
 import { FQT, type Runner } from '#runner/index.js'
 import { parseCmd, RunCommandRunner } from '#commands/index.js'
 

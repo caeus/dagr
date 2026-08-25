@@ -8,6 +8,15 @@ export interface BuildResult {
   readonly digest: string
 }
 
+export interface DockerImageBuilder {
+  buildDockerImage(
+    content: string,
+    tag: string,
+    context: string,
+    ignore: readonly string[],
+  ): Promise<BuildResult>
+}
+
 export async function buildDockerImage(
   dockerfileContent: string,
   tag: string,

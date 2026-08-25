@@ -5,6 +5,10 @@ export interface ImageCopy {
   readonly dest: string
 }
 
+export interface DockerImageCopier {
+  copyFromImage(imageTag: string, copies: readonly ImageCopy[]): Promise<void>
+}
+
 export async function copyFromImage(
   imageTag: string,
   copies: readonly ImageCopy[],

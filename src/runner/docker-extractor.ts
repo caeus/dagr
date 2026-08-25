@@ -3,6 +3,14 @@ import { dirname, isAbsolute, posix, relative, resolve, sep } from 'node:path'
 import { copyFromImage } from '#runner/docker-copier.js'
 import type { ProcessRunner } from '#sys/process-runner.js'
 
+export interface DockerImageExtractor {
+  extractFromImage(
+    imageTag: string,
+    exportMap: Readonly<Record<string, string>>,
+    destDir: string,
+  ): Promise<void>
+}
+
 export async function extractFromImage(
   imageTag: string,
   exportMap: Readonly<Record<string, string>>,

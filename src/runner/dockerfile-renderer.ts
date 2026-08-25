@@ -1,5 +1,9 @@
 import type { Run } from '#pkg/schema.js'
 
+export interface DockerfileRenderer {
+  renderDockerfile(run: Run): string
+}
+
 export function renderDockerfile({ FROM, steps }: Run): string {
   return [
     `FROM ${FROM}`,

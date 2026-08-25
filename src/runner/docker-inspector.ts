@@ -1,5 +1,9 @@
 import type { ProcessRunner } from '#sys/process-runner.js'
 
+export interface DockerImageInspector {
+  inspectImageWorkdir(imageTag: string): Promise<string>
+}
+
 export async function inspectImageWorkdir(
   imageTag: string,
   processRunner: ProcessRunner,

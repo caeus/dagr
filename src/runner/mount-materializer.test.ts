@@ -4,12 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import { DockerMountMaterializer, validateSymlinks } from '#runner/mount-materializer.js'
-import type {
-  DockerfileRenderer,
-  DockerImageBuilder,
-  DockerImageCopier,
-  DockerImageInspector,
-} from '#wire.js'
+import type { DockerfileRenderer } from '#runner/dockerfile-renderer.js'
+import type { DockerImageBuilder } from '#runner/docker-builder.js'
+import type { DockerImageCopier } from '#runner/docker-copier.js'
+import type { DockerImageInspector } from '#runner/docker-inspector.js'
 
 describe('DockerMountMaterializer', () => {
   it('builds the recipe and extracts the final WORKDIR contents', async () => {

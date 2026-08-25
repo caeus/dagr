@@ -8,7 +8,7 @@ import { run } from "@optique/run";
 import { resolve } from "node:path";
 import type { PackageDef } from "#pkg/schema.js";
 import { FQT, type Runner } from "#runner/index.js";
-import type { DockerImageExtractor } from "#wire.js";
+import type { DockerImageExtractor } from "#runner/docker-extractor.js";
 const runCommand = command('run', object({
   command: constant('run'),
   verbose: withDefault(

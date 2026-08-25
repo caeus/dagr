@@ -3,7 +3,10 @@ import { createHash } from 'node:crypto'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import type { MaterializedMount, MountMaterializer } from '#pkg/loader.js'
 import type { MountDef } from '#pkg/schema.js'
-import type { DockerfileRenderer, DockerImageBuilder, DockerImageCopier, DockerImageInspector } from '#wire.js'
+import type { DockerfileRenderer } from '#runner/dockerfile-renderer.js'
+import type { DockerImageBuilder } from '#runner/docker-builder.js'
+import type { DockerImageCopier } from '#runner/docker-copier.js'
+import type { DockerImageInspector } from '#runner/docker-inspector.js'
 
 export class DockerMountMaterializer implements MountMaterializer {
   private readonly extracted = new Map<string, Promise<string>>()
