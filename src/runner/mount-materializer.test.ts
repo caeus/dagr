@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
-import { createMountMaterializer, validateSymlinks } from '#runner/mount-materializer.js'
+import { DockerMountMaterializer, validateSymlinks } from '#runner/mount-materializer.js'
 import type {
   DockerfileRenderer,
   DockerImageBuilder,
@@ -11,7 +11,7 @@ import type {
   DockerImageInspector,
 } from '#wire.js'
 
-describe('createMountMaterializer', () => {
+describe('DockerMountMaterializer', () => {
   it('builds the recipe and extracts the final WORKDIR contents', async () => {
     const mountRoot = await mkdtemp(join(tmpdir(), 'dagr-mounts-'))
     const calls: Array<{ src: string; dest: string }> = []
@@ -34,13 +34,13 @@ describe('createMountMaterializer', () => {
     }
 
     try {
-      const materializer = createMountMaterializer({
+      const materializer = new DockerMountMaterializer(
         renderer,
         builder,
         copier,
         inspector,
         mountRoot,
-      })
+      )
       const mounted = await materializer.materialize(
         { FROM: 'tools', steps: [], IGNORE: ['node_modules'] },
         'packages/tools',
@@ -57,17 +57,17 @@ describe('createMountMaterializer', () => {
   it('rejects an unset or root final WORKDIR', async () => {
     const mountRoot = await mkdtemp(join(tmpdir(), 'dagr-mounts-'))
     let copied = false
-    const materializer = createMountMaterializer({
-      renderer: { renderDockerfile: () => 'FROM tools\n' },
-      builder: {
+    const materializer = new DockerMountMaterializer(
+      { renderDockerfile: () => 'FROM tools\n' },
+      {
         buildDockerImage: async (_content, tag) => ({ tag, digest: 'sha256:tools' }),
       },
-      inspector: { inspectImageWorkdir: async () => '/' },
-      copier: {
+      {
         copyFromImage: async () => { copied = true },
       },
+      { inspectImageWorkdir: async () => '/' },
       mountRoot,
-    })
+    )
 
     try {
       await assert.rejects(

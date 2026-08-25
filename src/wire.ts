@@ -20,7 +20,7 @@ import { buildDockerImage } from '#runner/docker-builder.js'
 import { extractFromImage } from '#runner/docker-extractor.js'
 import { copyFromImage, type ImageCopy } from '#runner/docker-copier.js'
 import { inspectImageWorkdir } from '#runner/docker-inspector.js'
-import { createMountMaterializer } from '#runner/mount-materializer.js'
+import { DockerMountMaterializer } from '#runner/mount-materializer.js'
 import {
   CompositeCommandRunner,
   ListCommandRunner,
@@ -136,7 +136,7 @@ export function defaultModule(
         copyFromImage: (imageTag, copies) => copyFromImage(imageTag, copies, runner)
       })
     ),
-    mountMaterializer: toFactory(
+    mountMaterializer: toClass(
       [
         'dockerfileRenderer',
         'dockerImageBuilder',
@@ -144,19 +144,7 @@ export function defaultModule(
         'dockerImageInspector',
         'mountRoot'
       ],
-      (
-        renderer: DockerfileRenderer,
-        builder: DockerImageBuilder,
-        copier: DockerImageCopier,
-        inspector: DockerImageInspector,
-        mountRoot: string
-      ) => createMountMaterializer({
-        renderer,
-        builder,
-        copier,
-        inspector,
-        mountRoot
-      })
+      DockerMountMaterializer
     ),
     packageLoader: toFactory(
       ['mountMaterializer'],

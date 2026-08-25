@@ -1,58 +1,56 @@
 import { mkdir, readdir, realpath } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { isAbsolute, join, relative, sep } from 'node:path'
-import type { MountMaterializer } from '#pkg/loader.js'
+import type { MaterializedMount, MountMaterializer } from '#pkg/loader.js'
+import type { MountDef } from '#pkg/schema.js'
 import type { DockerfileRenderer, DockerImageBuilder, DockerImageCopier, DockerImageInspector } from '#wire.js'
 
-export interface MountMaterializerDeps {
-  readonly renderer: DockerfileRenderer
-  readonly builder: DockerImageBuilder
-  readonly copier: DockerImageCopier
-  readonly inspector: DockerImageInspector
-  readonly mountRoot: string
-}
+export class DockerMountMaterializer implements MountMaterializer {
+  private readonly extracted = new Map<string, Promise<string>>()
 
-export function createMountMaterializer(deps: MountMaterializerDeps): MountMaterializer {
-  const extracted = new Map<string, Promise<string>>()
+  constructor(
+    private readonly renderer: DockerfileRenderer,
+    private readonly builder: DockerImageBuilder,
+    private readonly copier: DockerImageCopier,
+    private readonly inspector: DockerImageInspector,
+    private readonly mountRoot: string,
+  ) {}
 
-  return {
-    materialize: async (mount, logicalPath) => {
-      const tag = mountTag(logicalPath)
-      const dockerfile = deps.renderer.renderDockerfile(mount)
-      const emptyContext = join(deps.mountRoot, '.context')
-      await mkdir(emptyContext, { recursive: true })
-      const image = await deps.builder.buildDockerImage(dockerfile, tag, emptyContext, mount.IGNORE)
-      const workdir = await deps.inspector.inspectImageWorkdir(image.tag)
-      if (workdir === '/')
-        throw new Error(`Mount image must configure a non-root final WORKDIR: ${logicalPath}`)
-      const identity = `${image.digest}:${workdir}`
+  async materialize(mount: MountDef, logicalPath: string): Promise<MaterializedMount> {
+    const tag = mountTag(logicalPath)
+    const dockerfile = this.renderer.renderDockerfile(mount)
+    const emptyContext = join(this.mountRoot, '.context')
+    await mkdir(emptyContext, { recursive: true })
+    const image = await this.builder.buildDockerImage(dockerfile, tag, emptyContext, mount.IGNORE)
+    const workdir = await this.inspector.inspectImageWorkdir(image.tag)
+    if (workdir === '/')
+      throw new Error(`Mount image must configure a non-root final WORKDIR: ${logicalPath}`)
+    const identity = `${image.digest}:${workdir}`
 
-      let root = extracted.get(identity)
-      if (!root) {
-        root = extractMount(image.tag, image.digest, workdir, deps)
-        extracted.set(identity, root)
-      }
+    let root = this.extracted.get(identity)
+    if (!root) {
+      root = this.extractMount(image.tag, image.digest, workdir)
+      this.extracted.set(identity, root)
+    }
 
-      return { root: await root, identity }
-    },
+    return { root: await root, identity }
   }
-}
 
-async function extractMount(
-  imageTag: string,
-  imageDigest: string,
-  workdir: string,
-  deps: MountMaterializerDeps,
-): Promise<string> {
-  const key = createHash('sha256').update(`${imageDigest}\0${workdir}`).digest('hex')
-  const root = join(deps.mountRoot, key)
-  await mkdir(root, { recursive: true })
-  await deps.copier.copyFromImage(
-    imageTag,
-    [{ src: `${workdir.replace(/\/+$/, '')}/.`, dest: root }],
-  )
-  await validateSymlinks(root)
-  return root
+  private async extractMount(
+    imageTag: string,
+    imageDigest: string,
+    workdir: string,
+  ): Promise<string> {
+    const key = createHash('sha256').update(`${imageDigest}\0${workdir}`).digest('hex')
+    const root = join(this.mountRoot, key)
+    await mkdir(root, { recursive: true })
+    await this.copier.copyFromImage(
+      imageTag,
+      [{ src: `${workdir.replace(/\/+$/, '')}/.`, dest: root }],
+    )
+    await validateSymlinks(root)
+    return root
+  }
 }
 
 export async function validateSymlinks(root: string): Promise<void> {
