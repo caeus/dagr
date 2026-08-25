@@ -168,8 +168,8 @@ from a target you run casually.
 EXPORT "/docs" -> ".": cannot replace the package directory itself; use "./" to merge into it
 ```
 
-The destination is a bind mount of that directory — for the root package, your entire
-repository — so a replace there would `rm -rf` the working tree. The merge form `'./'` is fine
+The destination is that local package directory; for the root package, it is your entire
+repository. A replace there would `rm -rf` the working tree. The merge form `'./'` is fine
 and often what you want: it copies into the package directory without deleting anything, which
 is how you'd sync a whole directory of generated files without listing each one.
 
@@ -196,31 +196,31 @@ dagr run packages/ui#ci#install
 
 Without this rule, building anything would spray files across your working tree.
 
-### How extraction works, and what it requires
+### How extraction works
 
-For each `src → dest` pair, dagr runs a throwaway container with the package directory
-bind-mounted. Which command runs depends only on the trailing slashes, never on inspecting the
-image:
+For each `src → dest` pair, dagr creates a container without starting it, copies from its
+filesystem, then removes it:
 
 ```sh
 # source ends in "/" — merge contents, delete nothing
-docker run --rm -v <package dir>:/host-out --entrypoint sh <image> -c \
-  'mkdir -p "<dest>" && cp -a "<src>"/. "<dest>"/'
+docker create <image>
+docker cp <container>:<src>/. <package dir>/<dest>
+docker rm <container>
 
 # otherwise — the node becomes <dest> exactly, replacing whatever was there
-docker run --rm -v <package dir>:/host-out --entrypoint sh <image> -c \
-  'mkdir -p "$(dirname "<dest>")" && rm -rf "<dest>" && cp -a "<src>" "<dest>"'
+rm -rf <package dir>/<dest>
+docker create <image>
+docker cp <container>:<src> <package dir>/<dest>
+docker rm <container>
 ```
 
 Implications:
 
-- **The image needs a shell**, plus `mkdir`, `cp`, and `dirname`. You cannot `EXPORT` from a
-  `scratch` or distroless image. Keep a `FROM alpine`-family layer as the export target. Dagr
-  overrides the image's configured entrypoint for extraction.
+- The image needs no shell or utilities. `scratch` and distroless images work. The container is
+  never started, so its entrypoint and command do not run.
 - Intermediate directories in `dest` are created as needed, in both forms.
-- Files are written by the container's user, typically root. Exported trees may be
-  root-owned on Linux hosts.
-- One container per entry, run sequentially.
+- `docker cp` writes to dagr's local `/repo` mount, so exports appear on the host repository.
+- One stopped container per entry, processed sequentially.
 
 ### Exported `node_modules` are Linux binaries
 

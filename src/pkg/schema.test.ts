@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { IndexDef, Name, PackageDef } from '#pkg/schema.js'
+import { IndexDef, Name, PackageDef, Run } from '#pkg/schema.js'
 
 const target = { deps: [], run: () => ({ FROM: 'scratch', steps: [], IGNORE: [] }) }
 
@@ -59,5 +59,19 @@ describe('IndexDef', () => {
       IndexDef.safeParse({ '#mount': { ...mount, EXPORT: { '/out': 'out' } } }).success,
       false,
     )
+  })
+})
+
+describe('Run EXPORT destinations', () => {
+  it('rejects absolute paths and parent escapes', () => {
+    for (const dest of ['/tmp/out', '../out', 'nested/../../out']) {
+      const run = {
+        FROM: 'scratch',
+        steps: [],
+        IGNORE: [],
+        EXPORT: { '/out': dest },
+      }
+      assert.equal(Run.safeParse(run).success, false)
+    }
   })
 })

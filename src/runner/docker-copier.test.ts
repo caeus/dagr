@@ -29,7 +29,7 @@ describe('copyFromImage', () => {
     }
 
     try {
-      await copyFromImage('tools:latest', '/dagr/', dest, runner)
+      await copyFromImage('tools:latest', [{ src: '/dagr/.', dest }], runner)
       assert.deepEqual(calls, [
         { args: ['create', 'tools:latest'], label: 'container.create tools:latest' },
         { args: ['cp', 'container-id:/dagr/.', dest], label: 'container.copy tools:latest' },
@@ -53,7 +53,10 @@ describe('copyFromImage', () => {
     }
 
     try {
-      await assert.rejects(copyFromImage('tools:latest', '/dagr', dest, runner), /copy failed/)
+      await assert.rejects(
+        copyFromImage('tools:latest', [{ src: '/dagr/.', dest }], runner),
+        /copy failed/,
+      )
       assert.deepEqual(calls, ['create', 'cp', 'rm'])
     } finally {
       await rm(dest, { recursive: true })

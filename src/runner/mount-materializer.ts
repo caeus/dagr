@@ -46,7 +46,11 @@ async function extractMount(
 ): Promise<string> {
   const key = createHash('sha256').update(`${imageDigest}\0${workdir}`).digest('hex')
   const root = join(deps.mountRoot, key)
-  await deps.copier.copyFromImage(imageTag, workdir, root)
+  await mkdir(root, { recursive: true })
+  await deps.copier.copyFromImage(
+    imageTag,
+    [{ src: `${workdir.replace(/\/+$/, '')}/.`, dest: root }],
+  )
   await validateSymlinks(root)
   return root
 }

@@ -1,13 +1,16 @@
-import { mkdir } from 'node:fs/promises'
 import type { ProcessRunner } from '#sys/process-runner.js'
+
+export interface ImageCopy {
+  readonly src: string
+  readonly dest: string
+}
 
 export async function copyFromImage(
   imageTag: string,
-  src: string,
-  dest: string,
+  copies: readonly ImageCopy[],
   processRunner: ProcessRunner,
 ): Promise<void> {
-  await mkdir(dest, { recursive: true })
+  if (copies.length === 0) return
   const created = await processRunner.run(
     'docker',
     ['create', imageTag],
@@ -17,12 +20,13 @@ export async function copyFromImage(
   if (!containerId) throw new Error(`Docker returned no container ID for image: ${imageTag}`)
 
   try {
-    const source = `${src.replace(/\/+$/, '')}/.`
-    await processRunner.run(
-      'docker',
-      ['cp', `${containerId}:${source}`, dest],
-      `container.copy ${imageTag}`,
-    )
+    for (const { src, dest } of copies) {
+      await processRunner.run(
+        'docker',
+        ['cp', `${containerId}:${src}`, dest],
+        `container.copy ${imageTag}`,
+      )
+    }
   } finally {
     await processRunner.run(
       'docker',

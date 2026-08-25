@@ -18,7 +18,7 @@ import type { BuildResult } from '#runner/docker-builder.js'
 import { renderDockerfile } from '#runner/dockerfile-renderer.js'
 import { buildDockerImage } from '#runner/docker-builder.js'
 import { extractFromImage } from '#runner/docker-extractor.js'
-import { copyFromImage } from '#runner/docker-copier.js'
+import { copyFromImage, type ImageCopy } from '#runner/docker-copier.js'
 import { inspectImageWorkdir } from '#runner/docker-inspector.js'
 import { createMountMaterializer } from '#runner/mount-materializer.js'
 import {
@@ -57,7 +57,7 @@ export interface DockerImageInspector {
 }
 
 export interface DockerImageCopier {
-  copyFromImage(imageTag: string, src: string, dest: string): Promise<void>
+  copyFromImage(imageTag: string, copies: readonly ImageCopy[]): Promise<void>
 }
 
 export interface WiredCommand {
@@ -133,7 +133,7 @@ export function defaultModule(
     dockerImageCopier: toFactory(
       ['processRunner'],
       (runner: ProcessRunner): DockerImageCopier => ({
-        copyFromImage: (imageTag, src, dest) => copyFromImage(imageTag, src, dest, runner)
+        copyFromImage: (imageTag, copies) => copyFromImage(imageTag, copies, runner)
       })
     ),
     mountMaterializer: toFactory(
@@ -214,7 +214,7 @@ export function defaultModule(
     ),
     listCommandRunner: toClass(['packages', 'output'], ListCommandRunner),
     runCommandRunner: toClass(
-      ['runner', 'dockerImageExtractor', 'hostRoot', 'currentPackage'],
+      ['runner', 'dockerImageExtractor', 'root', 'currentPackage'],
       RunCommandRunner
     ),
     commandRunner: toClass(

@@ -25,7 +25,7 @@ src/
     ├── docker-builder.ts       docker buildx build
     ├── docker-copier.ts        docker create + cp + rm for mounted trees
     ├── docker-inspector.ts     reads an image's configured WORKDIR
-    ├── docker-extractor.ts     docker run + bind mount to pull files out
+    ├── docker-extractor.ts     prepares EXPORT destinations and delegates to docker-copier
     └── mount-materializer.ts   mount build, extraction, memo, and symlink validation
 ```
 
@@ -206,22 +206,19 @@ stream name is recorded as data and never treated as a severity.
 ## Extracting
 
 ```sh
-docker run --rm -v <destDir>:/host-out <imageTag> \
-  # source ends in "/" — merge contents, delete nothing
-  sh -c 'mkdir -p "<dest>" && cp -a "<src>"/. "<dest>"/'
-
-  # otherwise — the node becomes <dest> exactly, replacing whatever was there
-  sh -c 'mkdir -p "$(dirname "<dest>")" && rm -rf "<dest>" && cp -a "<src>" "<dest>"'
+docker create <imageTag>
+docker cp <container>:<src> <dest>
+docker rm <container>
 ```
 
-One container per entry in the `EXPORT` map, run sequentially. Which of the two scripts runs is
-decided **entirely by the path syntax** — `copyScript` never inspects the image. That is why
-files and directories need no separate handling: `cp -a` copies either to an exact destination.
+One stopped container per entry in the `EXPORT` map, processed sequentially. Path syntax still
+controls intent without inspecting the image: a source ending in `/` copies `<src>/.` into an
+existing destination, while the no-slash form deletes the exact destination before `docker cp`.
 A destination ending in `/` resolves to `<dest>/<basename(src)>`.
 
-`copyScript` throws for a replace aimed at the package directory itself (`'.'` or `''`), since
-that would `rm -rf` the bind mount. `Run`'s schema rejects the same shape, so it normally never
-reaches here; the check is duplicated because the failure mode is destroying a working tree.
+The extractor throws for a replace aimed at the package directory itself (`'.'` or `''`) and for
+any destination escaping that directory. `Run`'s schema rejects both shapes too; runtime guards
+remain because the failure mode is deleting files outside the intended export destination.
 
 ## Validating `run()` output
 
@@ -281,12 +278,11 @@ The bindings in `wire.ts`:
 | `hostPlatform` | `hostPlatform(env)` |
 | `runner` | `buildRunner(root, packages, deps, hostPlatform, packageContexts)` |
 | `listCommandRunner` | `ListCommandRunner(packages)` |
-| `runCommandRunner` | `RunCommandRunner(runner, extractor, hostRoot, currentPackage)` |
+| `runCommandRunner` | `RunCommandRunner(runner, extractor, root, currentPackage)` |
 | `commandRunner` | `CompositeCommandRunner(runCommandRunner, listCommandRunner)` |
 
-Note `runner` gets `root` (container-side, for build contexts) while `runCommandRunner` gets
-`hostRoot` (host-side, for bind mounts). That asymmetry is the whole subject of
-[09 — Docker-in-Docker](09-docker-in-docker.md).
+Both target build contexts and `EXPORT` destinations use `root`, the container-side repository
+path. `docker cp` is a CLI operation and writes through the existing `/repo` bind mount.
 
 ## Command dispatch
 

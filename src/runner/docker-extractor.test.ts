@@ -1,83 +1,107 @@
-import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import type { ProcessRunner } from '#sys/process-runner.js'
-import { copyScript, extractFromImage } from '#runner/docker-extractor.js'
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, it } from 'node:test'
+import { extractFromImage } from '#runner/docker-extractor.js'
+import type { ProcessRunner, ProcessResult } from '#sys/process-runner.js'
+
+const result = (stdoutTail: readonly string[] = []): ProcessResult => ({
+  command: 'docker',
+  args: [],
+  label: 'docker',
+  exitCode: 0,
+  signal: null,
+  stdoutTail,
+  stderrTail: [],
+  durationMs: 1,
+})
 
 describe('extractFromImage', () => {
-  it('runs Docker with a labelled extraction command', async () => {
-    const calls: Parameters<ProcessRunner['run']>[] = []
-    const runner: ProcessRunner = {
-      run: async (...args) => {
-        calls.push(args)
-        return {
-          command: args[0],
-          args: args[1],
-          label: args[2],
-          exitCode: 0,
-          signal: null,
-          stdoutTail: [],
-          stderrTail: [],
-          durationMs: 1,
-        }
-      },
+  it('merges source contents with docker cp from a stopped container', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dagr-export-'))
+    const calls: string[][] = []
+
+    try {
+      await extractFromImage('pkg-ci-build', { '/out/': 'dist/' }, root, dockerRunner(calls))
+      assert.deepEqual(calls, [
+        ['create', 'pkg-ci-build'],
+        ['cp', 'container-id:/out/.', join(root, 'dist')],
+        ['rm', 'container-id'],
+      ])
+    } finally {
+      await rm(root, { recursive: true })
     }
+  })
 
-    await extractFromImage('pkg-ci-build', { '/out': 'dist' }, '/repo/pkg', runner)
+  it('replaces an exact destination before copying', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dagr-export-'))
+    const target = join(root, 'docs')
+    await mkdir(target)
+    await writeFile(join(target, 'stale'), 'stale')
+    const calls: string[][] = []
 
-    assert.equal(calls[0]?.[0], 'docker')
-    assert.deepEqual(calls[0]?.[1].slice(0, 6), [
-      'run', '--rm', '-v', '/repo/pkg:/host-out', '--entrypoint', 'sh',
-    ])
-    assert.equal(calls[0]?.[2], 'image.extract pkg-ci-build')
+    try {
+      await extractFromImage('pkg-ci-build', { '/docs': 'docs' }, root, dockerRunner(calls))
+      await assert.rejects(stat(join(target, 'stale')))
+      assert.deepEqual(calls[1], ['cp', 'container-id:/docs', target])
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('places a node inside a destination directory', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dagr-export-'))
+    const calls: string[][] = []
+
+    try {
+      await extractFromImage('pkg-ci-build', { '/bin/tool': 'build/' }, root, dockerRunner(calls))
+      assert.deepEqual(calls[1], [
+        'cp',
+        'container-id:/bin/tool',
+        join(root, 'build', 'tool'),
+      ])
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('merges into the package directory for ./', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dagr-export-'))
+    const calls: string[][] = []
+
+    try {
+      await extractFromImage('pkg-ci-build', { '/out/': './' }, root, dockerRunner(calls))
+      assert.deepEqual(calls[1], ['cp', 'container-id:/out/.', root])
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('refuses package replacement and destination escapes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dagr-export-'))
+    const runner = dockerRunner([])
+
+    try {
+      await assert.rejects(
+        extractFromImage('image', { '/docs': '.' }, root, runner),
+        /cannot replace the package directory itself/,
+      )
+      await assert.rejects(
+        extractFromImage('image', { '/docs/': '../outside/' }, root, runner),
+        /destination escapes its package directory/,
+      )
+    } finally {
+      await rm(root, { recursive: true })
+    }
   })
 })
 
-describe('copyScript', () => {
-  it('replaces the destination when neither path has a trailing slash', () => {
-    const script = copyScript('/docs', 'docs')
-    assert.match(script, /rm -rf '\/host-out\/docs'/)
-    assert.match(script, /cp -a '\/docs' '\/host-out\/docs'/)
-  })
-
-  it('treats a file the same as a directory', () => {
-    const script = copyScript('/repo/package.json', 'package.json')
-    assert.match(script, /rm -rf '\/host-out\/package\.json'/)
-    assert.match(script, /cp -a '\/repo\/package\.json' '\/host-out\/package\.json'/)
-  })
-
-  it('merges contents and never deletes when the source ends in a slash', () => {
-    const script = copyScript('/repo/dist/', 'dist/')
-    assert.match(script, /cp -a '\/repo\/dist'\/\. '\/host-out\/dist'\//)
-    assert.doesNotMatch(script, /rm -rf/)
-  })
-
-  it('places the node inside a destination ending in a slash', () => {
-    const script = copyScript('/repo/dist', 'build/')
-    assert.match(script, /cp -a '\/repo\/dist' '\/host-out\/build\/dist'/)
-  })
-
-  it('creates parent directories before copying', () => {
-    assert.match(copyScript('/a/b.txt', 'nested/b.txt'), /mkdir -p "\$\(dirname '\/host-out\/nested\/b\.txt'\)"/)
-  })
-
-  it('merges into the package directory for ./', () => {
-    const script = copyScript('/out/', './')
-    assert.match(script, /cp -a '\/out'\/\. '\/host-out'\//)
-    assert.doesNotMatch(script, /rm -rf/)
-  })
-
-  it('places a node inside the package directory for ./', () => {
-    assert.match(copyScript('/repo/dist', './'), /rm -rf '\/host-out\/dist'/)
-  })
-
-  it('shell-quotes paths before interpolating them into the extraction command', () => {
-    const script = copyScript("/work/a'b/", 'dest/')
-    assert.match(script, /'\/work\/a'"'"'b'/)
-  })
-
-  it('refuses to replace the package directory itself', () => {
-    for (const dest of ['.', '']) {
-      assert.throws(() => copyScript('/docs', dest), /cannot replace the package directory itself/)
-    }
-  })
-})
+function dockerRunner(calls: string[][]): ProcessRunner {
+  return {
+    run: async (_command, args) => {
+      calls.push([...args])
+      return args[0] === 'create' ? result(['container-id']) : result()
+    },
+  }
+}

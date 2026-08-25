@@ -2,7 +2,7 @@
 
 dagr runs inside a container but drives the **host's** Docker daemon through a mounted
 socket. It does not run a nested daemon. This is "Docker-out-of-Docker", and it creates one
-sharp edge worth understanding, because it explains why two different repo-root paths exist.
+path distinction worth understanding.
 
 ## The setup
 
@@ -20,8 +20,8 @@ So the repo exists at two paths simultaneously:
 - `/repo` — inside the dagr container.
 - `$HOST_REPO_ROOT` (e.g. `/Users/you/repos/thing`) — on the host, where the daemon lives.
 
-Mounted package trees do not need a second host path. `docker cp` writes to the local filesystem
-of the Docker CLI process, which is the dagr container itself.
+`HOST_REPO_ROOT` is only used to translate the host `WORKING_DIR` into a package identity. Docker
+build and copy operations use container-local paths.
 
 ## The rule
 
@@ -40,26 +40,20 @@ Applied to dagr:
 | --- | --- | --- |
 | Reading `dagr.index.js` files | `/repo` | Plain `fs` calls in the dagr process. |
 | `docker buildx build <context>` | `/repo/<package>` | The CLI reads and uploads the context itself. |
-| `docker run -v <dir>:/host-out` for `EXPORT` | `$HOST_REPO_ROOT/<package>` | The **daemon** resolves the bind mount. |
+| `docker cp <container>:<src> <package>` for `EXPORT` | `/repo/<package>` | The **CLI** writes through the existing repo mount. |
 | `docker cp <container>:<workdir>/. <mount>` for `#mount` | `/tmp/dagr-mounts/<identity>` | The **CLI** writes the archive to its own filesystem. |
 | Reading a materialized `#mount` | `/tmp/dagr-mounts/<identity>` | Plain `fs` calls in the dagr process. |
 
-That is exactly why `wire.ts` binds two keys and hands them to different consumers:
+`wire.ts` therefore gives both the target runner and exporter the container-side `root`:
 
 ```ts
-.bind(runnerKey).toFun([rootKey, ...], ...)                        // /repo — build contexts
-.bind(runCommandRunnerKey).toClass([runnerKey, dockerImageExtractorKey, hostRootKey, ...], ...)
-                                                                    // host path — bind mounts
+.bind(runnerKey).toFun([rootKey, ...], ...)             // /repo — build contexts
+.bind(runCommandRunnerKey).toClass([..., rootKey, ...]) // /repo — EXPORT destinations
 ```
 
-If you ever refactor extraction to receive `root` instead of `hostRoot`, `EXPORT` silently
-starts writing into a fresh empty directory inside the ephemeral dagr container and the
-files vanish when it exits. There is no error — the copy succeeds, into nowhere. Keep the two
-straight.
-
-For `#mount`, dagr uses `docker create`, `docker cp`, and `docker rm`. The temporary container is
-never started, so its entrypoint and command do not run and the image needs no shell. The copied
-tree lives only inside dagr's temporary filesystem and is removed on disposal.
+For both `EXPORT` and `#mount`, dagr uses `docker create`, `docker cp`, and `docker rm`. Temporary
+containers are never started, so their entrypoints and commands do not run and images need no
+shell. Exported files go through `/repo`; mounted trees live in dagr's temporary filesystem.
 
 ## Consequences
 
@@ -101,6 +95,5 @@ that owns the daemon, the paths line up. What does **not** work is invoking `cli
 inside another container whose repo path differs from the daemon's view — in that case set
 `HOST_REPO_ROOT` yourself to the daemon-visible path.
 
-If your CI provider gives you a genuinely remote daemon (`DOCKER_HOST` pointing elsewhere),
-`EXPORT` cannot work at all: there is no shared filesystem for a bind mount. Builds still
-succeed; extraction does not.
+`docker cp` streams through the CLI, so extraction does not require the daemon to share the
+runner's filesystem. A remote daemon can build and export as long as the CLI can reach it.

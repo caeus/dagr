@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { posix } from "node:path";
 
 // Facet and target names are embedded in FQTs, image tags, log labels, and shell-facing CLI
 // arguments. Keep them to portable filename characters, and require an alphanumeric first
@@ -46,6 +47,16 @@ export const Run = ImageRecipeObject.extend({
       const contentsOf = src.endsWith("/");
       const intoDirectory = dest.endsWith("/");
       const destPath = dest.replace(/\/+$/, "");
+      const normalizedDest = posix.normalize(dest);
+      if (
+        posix.isAbsolute(dest) ||
+        normalizedDest === ".." ||
+        normalizedDest.startsWith("../")
+      )
+        ctx.addIssue({
+          code: "custom",
+          message: `EXPORT "${src}" -> "${dest}": destination must stay inside the package directory`,
+        });
       if (contentsOf && !intoDirectory)
         ctx.addIssue({
           code: "custom",

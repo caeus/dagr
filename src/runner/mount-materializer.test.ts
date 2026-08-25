@@ -28,9 +28,8 @@ describe('createMountMaterializer', () => {
       inspectImageWorkdir: async () => '/dagr',
     }
     const copier: DockerImageCopier = {
-      copyFromImage: async (_imageTag, src, dest) => {
-        calls.push({ src, dest })
-        await mkdir(dest)
+      copyFromImage: async (_imageTag, copies) => {
+        calls.push(...copies)
       },
     }
 
@@ -49,7 +48,7 @@ describe('createMountMaterializer', () => {
 
       assert.equal(mounted.identity, 'sha256:tools:/dagr')
       assert.equal(calls.length, 1)
-      assert.deepEqual(calls[0], { src: '/dagr', dest: mounted.root })
+      assert.deepEqual(calls[0], { src: '/dagr/.', dest: mounted.root })
     } finally {
       await rm(mountRoot, { recursive: true })
     }
