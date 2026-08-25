@@ -28,7 +28,7 @@ layers provide those mechanics.
 
 ## Pinned source, not a package
 
-dagr is not published as a package. A consuming repository keeps four small launcher files under
+dagr is not published as a package. A consuming repository keeps four small bootstrap files under
 `.dagr/`, including a Dockerfile that pins an exact dagr commit. On first use, that Dockerfile
 clones and compiles the pinned source into the runner image. Docker caches the result for later
 invocations.
