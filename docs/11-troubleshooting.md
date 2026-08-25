@@ -63,7 +63,7 @@ mismatch. Common cases:
 
 - You omitted the package segment but were not standing in that package's directory.
 - You are at the repo root, where no package is inferred at all — fully qualify the FQT, and
-  remember the root package is named `.` (`dagr run .#ci#deploy`).
+  remember the root package is named `.` (`dagr run .:ci:deploy`).
 - The facet is not `ci` (nothing forces it to be).
 
 ## `Facet required when only target is provided: <name>`
@@ -73,7 +73,7 @@ working directory; the facet never is.
 
 ```sh
 dagr run build       # ✗
-dagr run ci#build    # ✓
+dagr run ci:build    # ✓
 ```
 
 Inside a `deps` array, however, a bare name *does* work — there the current facet is known.
@@ -82,10 +82,6 @@ Inside a `deps` array, however, a bare name *does* work — there the current fa
 
 The path in the message is the actual cycle. Note this is raised at run time, not load time, so
 `dagr list` will not warn you about it.
-
-## `ENOENT ... /repo/packages`
-
-The loader reads `packages/` unconditionally. Create the directory, even if it is empty.
 
 ## `docker: 'buildx' is not a docker command`
 

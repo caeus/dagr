@@ -1,5 +1,5 @@
-import { join } from 'node:path'
-import type { HostPlatform, PackageDef } from '#pkg/schema.js'
+import type { PackageLoader } from '#pkg/loader.js'
+import { Name, type HostPlatform } from '#pkg/schema.js'
 import { runTarget, type TargetRunnerDeps } from '#runner/target-runner.js'
 
 export class FQT {
@@ -10,7 +10,7 @@ export class FQT {
   ) {}
 
   toString(): string {
-    return `${this.pkg}#${this.facet}#${this.target}`
+    return `${this.pkg}:${this.facet}:${this.target}`
   }
 
   toJSON(): string {
@@ -18,19 +18,31 @@ export class FQT {
   }
 
   static parse(raw: string, context?: { pkg: string; facet?: string }): FQT {
-    const parts = raw.split('#')
-    if (parts.length === 3) return new FQT(parts[0]!, parts[1]!, parts[2]!)
+    const parts = raw.split(':')
+    if (parts.length === 3)
+      return new FQT(required(parts[0], raw), name(parts[1], raw), name(parts[2], raw))
     if (parts.length === 2) {
-      if (!context?.pkg) throw new Error(`Package required when only facet#target is provided: ${raw}`)
-      return new FQT(context.pkg, parts[0]!, parts[1]!)
+      if (!context?.pkg) throw new Error(`Package required when only facet:target is provided: ${raw}`)
+      return new FQT(context.pkg, name(parts[0], raw), name(parts[1], raw))
     }
     if (parts.length === 1) {
       if (!context?.pkg) throw new Error(`Package required when only target is provided: ${raw}`)
       if (!context.facet) throw new Error(`Facet required when only target is provided: ${raw}`)
-      return new FQT(context.pkg, context.facet, parts[0]!)
+      return new FQT(context.pkg, context.facet, name(parts[0], raw))
     }
     throw new Error(`Invalid FQT: ${raw}`)
   }
+}
+
+function required(value: string | undefined, raw: string): string {
+  if (!value) throw new Error(`Invalid FQT: ${raw}`)
+  return value
+}
+
+function name(value: string | undefined, raw: string): string {
+  const result = Name.safeParse(value)
+  if (!result.success) throw new Error(`Invalid FQT: ${raw}`)
+  return result.data
 }
 
 export interface TargetResult {
@@ -45,37 +57,34 @@ export type Runner = (fqt: FQT) => Promise<TargetResult>
 export { type TargetRunnerDeps }
 
 export function buildRunner(
-  root: string,
-  packages: ReadonlyMap<string, PackageDef>,
+  packageLoader: PackageLoader,
   deps: TargetRunnerDeps,
   host: HostPlatform,
-  packageContexts: ReadonlyMap<string, string> = new Map(),
 ): Runner {
   const memo = new Map<string, Promise<TargetResult>>()
 
   const run = (raw: string, trace: readonly string[] = []): Promise<TargetResult> => {
+    if (trace.includes(raw))
+      return Promise.reject(new Error(`Circular dependency: ${[...trace, raw].join(' -> ')}`))
+
     const cached = memo.get(raw)
     if (cached) return cached
 
-    if (trace.includes(raw)) throw new Error(`Circular dependency: ${[...trace, raw].join(' -> ')}`)
+    const promise = (async () => {
+      const fqt = FQT.parse(raw)
+      const loaded = await packageLoader.loadPackage(fqt.pkg)
+      const target = loaded?.definition[fqt.facet]?.[fqt.target]
+      if (!target) throw new Error(`Unknown target: ${raw}`)
 
-    const fqt = FQT.parse(raw)
-    if (!fqt.facet || !fqt.target) throw new Error(`Invalid FQT: ${raw}`)
-
-    const target = packages.get(fqt.pkg)?.[fqt.facet]?.[fqt.target]
-    if (!target) throw new Error(`Unknown target: ${raw}`)
-
-    const nextTrace = [...trace, raw]
-    const promise = Promise.all(
-      target.deps.map(d => run(FQT.parse(d, { pkg: fqt.pkg, facet: fqt.facet }).toString(), nextTrace))
-    ).then(depResults => runTarget(
-      fqt,
-      target,
-      depResults,
-      packageContexts.get(fqt.pkg) ?? join(root, fqt.pkg),
-      deps,
-      host,
-    ))
+      const nextTrace = [...trace, raw]
+      const depResults = await Promise.all(
+        target.deps.map(d => run(
+          FQT.parse(d, { pkg: fqt.pkg, facet: fqt.facet }).toString(),
+          nextTrace,
+        ))
+      )
+      return runTarget(fqt, target, depResults, loaded.context, deps, host)
+    })()
 
     memo.set(raw, promise)
     return promise

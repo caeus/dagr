@@ -51,8 +51,8 @@ the SHA; nothing else moves.
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-**4. Create `packages/`.** The loader reads this directory unconditionally, so a repo without it
-fails with `ENOENT`. Even if empty at first, it must exist.
+**4. Create `packages/`.** This is the default tree scanned by `dagr list`. It may be absent, but
+packages elsewhere are only loaded when addressed by `dagr run` or a dependency.
 
 **5. Add a base-image package.** Almost every target wants the same starting image; make it a
 target so it is built once and shared:
@@ -82,13 +82,13 @@ dagr list
 Expected output:
 
 ```
-packages/base#ci#node-pnpm[]
+packages/base:ci:node-pnpm[]
 ```
 
 Then:
 
 ```sh
-dagr run packages/base#ci#node-pnpm
+dagr run packages/base:ci:node-pnpm
 ```
 
 If that produces an image, dagr is working: the loader found your package, the sandbox
@@ -153,7 +153,7 @@ are each one small edit away from being different. The most likely ones:
 | Want | Change |
 | --- | --- |
 | A different build-file name | `PACKAGE_FILE` in `src/pkg/loader.ts` |
-| Scan `apps/` as well as `packages/` | the `walk` calls in `loadPackages` |
+| Scan `apps/` as well as `packages/` | `scanAllPackages` in `src/pkg/loader.ts` |
 | Different `.dockerignore` entries | per-target `IGNORE`; no dagr change needed |
 | A new step kind | the `Step` union in `src/pkg/schema.ts` **and** the switch in `src/runner/dockerfile-renderer.ts` |
 | A new command | a parser in `src/commands/index.ts`, a runner class, one branch in `CompositeCommandRunner` |

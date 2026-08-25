@@ -16,7 +16,7 @@ package             a directory containing a dagr.index.js
   `[A-Za-z0-9][A-Za-z0-9._-]*`.
 - **Target** — a `{ deps, run }` pair. One target produces one image.
 - **FQT** (fully-qualified target) — the address of a target, written
-  `package#facet#target`, e.g. `packages/ui#ci#build`.
+  `package:facet:target`, e.g. `packages/ui:ci:build`.
 
 ## Images are the artifacts
 
@@ -52,7 +52,7 @@ image instead of declaring facets:
 ```js
 // packages/tools/dagr.index.js
 export default {
-  '#mount': {
+  ':mount': {
     FROM: 'ghcr.io/acme/dagr-tools:1',
     steps: [],
     IGNORE: [],
@@ -64,25 +64,25 @@ If that image's final `WORKDIR` contains `c/dagr.index.js`, `//` marks the image
 package address:
 
 ```text
-packages/tools//c#ci#pack
+packages/tools//c:ci:pack
 ```
 
-`#mount` is an alternate index kind, not a special facet. It cannot coexist with facets, has no
-`deps`, and cannot declare `EXPORT`. Mount images are built and materialized while packages are
-discovered, before the target DAG exists. Nested mounts work; cycles by resulting image identity
-are rejected.
+`:mount` is an alternate index kind, not a special facet. It cannot coexist with facets, has no
+`deps`, and cannot declare `EXPORT`. A mount is built when a requested package path or import
+crosses its `//` boundary. Nested mounts work; cycles by resulting image identity are rejected.
 
 The boundary marker is part of the package identity. `packages/tools/c` never crosses a mount,
 while `packages/tools//c` crosses the mount declared at `packages/tools`. A package at the mounted
-WORKDIR root is `packages/tools//#facet#target`; nested mounts add another `//`.
+WORKDIR root is `packages/tools//:facet:target`; nested mounts add another `//`.
 
 Mounted targets can be depended on and produce images normally. Running one directly with an
 `EXPORT` is rejected: a host filesystem collapses `//` to `/`, so there is no safe, unambiguous
 package directory to receive the files.
 
 Mounted trees are private temporary inputs. They do not modify the repository and disappear when
-the dagr invocation exits. Absolute `/dagr.*` imports inside a mounted tree resolve from that
-tree's own root, not from the host repository.
+the dagr invocation exits. Absolute `/dagr.*` imports resolve from the source root containing the
+importing module. An import may cross a mount explicitly, such as `/tools//dagr.shared.js`; nested
+imports then resolve from the mounted tree, not from the host repository.
 
 ## Caching
 
@@ -96,6 +96,9 @@ almost instantly. This is why the step order in a target matters: put the stable
 **dagr's memo table** is per-process only. Within one `dagr run`, the graph is walked once
 and each FQT is built at most once, even if five targets depend on it. Nothing persists
 between invocations.
+
+The package loader also caches one promise per logical package and mount for the invocation.
+Concurrent dependency branches therefore evaluate or materialize the same package source once.
 
 There is deliberately no content hashing, no fingerprint file, and no remote cache. If you
 need to know whether a target is up to date, that question is answered by Docker.

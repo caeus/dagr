@@ -6,12 +6,11 @@ import { AsyncDisposeStack } from '#sys/dispose-stack.js'
 import { consoleReporter, type Reporter } from '#report/reporter.js'
 import { processRunner, type ProcessRunner } from '#sys/process-runner.js'
 import {
-  loadPackages,
-  type LoadedPackages,
+  RepositoryPackageLoader,
   type MountMaterializer,
   type PackageLoader,
 } from '#pkg/loader.js'
-import type { HostPlatform, PackageDef } from '#pkg/schema.js'
+import type { HostPlatform } from '#pkg/schema.js'
 import { hostPlatform } from '#sys/host-platform.js'
 import { buildRunner, type Runner } from '#runner/index.js'
 import { renderDockerfile, type DockerfileRenderer } from '#runner/dockerfile-renderer.js'
@@ -113,22 +112,9 @@ export function defaultModule(
       DockerMountMaterializer
     ),
     packageLoader: toFactory(
-      ['mountMaterializer'],
-      (mountMaterializer: MountMaterializer): PackageLoader => ({
-        loadPackages: (root) => loadPackages(root, mountMaterializer)
-      })
-    ),
-    loadedPackages: toFactory(
-      ['root', 'packageLoader'],
-      (root: string, loader: PackageLoader) => loader.loadPackages(root)
-    ),
-    packages: toFactory(
-      ['loadedPackages'],
-      (loaded: LoadedPackages) => loaded.definitions
-    ),
-    packageContexts: toFactory(
-      ['loadedPackages'],
-      (loaded: LoadedPackages) => loaded.contexts
+      ['root', 'mountMaterializer'],
+      (root: string, mountMaterializer: MountMaterializer): PackageLoader =>
+        new RepositoryPackageLoader(root, mountMaterializer)
     ),
     hostPlatform: toFactory(
       ['env'],
@@ -136,37 +122,31 @@ export function defaultModule(
     ),
     runner: toFactory(
       [
-        'root',
-        'packages',
-        'packageContexts',
+        'packageLoader',
         'dockerfileRenderer',
         'dockerImageBuilder',
         'hostPlatform',
         'reporter'
       ],
       (
-        root: string,
-        packages: ReadonlyMap<string, PackageDef>,
-        packageContexts: ReadonlyMap<string, string>,
+        packageLoader: PackageLoader,
         renderer: DockerfileRenderer,
         builder: DockerImageBuilder,
         host: HostPlatform,
         reporter: Reporter
       ): Runner =>
         buildRunner(
-          root,
-          packages,
+          packageLoader,
           {
             renderDockerfile: (run) => renderer.renderDockerfile(run),
             buildDockerImage: (content, tag, context, ignore) =>
               builder.buildDockerImage(content, tag, context, ignore),
             reporter
           },
-          host,
-          packageContexts
+          host
         )
     ),
-    listCommandRunner: toClass(['packages', 'output'], ListCommandRunner),
+    listCommandRunner: toClass(['packageLoader', 'output'], ListCommandRunner),
     runCommandRunner: toClass(
       ['runner', 'dockerImageExtractor', 'root', 'currentPackage'],
       RunCommandRunner

@@ -83,7 +83,7 @@ export async function validateSymlinks(root: string): Promise<void> {
 
 function mountTag(logicalPath: string): string {
   const base = logicalPath
-    .replace(/[#/\\]+/g, '_')
+    .replace(/[:/\\]+/g, '_')
     .replace(/^[^a-zA-Z0-9]+/, '') || 'root'
   return `${base}-mount`
 }

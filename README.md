@@ -15,9 +15,9 @@ Build files are `dagr.index.js` — plain ES modules evaluated inside a `node:vm
 can compute their contents with real JavaScript (loops, templates, shared helper modules)
 without being able to touch the filesystem, the network, or the host process.
 
-A build file may instead declare `#mount`: dagr builds that image, exposes its final `WORKDIR` as
-the declaring directory, and discovers the package tree inside it. A `//` in the package address
-marks each image boundary, for example `packages/tools//eslint#ci#pack`.
+A build file may instead declare `:mount`: dagr builds that image and exposes its final `WORKDIR`
+as a package source root. A `//` in the package address marks each image boundary, for example
+`packages/tools//eslint:ci:pack`.
 
 ## Philosophy
 
@@ -69,21 +69,21 @@ export default {
 ```
 
 ```sh
-dagr run packages/greeter#ci#build
+dagr run packages/greeter:ci:build
 ```
 
 That builds an image tagged `packages_greeter-ci-build` and copies the image's `/out` directory
 to `packages/greeter/dist` on your host:
 
 ```
-  ▶ packages/greeter#ci#build
-  ✓ packages/greeter#ci#build  4.1s
+  ▶ packages/greeter:ci:build
+  ✓ packages/greeter:ci:build  4.1s
 ```
 
 Docker output is captured but hidden unless the build fails, in which case the tail is printed
-under the error. Pass `--verbose` to watch every line as it happens. `dagr list` prints the whole
-target graph in topological order. It does not build targets, though it must build and extract any
-mounts before it can discover the graph inside them.
+under the error. Pass `--verbose` to watch every line as it happens. `dagr run` loads only packages
+reached by the requested targets and their dependencies. `dagr list` explicitly scans and prints
+the whole target graph, materializing mounts as needed to discover it.
 
 ## Documentation
 
