@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { DockerImageExtractor } from '#wire.js'
-import type { Runner } from '#runner/index.js'
+import type { DockerImageExtractor } from '#runner/docker-extractor.js'
+import { FQT, type Runner } from '#runner/index.js'
 import { parseCmd, RunCommandRunner } from '#commands/index.js'
 
 describe('parseCmd', () => {
@@ -71,5 +71,26 @@ describe('RunCommandRunner', () => {
     ).execute({ command: 'run', verbose: false, fqts: ['pkg#ci#build'] })
 
     assert.deepEqual(extracted, [{ imageTag: 'pkg-ci-build', destDir: '/repo/pkg' }])
+  })
+
+  it('refuses to collapse a mounted package boundary for EXPORT', async () => {
+    const result = {
+      fqt: FQT.parse('packages/tools//c#ci#pack'),
+      imageTag: 'mounted-pack',
+      imageDigest: 'sha256:mounted-pack',
+      export: { '/out': 'dist' },
+    }
+    const runner: Runner = async () => result
+    let extracted = false
+    const extractor: DockerImageExtractor = {
+      extractFromImage: async () => { extracted = true },
+    }
+    const command = new RunCommandRunner(runner, extractor, '/host/repo', '')
+
+    await assert.rejects(
+      command.execute({ command: 'run', verbose: false, fqts: [result.fqt.toString()] }),
+      /Cannot EXPORT from a mounted package/,
+    )
+    assert.equal(extracted, false)
   })
 })

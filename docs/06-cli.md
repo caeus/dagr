@@ -88,7 +88,8 @@ Nested errors print their `cause` chain indented beneath the message.
 ## `dagr list`
 
 Loads the whole repo and prints every target with its resolved dependencies, in topological
-order (dependencies before dependents). Builds nothing.
+order (dependencies before dependents). It does not build targets. Because mount contents define
+part of the graph, it does build and extract `#mount` images during loading.
 
 ```
 packages/base#ci#node-pnpm[]
@@ -116,7 +117,9 @@ the behaviour.
 | Variable | Set by | Meaning |
 | --- | --- | --- |
 | `REPO_ROOT` | `Dockerfile` (`/repo`) | Repo root **as seen inside the dagr container**. Used for loading `dagr.index.js` files and as the base for Docker build contexts. Falls back to dagr's own parent directory when unset. |
-| `HOST_REPO_ROOT` | `cli.sh` | Repo root **on the host**. Used for `EXPORT` bind mounts. Falls back to `REPO_ROOT`. |
+| `HOST_REPO_ROOT` | `cli.sh` | Repo root **on the host**. Used with `WORKING_DIR` to infer the current package. Falls back to `REPO_ROOT`. |
+| `MOUNT_ROOT` | `cli.sh` (`/tmp/dagr-mounts`) | Temporary mount storage inside the dagr container. |
+| `CLEAN_MOUNT_ROOT` | `cli.sh` (`1`) | Tells dagr to remove extracted contents before it exits. |
 | `WORKING_DIR` | `dagr` launcher | The host directory you invoked `dagr` from. Its path relative to `HOST_REPO_ROOT` becomes the current package for FQT completion. Defaults to the repo root — in which case the relative path is empty and **no** package is inferred. |
 
 Why two roots exist is explained in [09 — Docker-in-Docker](09-docker-in-docker.md).

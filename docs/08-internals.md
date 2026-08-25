@@ -16,20 +16,27 @@ src/
 │   └── dispose-stack.ts        LIFO finalizers (no external DI dependency)
 ├── commands/index.ts           arg parsing + one runner class per command
 ├── pkg/
-│   ├── schema.ts               Zod schemas for PackageDef/FacetDef/TargetDef/Run/Step
-│   └── loader.ts               filesystem walk + vm sandbox evaluation
+│   ├── schema.ts               Zod schemas for IndexDef/MountDef/PackageDef/Run/Step
+│   └── loader.ts               filesystem/source walk + vm sandbox evaluation
 └── runner/
     ├── index.ts                FQT, TargetResult, buildRunner (graph walk + memo)
     ├── target-runner.ts        runTarget: one target → one image
     ├── dockerfile-renderer.ts  Run → Dockerfile text
     ├── docker-builder.ts       docker buildx build
-    └── docker-extractor.ts     docker run + bind mount to pull files out
+    ├── docker-copier.ts        docker create + cp + rm for mounted trees
+    ├── docker-inspector.ts     reads an image's configured WORKDIR
+    ├── docker-extractor.ts     prepares EXPORT destinations and delegates to docker-copier
+    └── mount-materializer.ts   mount build, extraction, memo, and symlink validation
 ```
 
 Internal imports never use relative paths. `package.json` declares a `#*` subpath map, so every
 module is referenced from the source root — `#report/reporter.js`, `#runner/index.js` — including
 imports between siblings in the same directory. Keep the `.js` extension; the package is ESM and
 `moduleResolution` is `NodeNext`.
+
+Each Docker runner module owns the interface for its capability (`DockerImageBuilder`,
+`DockerImageCopier`, and so on). `wire.ts` imports those ports and composes them; runner and
+command modules never depend on the composition root.
 
 The map points at `./dist/*`, and there is deliberately only one target. Tests are the subtle part:
 they stay TypeScript and are run from `src/` by tsx, but their `#`-prefixed imports still resolve
@@ -86,8 +93,8 @@ exports" fall out of the structure rather than needing a flag.
 
 ## Loading
 
-`loadPackages(root)` creates one `LoadContext` — `{ root, context, cache }` — for the whole
-session:
+`loadPackages(root, mountMaterializer)` creates a shared VM context and module cache. Each
+physical source tree gets a `LoadContext` whose `root` is that source's import root:
 
 - `context` is a single `vm.createContext(Object.assign(Object.create(null), { Buffer }))`.
 - `cache` is a `Map<resolvedPath, vm.Module>` shared by every root-relative import in the repo.
@@ -102,11 +109,17 @@ Then:
    root and restricted to `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, and `dagr.*.toml` files.
    JavaScript imports become `vm.SourceTextModule`s. Parsed data imports become
    `vm.SyntheticModule`s with a deep-frozen default export.
-4. The marker is linked, evaluated, and its `default` export run through
-   `PackageDef.safeParse`.
+4. The marker is linked, evaluated, and its `default` export run through `IndexDef.safeParse`.
+   A normal package is stored. A `#mount` is built, its final `WORKDIR` is extracted, and the
+   walk resumes after appending a `//` boundary to the logical package path, using the extracted
+   tree as the physical and import root.
 5. On success the parsed value is deep-frozen and stored. **On failure `null` is returned and
    the package is skipped with no diagnostic.**
-6. The resulting `Map` is `Object.freeze`d and returned as a `ReadonlyMap`.
+6. Mount identities are `<image digest>:<final workdir>` and are threaded through the recursive
+   walk to detect mount cycles. Equivalent mount results share one extraction per invocation.
+7. The loader returns frozen `definitions` and `contexts` maps. The first maps logical package
+   IDs to definitions; the second maps the same IDs to their local or extracted physical build
+   contexts.
 
 That silent skip in step 5 is the single biggest ergonomic wart in dagr. See
 [11 — Troubleshooting](11-troubleshooting.md#my-package-doesnt-show-up-in-dagr-list).
@@ -197,22 +210,19 @@ stream name is recorded as data and never treated as a severity.
 ## Extracting
 
 ```sh
-docker run --rm -v <destDir>:/host-out <imageTag> \
-  # source ends in "/" — merge contents, delete nothing
-  sh -c 'mkdir -p "<dest>" && cp -a "<src>"/. "<dest>"/'
-
-  # otherwise — the node becomes <dest> exactly, replacing whatever was there
-  sh -c 'mkdir -p "$(dirname "<dest>")" && rm -rf "<dest>" && cp -a "<src>" "<dest>"'
+docker create <imageTag>
+docker cp <container>:<src> <dest>
+docker rm <container>
 ```
 
-One container per entry in the `EXPORT` map, run sequentially. Which of the two scripts runs is
-decided **entirely by the path syntax** — `copyScript` never inspects the image. That is why
-files and directories need no separate handling: `cp -a` copies either to an exact destination.
+One stopped container per entry in the `EXPORT` map, processed sequentially. Path syntax still
+controls intent without inspecting the image: a source ending in `/` copies `<src>/.` into an
+existing destination, while the no-slash form deletes the exact destination before `docker cp`.
 A destination ending in `/` resolves to `<dest>/<basename(src)>`.
 
-`copyScript` throws for a replace aimed at the package directory itself (`'.'` or `''`), since
-that would `rm -rf` the bind mount. `Run`'s schema rejects the same shape, so it normally never
-reaches here; the check is duplicated because the failure mode is destroying a working tree.
+The extractor throws for a replace aimed at the package directory itself (`'.'` or `''`) and for
+any destination escaping that directory. `Run`'s schema rejects both shapes too; runtime guards
+remain because the failure mode is deleting files outside the intended export destination.
 
 ## Validating `run()` output
 
@@ -232,23 +242,19 @@ builder.
 
 ## The DI container
 
-`src/sys/dispose-stack.ts` is a small, dependency-free async container. It exists so that
-`main`'s third parameter can swap the entire object graph in tests.
+`wire.ts` uses `@caeus/wyr`. `defaultModule` returns one immutable `Module({ ...providers })`, and
+its third parameter lets tests replace the entire graph.
 
-- `createKey<T>(description)` returns a branded `symbol`. The brand is phantom
-  (`[BRAND]?: () => T`), so keys carry their value type without any runtime cost, and
-  `container.get(key)` is typed with no casts at the call site.
-- `Module` is immutable. `.bind(key)` returns a slot; `.toValue`/`.toFun`/`.toClass` each
-  return a **new** `Module` with the binding added, which is why `defaultModule` reads as one
-  chained expression.
-- `toFun([deps], fn)` and `toClass([deps], Cls)` are typed with a recursive `DerefMany` mapped
-  tuple, so the dependency key array and the function's parameter list are checked positionally.
-  Reorder the keys and it stops compiling.
-- `Container.get` is async, memoizes the *promise* per key, resolves dependencies with
-  `Promise.all`, and detects cycles with a trace — the same shape as the target runner.
-- `AsyncDisposeStack` collects finalizers and runs them LIFO in `main`'s `finally`. Nothing
-  registers one today; it is there so a binding that opens a resource has somewhere to put its
-  teardown.
+- `toValue(value)` provides a constant.
+- `toFactory([deps], fn)` resolves the named dependencies and passes them positionally to a sync
+  or async factory.
+- `toClass([deps], Class)` does the same for a constructor.
+- `.shake(['commandRunner'])` retains only that key and its transitive dependencies.
+- `.compile()` validates and eagerly resolves the shaken graph. Missing, mismatched, and circular
+  dependencies are rejected by Wyr's types at the compile call.
+- The compiled container's `.get(key)` is synchronous because resolution already happened.
+- `AsyncDisposeStack` is separate from Wyr. It runs finalizers LIFO in `wire`'s `finally`; mount
+  storage registers its temporary-directory cleanup there.
 
 The bindings in `wire.ts`:
 
@@ -256,24 +262,28 @@ The bindings in `wire.ts`:
 | --- | --- |
 | `root` | `REPO_ROOT`, or dagr's parent directory |
 | `hostRoot` | `HOST_REPO_ROOT`, falling back to `root` |
+| `mountRoot` | `MOUNT_ROOT`, falling back to a process-specific temporary directory |
 | `currentPackage` | `relative(hostRoot, WORKING_DIR ?? hostRoot)` |
 | `reporter` | human-readable progress and failure writer targeting stderr |
 | `output` | command-result writer targeting stdout |
 | `processRunner` | child-process runner capturing both streams and feeding the reporter |
-| `packageLoader` | `{ loadPackages }` |
-| `packages` | `packageLoader.loadPackages(root)` |
+| `dockerImageCopier` | stopped-container `docker cp` adapter |
+| `mountMaterializer` | mount builder, inspector, copier, and validator |
+| `packageLoader` | `{ loadPackages(root, mountMaterializer) }` |
+| `loadedPackages` | `packageLoader.loadPackages(root)` |
+| `packages` | `loadedPackages.definitions` |
+| `packageContexts` | `loadedPackages.contexts` |
 | `dockerfileRenderer` | `{ renderDockerfile }` |
 | `dockerImageBuilder` | `{ buildDockerImage }` |
 | `dockerImageExtractor` | `{ extractFromImage }` |
 | `hostPlatform` | `hostPlatform(env)` |
-| `runner` | `buildRunner(root, packages, { renderDockerfile, buildDockerImage }, hostPlatform)` |
+| `runner` | `buildRunner(root, packages, deps, hostPlatform, packageContexts)` |
 | `listCommandRunner` | `ListCommandRunner(packages)` |
-| `runCommandRunner` | `RunCommandRunner(runner, extractor, hostRoot, currentPackage)` |
+| `runCommandRunner` | `RunCommandRunner(runner, extractor, root, currentPackage)` |
 | `commandRunner` | `CompositeCommandRunner(runCommandRunner, listCommandRunner)` |
 
-Note `runner` gets `root` (container-side, for build contexts) while `runCommandRunner` gets
-`hostRoot` (host-side, for bind mounts). That asymmetry is the whole subject of
-[09 — Docker-in-Docker](09-docker-in-docker.md).
+Both target build contexts and `EXPORT` destinations use `root`, the container-side repository
+path. `docker cp` is a CLI operation and writes through the existing `/repo` bind mount.
 
 ## Command dispatch
 

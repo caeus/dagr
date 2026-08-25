@@ -26,6 +26,8 @@ docker run --rm \
   -v "$REPO_ROOT:/repo" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e HOST_REPO_ROOT="$REPO_ROOT" \
+  -e MOUNT_ROOT=/tmp/dagr-mounts \
+  -e CLEAN_MOUNT_ROOT=1 \
   -e WORKING_DIR="${WORKING_DIR:-$REPO_ROOT}" \
   -e HOST_OS="$HOST_OS" \
   -e HOST_ARCH="$HOST_ARCH" \

@@ -8,7 +8,7 @@ import { run } from "@optique/run";
 import { resolve } from "node:path";
 import type { PackageDef } from "#pkg/schema.js";
 import { FQT, type Runner } from "#runner/index.js";
-import type { DockerImageExtractor } from "#wire.js";
+import type { DockerImageExtractor } from "#runner/docker-extractor.js";
 const runCommand = command('run', object({
   command: constant('run'),
   verbose: withDefault(
@@ -98,6 +98,12 @@ export class RunCommandRunner {
     const results = await Promise.all(
       cmd.fqts.map((raw) => this.runner(FQT.parse(raw, context))),
     );
+
+    const mountedExport = results.find(
+      result => result.export && result.fqt.pkg.includes('//'),
+    );
+    if (mountedExport)
+      throw new Error(`Cannot EXPORT from a mounted package: ${mountedExport.fqt}`);
 
     for (const result of results) {
       if (result.export) {

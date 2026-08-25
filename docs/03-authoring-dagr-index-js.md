@@ -1,7 +1,7 @@
 # Authoring `dagr.index.js`
 
-A `dagr.index.js` file is an ES module whose **default export** describes one package's facets and
-targets.
+A `dagr.index.js` file is an ES module whose **default export** describes either one package's
+facets and targets or a mounted package tree.
 
 ## The shape
 
@@ -29,7 +29,13 @@ FacetDef   = Record<string, TargetDef>
 TargetDef  = { deps: string[], run: (ctx: RunContext) => Run }
 RunContext = { images: Record<string, string>, host: HostPlatform }
 Run        = { FROM: string, steps: Step[], IGNORE: string[], EXPORT?: Record<string, string> }
+IndexDef   = PackageDef | { '#mount': MountDef }
+MountDef   = { FROM: string, steps: Step[], IGNORE: string[] }
 ```
+
+Facet and target names must match `[A-Za-z0-9][A-Za-z0-9._-]*`. The leading alphanumeric
+requirement prevents names from behaving like command options, hidden paths, or dagr directives.
+In particular, `#mount` cannot collide with a facet.
 
 Notes on validation:
 
@@ -43,6 +49,45 @@ Notes on validation:
 - `IGNORE` is required, and `IGNORE: []` means "upload the whole context". Also no default —
   see [`IGNORE`](#ignore) below.
 - Every `Step` object is `.strict()`: an unknown or misspelled key makes validation fail.
+
+## `#mount`
+
+A mount replaces the directory containing its `dagr.index.js` with the resulting image's final
+`WORKDIR`:
+
+```js
+export default {
+  '#mount': {
+    FROM: 'ghcr.io/acme/dagr-tools:1',
+    steps: [{ WORKDIR: '/dagr' }],
+    IGNORE: [],
+  },
+}
+```
+
+The shape is strict. It cannot contain facets, `deps`, `run`, or `EXPORT`. `FROM` and `steps` have
+the same Dockerfile semantics as a target's returned run definition, but a mount receives an empty
+build context because its directory is the namespace slot being replaced, not an input. A `COPY`
+without `from` therefore has nothing useful to copy. `IGNORE` remains required for structural
+consistency. The mount cannot depend on a target because it must be materialized before targets can
+be discovered.
+
+After building the image, dagr reads its configured final `WORKDIR`, copies that directory into
+private temporary storage, validates that no symlink escapes the copied root, and continues
+package discovery there. The final `WORKDIR` is required and cannot be `/`; the entire image
+filesystem is not a package namespace. Dagr creates a stopped container, copies the workdir with
+`docker cp`, and removes the container. The image needs no shell or utilities, and neither its
+entrypoint nor its command runs. The mounted files never get written into the repository.
+
+For example, a mount at `packages/tools` whose final workdir contains `c/dagr.index.js` exposes
+`packages/tools//c#facet#target`. The `//` is a canonical image-boundary marker, not a filesystem
+path normalization accident. A `dagr.index.js` at the workdir root exposes
+`packages/tools//#facet#target`. Nested mounts add one `//` at every boundary.
+
+Targets discovered inside the mounted tree remain ordinary targets, including their `deps` and
+image recipes. They may be used as dependencies. If such a target declares `EXPORT` and is run
+directly, dagr rejects the export because its `//` package identity cannot map unambiguously onto
+a host filesystem path.
 
 Where a mistake surfaces depends on which half is wrong. The *package* shape — facets, targets,
 `deps`, `run`-is-a-function — is checked when `dagr.index.js` loads, and a failure **silently skips

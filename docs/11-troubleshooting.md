@@ -122,17 +122,13 @@ Newlines, quotes, `$`, and backticks all break naive `printf`/`echo` approaches.
 
 ## `EXPORT` produced nothing
 
-Three possibilities, in order:
+Two possibilities, in order:
 
 1. **You didn't invoke that target directly.** Only the target named on the command line
    materializes its `EXPORT`; transitive deps do not. Run the target itself.
-2. **The image has no shell.** Extraction runs `sh -c 'mkdir … && cp -a …'` inside the image, so
-   it needs `sh`, `mkdir`, `cp`, and `dirname`. `scratch` and distroless images cannot be
-   exported from.
-3. **The bind mount resolved to the wrong filesystem.** Extraction mounts a *host* path,
-   because the daemon resolves `-v`. If `HOST_REPO_ROOT` is wrong — or the daemon is genuinely
-   remote — the copy succeeds into a directory you cannot see, with no error. See
-   [09 — Docker-in-Docker](09-docker-in-docker.md).
+2. **The image path does not exist.** Dagr copies from a stopped container with `docker cp`.
+   Inspect the image and verify the source path in `EXPORT`. The image needs no shell and its
+   entrypoint is never run.
 
 ## Exported `node_modules` don't work on my machine
 

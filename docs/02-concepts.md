@@ -11,9 +11,9 @@ package             a directory containing a dagr.index.js
 - **Package** — a directory with a `dagr.index.js` file. Its name is its path relative to the
   repo root: `packages/ui`, `packages/common`. The repo root itself can be a package; its name
   is `.`.
-- **Facet** — an arbitrary string key grouping targets. dagr attaches no meaning to facet
-  names; `ci` is a convention, not a keyword. You could have `ci`, `release`, and `dev`
-  facets side by side.
+- **Facet** — a named group of targets. dagr attaches no meaning to facet names; `ci` is a
+  convention, not a keyword. Facet and target names use portable filename characters:
+  `[A-Za-z0-9][A-Za-z0-9._-]*`.
 - **Target** — a `{ deps, run }` pair. One target produces one image.
 - **FQT** (fully-qualified target) — the address of a target, written
   `package#facet#target`, e.g. `packages/ui#ci#build`.
@@ -44,6 +44,46 @@ The first form is a linear chain and is by far the most common: `install` → `b
 each one a thin layer on top of the last. The second form is how you pull an artifact across
 package boundaries without inheriting the other package's whole filesystem.
 
+## Mounted package trees
+
+A `dagr.index.js` can replace its directory with the final working directory of a Docker
+image instead of declaring facets:
+
+```js
+// packages/tools/dagr.index.js
+export default {
+  '#mount': {
+    FROM: 'ghcr.io/acme/dagr-tools:1',
+    steps: [],
+    IGNORE: [],
+  },
+}
+```
+
+If that image's final `WORKDIR` contains `c/dagr.index.js`, `//` marks the image boundary in its
+package address:
+
+```text
+packages/tools//c#ci#pack
+```
+
+`#mount` is an alternate index kind, not a special facet. It cannot coexist with facets, has no
+`deps`, and cannot declare `EXPORT`. Mount images are built and materialized while packages are
+discovered, before the target DAG exists. Nested mounts work; cycles by resulting image identity
+are rejected.
+
+The boundary marker is part of the package identity. `packages/tools/c` never crosses a mount,
+while `packages/tools//c` crosses the mount declared at `packages/tools`. A package at the mounted
+WORKDIR root is `packages/tools//#facet#target`; nested mounts add another `//`.
+
+Mounted targets can be depended on and produce images normally. Running one directly with an
+`EXPORT` is rejected: a host filesystem collapses `//` to `/`, so there is no safe, unambiguous
+package directory to receive the files.
+
+Mounted trees are private temporary inputs. They do not modify the repository and disappear when
+the dagr invocation exits. Absolute `/dagr.*` imports inside a mounted tree resolve from that
+tree's own root, not from the host repository.
+
 ## Caching
 
 There are two layers of caching, and only one of them is dagr's.
@@ -65,8 +105,8 @@ need to know whether a target is up to date, that question is answered by Docker
 `dagr.index.js` files are evaluated in a `node:vm` context with no filesystem, no network, and
 no `process`. A build file cannot read a file to decide what to do — it can only compute from
 its own literals and from other `dagr.*.js` modules it imports. That is a constraint, and it is the
-point: the target graph is a pure function of the repo's source, so `dagr list` gives the same
-answer on every machine.
+point: each local index is a pure function of its source. Mounted indexes additionally come from
+the selected image, so pin `FROM` by digest when the discovered graph must be reproducible.
 
 See [04 — The sandbox and `/` imports](04-sandbox-and-imports.md) for exactly what is and
 is not available inside a build file.

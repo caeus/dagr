@@ -1,4 +1,16 @@
 import { z } from "zod";
+import { posix } from "node:path";
+
+// Facet and target names are embedded in FQTs, image tags, log labels, and shell-facing CLI
+// arguments. Keep them to portable filename characters, and require an alphanumeric first
+// character so a name cannot be mistaken for an option, a hidden path, or a directive.
+export const Name = z
+  .string()
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    "must start with an ASCII letter or digit and contain only ASCII letters, digits, '.', '_', or '-'",
+  );
+export type Name = z.infer<typeof Name>;
 
 export const Copy = z
   .object({ from: z.string().optional(), src: z.string(), dest: z.string() })
@@ -16,19 +28,35 @@ export const Step = z.union([
 ]);
 export type Step = z.infer<typeof Step>;
 
-export const Run = z
-  .object({
-    FROM: z.string(),
-    steps: z.array(Step).readonly(),
-    IGNORE: z.array(z.string()).readonly(),
-    EXPORT: z.record(z.string(), z.string()).readonly().optional(),
-  })
+const ImageRecipeObject = z.object({
+  FROM: z.string(),
+  steps: z.array(Step).readonly(),
+  IGNORE: z.array(z.string()).readonly(),
+}).strict();
+
+export const ImageRecipe = ImageRecipeObject.readonly();
+export interface ImageRecipe extends z.infer<typeof ImageRecipe> {}
+
+export const Run = ImageRecipeObject.extend({
+  EXPORT: z.record(z.string(), z.string()).readonly().optional(),
+})
+  .strict()
   .readonly()
   .superRefine((run, ctx) => {
     for (const [src, dest] of Object.entries(run.EXPORT ?? {})) {
       const contentsOf = src.endsWith("/");
       const intoDirectory = dest.endsWith("/");
       const destPath = dest.replace(/\/+$/, "");
+      const normalizedDest = posix.normalize(dest);
+      if (
+        posix.isAbsolute(dest) ||
+        normalizedDest === ".." ||
+        normalizedDest.startsWith("../")
+      )
+        ctx.addIssue({
+          code: "custom",
+          message: `EXPORT "${src}" -> "${dest}": destination must stay inside the package directory`,
+        });
       if (contentsOf && !intoDirectory)
         ctx.addIssue({
           code: "custom",
@@ -65,8 +93,20 @@ export const TargetDef = z
   .readonly();
 export interface TargetDef extends z.infer<typeof TargetDef> {}
 
-export const FacetDef = z.record(z.string(), TargetDef).readonly();
+export const FacetDef = z.record(Name, TargetDef).readonly();
 export interface FacetDef extends z.infer<typeof FacetDef> {}
 
-export const PackageDef = z.record(z.string(), FacetDef).readonly();
+export const PackageDef = z.record(Name, FacetDef).readonly();
 export interface PackageDef extends z.infer<typeof PackageDef> {}
+
+export const MountDef = ImageRecipe;
+export interface MountDef extends z.infer<typeof MountDef> {}
+
+export const MountIndex = z
+  .object({ "#mount": MountDef })
+  .strict()
+  .readonly();
+export interface MountIndex extends z.infer<typeof MountIndex> {}
+
+export const IndexDef = z.union([MountIndex, PackageDef]);
+export type IndexDef = z.infer<typeof IndexDef>;

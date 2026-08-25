@@ -1,7 +1,15 @@
-import { basename } from 'node:path'
+import { mkdir, rm } from 'node:fs/promises'
+import { dirname, isAbsolute, posix, relative, resolve, sep } from 'node:path'
+import { copyFromImage } from '#runner/docker-copier.js'
 import type { ProcessRunner } from '#sys/process-runner.js'
 
-const MOUNT = '/host-out'
+export interface DockerImageExtractor {
+  extractFromImage(
+    imageTag: string,
+    exportMap: Readonly<Record<string, string>>,
+    destDir: string,
+  ): Promise<void>
+}
 
 export async function extractFromImage(
   imageTag: string,
@@ -10,38 +18,42 @@ export async function extractFromImage(
   processRunner: ProcessRunner,
 ): Promise<void> {
   for (const [src, dest] of Object.entries(exportMap)) {
-    await processRunner.run(
-      'docker',
-      ['run', '--rm', '-v', `${destDir}:${MOUNT}`, imageTag, 'sh', '-c', copyScript(src, dest)],
-      `image.extract ${imageTag}`,
+    const contentsOf = src.endsWith('/')
+    const intoDirectory = dest.endsWith('/')
+    const srcPath = trimSlashes(src)
+    const destPath = trimSlashes(dest)
+    const atPackageRoot = destPath === '' || destPath === '.'
+
+    if (atPackageRoot && !intoDirectory)
+      throw new Error(`EXPORT "${src}" -> "${dest}": cannot replace the package directory itself; use "./" to merge into it`)
+
+    if (contentsOf) {
+      const target = resolveInside(destDir, destPath)
+      await mkdir(target, { recursive: true })
+      await copyFromImage(imageTag, [{ src: `${srcPath}/.`, dest: target }], processRunner)
+      continue
+    }
+
+    const sourceName = posix.basename(srcPath)
+    if (intoDirectory && (sourceName === '.' || sourceName === '..'))
+      throw new Error(`EXPORT "${src}" -> "${dest}": source has no exportable basename`)
+
+    const target = resolveInside(
+      destDir,
+      intoDirectory ? `${destPath}/${sourceName}` : destPath,
     )
+    await mkdir(dirname(target), { recursive: true })
+    await rm(target, { recursive: true, force: true })
+    await copyFromImage(imageTag, [{ src: srcPath, dest: target }], processRunner)
   }
 }
 
-// A trailing slash on the source means "the contents of"; a trailing slash on the destination
-// means "inside this directory". Intent comes from the path syntax, so nothing here inspects
-// the filesystem, and files and directories need no separate handling.
-export function copyScript(src: string, dest: string): string {
-  const contentsOf = src.endsWith('/')
-  const intoDirectory = dest.endsWith('/')
-  const srcPath = trimSlashes(src)
-  const destPath = trimSlashes(dest)
-
-  const atPackageRoot = destPath === '' || destPath === '.'
-
-  // Only the replace form is dangerous at the package root: it would rm -rf the bind mount,
-  // which is the whole repository for the root package. Merging into "./" deletes nothing, so
-  // it stays allowed. Run's schema rejects this too; the guard is duplicated here because the
-  // consequence is severe enough that it should not depend on validation living elsewhere.
-  if (atPackageRoot && !intoDirectory)
-    throw new Error(`EXPORT "${src}" -> "${dest}": cannot replace the package directory itself; use "./" to merge into it`)
-
-  const destDir = atPackageRoot ? MOUNT : `${MOUNT}/${destPath}`
-
-  if (contentsOf) return `mkdir -p "${destDir}" && cp -a "${srcPath}"/. "${destDir}"/`
-
-  const target = intoDirectory ? `${destDir}/${basename(srcPath)}` : destDir
-  return `mkdir -p "$(dirname "${target}")" && rm -rf "${target}" && cp -a "${srcPath}" "${target}"`
+function resolveInside(root: string, path: string): string {
+  const target = resolve(root, path)
+  const rel = relative(root, target)
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel))
+    throw new Error(`EXPORT destination escapes its package directory: ${path}`)
+  return target
 }
 
 const trimSlashes = (path: string): string => path.replace(/\/+$/, '')
