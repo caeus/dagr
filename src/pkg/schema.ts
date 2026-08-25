@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+// Facet and target names are embedded in FQTs, image tags, log labels, and shell-facing CLI
+// arguments. Keep them to portable filename characters, and require an alphanumeric first
+// character so a name cannot be mistaken for an option, a hidden path, or a directive.
+export const Name = z
+  .string()
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    "must start with an ASCII letter or digit and contain only ASCII letters, digits, '.', '_', or '-'",
+  );
+export type Name = z.infer<typeof Name>;
+
 export const Copy = z
   .object({ from: z.string().optional(), src: z.string(), dest: z.string() })
   .strict()
@@ -65,8 +76,8 @@ export const TargetDef = z
   .readonly();
 export interface TargetDef extends z.infer<typeof TargetDef> {}
 
-export const FacetDef = z.record(z.string(), TargetDef).readonly();
+export const FacetDef = z.record(Name, TargetDef).readonly();
 export interface FacetDef extends z.infer<typeof FacetDef> {}
 
-export const PackageDef = z.record(z.string(), FacetDef).readonly();
+export const PackageDef = z.record(Name, FacetDef).readonly();
 export interface PackageDef extends z.infer<typeof PackageDef> {}
