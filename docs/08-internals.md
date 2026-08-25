@@ -238,22 +238,19 @@ builder.
 
 ## The DI container
 
-`src/sys/dispose-stack.ts` is a small, dependency-free async container. It exists so that
-`main`'s third parameter can swap the entire object graph in tests.
+`wire.ts` uses `@caeus/wyr`. `defaultModule` returns one immutable `Module({ ...providers })`, and
+its third parameter lets tests replace the entire graph.
 
-- `createKey<T>(description)` returns a branded `symbol`. The brand is phantom
-  (`[BRAND]?: () => T`), so keys carry their value type without any runtime cost, and
-  `container.get(key)` is typed with no casts at the call site.
-- `Module` is immutable. `.bind(key)` returns a slot; `.toValue`/`.toFun`/`.toClass` each
-  return a **new** `Module` with the binding added, which is why `defaultModule` reads as one
-  chained expression.
-- `toFun([deps], fn)` and `toClass([deps], Cls)` are typed with a recursive `DerefMany` mapped
-  tuple, so the dependency key array and the function's parameter list are checked positionally.
-  Reorder the keys and it stops compiling.
-- `Container.get` is async, memoizes the *promise* per key, resolves dependencies with
-  `Promise.all`, and detects cycles with a trace — the same shape as the target runner.
-- `AsyncDisposeStack` collects finalizers and runs them LIFO in `main`'s `finally`. Mount storage
-  registers its temporary-directory cleanup there.
+- `toValue(value)` provides a constant.
+- `toFactory([deps], fn)` resolves the named dependencies and passes them positionally to a sync
+  or async factory.
+- `toClass([deps], Class)` does the same for a constructor.
+- `.shake(['commandRunner'])` retains only that key and its transitive dependencies.
+- `.compile()` validates and eagerly resolves the shaken graph. Missing, mismatched, and circular
+  dependencies are rejected by Wyr's types at the compile call.
+- The compiled container's `.get(key)` is synchronous because resolution already happened.
+- `AsyncDisposeStack` is separate from Wyr. It runs finalizers LIFO in `wire`'s `finally`; mount
+  storage registers its temporary-directory cleanup there.
 
 The bindings in `wire.ts`:
 

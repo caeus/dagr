@@ -47,8 +47,13 @@ Applied to dagr:
 `wire.ts` therefore gives both the target runner and exporter the container-side `root`:
 
 ```ts
-.bind(runnerKey).toFun([rootKey, ...], ...)             // /repo — build contexts
-.bind(runCommandRunnerKey).toClass([..., rootKey, ...]) // /repo — EXPORT destinations
+Module({
+  runner: toFactory(['root', /* ... */], buildRunner),
+  runCommandRunner: toClass(
+    ['runner', 'dockerImageExtractor', 'root', 'currentPackage'],
+    RunCommandRunner,
+  ),
+})
 ```
 
 For both `EXPORT` and `#mount`, dagr uses `docker create`, `docker cp`, and `docker rm`. Temporary
