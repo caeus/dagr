@@ -1,51 +1,67 @@
 # dagr
 
-A monorepo task runner where **every target is a Docker image**.
+dagr is a monorepo task runner where every target produces a Docker image.
 
-The name compresses **DAG runner** into `dagr`: target dependencies form a directed acyclic
-graph, and dagr runs it.
+That makes target outputs directly composable. A downstream target can inherit a dependency
+with `FROM` or copy files from it with `COPY --from`, without publishing artifacts or moving
+them through a separate cache. Docker's layer cache reuses unchanged work, while an optional
+`EXPORT` copies the final files you actually want back into the workspace.
 
-There is no separate cache, no artifact store, and no lockfile of build outputs. A target
-declares a base image and a list of Dockerfile-ish steps; dagr renders that to a real
-Dockerfile, builds it, and tags the result. A target that depends on another receives the
-dependency's **image tag** and uses it as its own `FROM` or as a `COPY --from=` source. Docker's
-layer cache is the only cache, and the dependency graph is expressed as image lineage.
+The result is one dependency graph, one artifact format, and one persistent build cache. Expensive
+setup steps remain reusable, package builds stay isolated, and the same definitions run anywhere
+Docker does.
 
-Build files are `dagr.index.js` — plain ES modules evaluated inside a `node:vm` sandbox, so they
-can compute their contents with real JavaScript (loops, templates, shared helper modules)
-without being able to touch the filesystem, the network, or the host process.
+The name compresses **DAG runner** into `dagr`.
 
-A build file may instead declare `#mount`: dagr builds that image, exposes its final `WORKDIR` as
-the declaring directory, and discovers the package tree inside it. A `//` in the package address
-marks each image boundary, for example `packages/tools//eslint#ci#pack`.
+## How it works
 
-## Philosophy
+A target declares dependencies, a base image, and a list of Dockerfile-like steps. dagr builds its
+dependencies first and passes their image tags to the target. The target may use those images as
+build inputs or merely depend on them for scheduling.
 
-### Open code, not a package
+Build definitions are `dagr.index.js` files. They are plain ES modules evaluated inside a
+`node:vm` sandbox, so they can use JavaScript, templates, loops, and shared helper modules without
+access to the filesystem, network, or host process.
 
-dagr is distributed as source. Copy the `dagr/` directory into your repository and commit it.
-The repository owns the exact runner that interprets its build definitions, so there is no
-external dagr version to keep compatible with them.
+There is no separate task cache, artifact store, or lockfile of build outputs. Docker images and
+layers provide those mechanics.
 
-That copy is yours to read, modify, and evolve with the rest of the codebase. Updating dagr
-means applying a source diff and reviewing it like any other change. The global launcher never
-selects or downloads a version; it only finds and runs the copy owned by the current repository.
+## Pinned source, not a package
 
-## Install
+dagr is not published as a package. A consuming repository keeps four small launcher files under
+`.dagr/`, including a Dockerfile that pins an exact dagr commit. On first use, that Dockerfile
+clones and compiles the pinned source into the runner image. Docker caches the result for later
+invocations.
+
+The runner version therefore lives beside the definitions it interprets. Updating dagr is an
+explicit commit change that can be reviewed like any other dependency update.
+
+## Adopt
+
+You need Docker with buildx and access to the Docker socket. You do **not** need Node, pnpm, or
+TypeScript on the host.
+
+First, create the repository's `.dagr/` directory and pin a dagr commit by following
+[Adopting dagr in a new monorepo](docs/10-adopting-in-a-new-monorepo.md). Then install the launcher:
 
 ```sh
 .dagr/install.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-You need Docker with buildx. You do **not** need Node, pnpm, or TypeScript on the host — dagr runs
-in a container built on first use. The `dagr` launcher walks up from your working directory looking
-for a `.dagr/` directory, so one global install serves every repo that uses dagr.
-
-To set `.dagr/` up in a repo that doesn't have one yet — four files, one of which pins the dagr
-commit you want — see [10 — Adopting in a new monorepo](docs/10-adopting-in-a-new-monorepo.md).
+The launcher walks up from your current directory to find `.dagr/`, so one global command works
+across every repository that uses dagr.
 
 ## Use
+
+Given this tiny program:
+
+```js
+// packages/greeter/src/index.js
+console.log('hello from dagr')
+```
+
+Define how to build and export it:
 
 ```js
 // packages/greeter/dagr.index.js
@@ -58,7 +74,7 @@ export default {
         steps: [
           { WORKDIR: '/repo' },
           { COPY: { src: 'src', dest: '/repo/src' } },
-          { RUN: 'node src/index.js > /out/greeting.txt' },
+          { RUN: 'mkdir -p /out && node src/index.js > /out/greeting.txt' },
         ],
         IGNORE: ['node_modules', '.git'],
         EXPORT: { '/out': 'dist' },
@@ -68,35 +84,33 @@ export default {
 }
 ```
 
+Run the target:
+
 ```sh
 dagr run packages/greeter#ci#build
 ```
 
-That builds an image tagged `packages_greeter-ci-build` and copies the image's `/out` directory
-to `packages/greeter/dist` on your host:
+The first run builds the target. Later runs reuse every Docker layer unaffected by your changes.
+Here, `EXPORT` makes the result available at `packages/greeter/dist`. Without `EXPORT`, the
+image can remain an internal build input for downstream targets without writing anything to the
+host.
 
-```
-  ▶ packages/greeter#ci#build
-  ✓ packages/greeter#ci#build  4.1s
-```
-
-Docker output is captured but hidden unless the build fails, in which case the tail is printed
-under the error. Pass `--verbose` to watch every line as it happens. `dagr list` prints the whole
-target graph in topological order. It does not build targets, though it must build and extract any
-mounts before it can discover the graph inside them.
+Docker output stays hidden unless a build fails, in which case dagr prints the captured tail under
+the error. Pass `--verbose` to stream every line. Use `dagr list` to inspect the complete target
+graph without building targets, except for any mounts required to discover that graph.
 
 ## Documentation
 
-The wiki lives in [`docs/`](docs/README.md) — concepts, the full `dagr.index.js` schema, the
-sandbox rules, the CLI reference, internals, and a checklist for adopting dagr in a new
-monorepo.
+The complete documentation lives in [`docs/`](docs/README.md), including concepts, the
+`dagr.index.js` schema, sandbox rules, CLI reference, dependency and export semantics, mounts,
+internals, troubleshooting, and the adoption checklist.
 
 ## Development
 
 ```sh
 pnpm install
 make typecheck
-make test        # compiles to dist/, then runs the tests against it
+make test
 ```
 
 ## License
