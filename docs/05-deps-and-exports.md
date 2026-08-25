@@ -204,18 +204,19 @@ image:
 
 ```sh
 # source ends in "/" — merge contents, delete nothing
-docker run --rm -v <package dir>:/host-out <image> sh -c \
+docker run --rm -v <package dir>:/host-out --entrypoint sh <image> -c \
   'mkdir -p "<dest>" && cp -a "<src>"/. "<dest>"/'
 
 # otherwise — the node becomes <dest> exactly, replacing whatever was there
-docker run --rm -v <package dir>:/host-out <image> sh -c \
+docker run --rm -v <package dir>:/host-out --entrypoint sh <image> -c \
   'mkdir -p "$(dirname "<dest>")" && rm -rf "<dest>" && cp -a "<src>" "<dest>"'
 ```
 
 Implications:
 
 - **The image needs a shell**, plus `mkdir`, `cp`, and `dirname`. You cannot `EXPORT` from a
-  `scratch` or distroless image. Keep a `FROM alpine`-family layer as the export target.
+  `scratch` or distroless image. Keep a `FROM alpine`-family layer as the export target. Dagr
+  overrides the image's configured entrypoint for extraction.
 - Intermediate directories in `dest` are created as needed, in both forms.
 - Files are written by the container's user, typically root. Exported trees may be
   root-owned on Linux hosts.

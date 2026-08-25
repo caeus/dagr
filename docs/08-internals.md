@@ -16,14 +16,16 @@ src/
 │   └── dispose-stack.ts        LIFO finalizers (no external DI dependency)
 ├── commands/index.ts           arg parsing + one runner class per command
 ├── pkg/
-│   ├── schema.ts               Zod schemas for PackageDef/FacetDef/TargetDef/Run/Step
-│   └── loader.ts               filesystem walk + vm sandbox evaluation
+│   ├── schema.ts               Zod schemas for IndexDef/MountDef/PackageDef/Run/Step
+│   └── loader.ts               filesystem/source walk + vm sandbox evaluation
 └── runner/
     ├── index.ts                FQT, TargetResult, buildRunner (graph walk + memo)
     ├── target-runner.ts        runTarget: one target → one image
     ├── dockerfile-renderer.ts  Run → Dockerfile text
     ├── docker-builder.ts       docker buildx build
-    └── docker-extractor.ts     docker run + bind mount to pull files out
+    ├── docker-inspector.ts     reads an image's configured WORKDIR
+    ├── docker-extractor.ts     docker run + bind mount to pull files out
+    └── mount-materializer.ts   mount build, extraction, memo, and symlink validation
 ```
 
 Internal imports never use relative paths. `package.json` declares a `#*` subpath map, so every
@@ -86,8 +88,8 @@ exports" fall out of the structure rather than needing a flag.
 
 ## Loading
 
-`loadPackages(root)` creates one `LoadContext` — `{ root, context, cache }` — for the whole
-session:
+`loadPackages(root, mountMaterializer)` creates a shared VM context and module cache. Each
+physical source tree gets a `LoadContext` whose `root` is that source's import root:
 
 - `context` is a single `vm.createContext(Object.assign(Object.create(null), { Buffer }))`.
 - `cache` is a `Map<resolvedPath, vm.Module>` shared by every root-relative import in the repo.
@@ -102,11 +104,17 @@ Then:
    root and restricted to `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, and `dagr.*.toml` files.
    JavaScript imports become `vm.SourceTextModule`s. Parsed data imports become
    `vm.SyntheticModule`s with a deep-frozen default export.
-4. The marker is linked, evaluated, and its `default` export run through
-   `PackageDef.safeParse`.
+4. The marker is linked, evaluated, and its `default` export run through `IndexDef.safeParse`.
+   A normal package is stored. A `#mount` is built, its final `WORKDIR` is extracted, and the
+   walk resumes after appending a `//` boundary to the logical package path, using the extracted
+   tree as the physical and import root.
 5. On success the parsed value is deep-frozen and stored. **On failure `null` is returned and
    the package is skipped with no diagnostic.**
-6. The resulting `Map` is `Object.freeze`d and returned as a `ReadonlyMap`.
+6. Mount identities are `<image digest>:<final workdir>` and are threaded through the recursive
+   walk to detect mount cycles. Equivalent mount results share one extraction per invocation.
+7. The loader returns frozen `definitions` and `contexts` maps. The first maps logical package
+   IDs to definitions; the second maps the same IDs to their local or extracted physical build
+   contexts.
 
 That silent skip in step 5 is the single biggest ergonomic wart in dagr. See
 [11 — Troubleshooting](11-troubleshooting.md#my-package-doesnt-show-up-in-dagr-list).
@@ -256,17 +264,22 @@ The bindings in `wire.ts`:
 | --- | --- |
 | `root` | `REPO_ROOT`, or dagr's parent directory |
 | `hostRoot` | `HOST_REPO_ROOT`, falling back to `root` |
+| `mountRoot` | `MOUNT_ROOT`, falling back to `<root>/.dagr-mounts` |
+| `hostMountRoot` | `HOST_MOUNT_ROOT`, falling back to `mountRoot` |
 | `currentPackage` | `relative(hostRoot, WORKING_DIR ?? hostRoot)` |
 | `reporter` | human-readable progress and failure writer targeting stderr |
 | `output` | command-result writer targeting stdout |
 | `processRunner` | child-process runner capturing both streams and feeding the reporter |
-| `packageLoader` | `{ loadPackages }` |
-| `packages` | `packageLoader.loadPackages(root)` |
+| `mountMaterializer` | mount builder, inspector, extractor, and validator |
+| `packageLoader` | `{ loadPackages(root, mountMaterializer) }` |
+| `loadedPackages` | `packageLoader.loadPackages(root)` |
+| `packages` | `loadedPackages.definitions` |
+| `packageContexts` | `loadedPackages.contexts` |
 | `dockerfileRenderer` | `{ renderDockerfile }` |
 | `dockerImageBuilder` | `{ buildDockerImage }` |
 | `dockerImageExtractor` | `{ extractFromImage }` |
 | `hostPlatform` | `hostPlatform(env)` |
-| `runner` | `buildRunner(root, packages, { renderDockerfile, buildDockerImage }, hostPlatform)` |
+| `runner` | `buildRunner(root, packages, deps, hostPlatform, packageContexts)` |
 | `listCommandRunner` | `ListCommandRunner(packages)` |
 | `runCommandRunner` | `RunCommandRunner(runner, extractor, hostRoot, currentPackage)` |
 | `commandRunner` | `CompositeCommandRunner(runCommandRunner, listCommandRunner)` |

@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import type { HostPlatform, PackageDef } from '#pkg/schema.js'
 import { runTarget, type TargetRunnerDeps } from '#runner/target-runner.js'
 
@@ -43,7 +44,13 @@ export type Runner = (fqt: FQT) => Promise<TargetResult>
 
 export { type TargetRunnerDeps }
 
-export function buildRunner(root: string, packages: ReadonlyMap<string, PackageDef>, deps: TargetRunnerDeps, host: HostPlatform): Runner {
+export function buildRunner(
+  root: string,
+  packages: ReadonlyMap<string, PackageDef>,
+  deps: TargetRunnerDeps,
+  host: HostPlatform,
+  packageContexts: ReadonlyMap<string, string> = new Map(),
+): Runner {
   const memo = new Map<string, Promise<TargetResult>>()
 
   const run = (raw: string, trace: readonly string[] = []): Promise<TargetResult> => {
@@ -61,7 +68,14 @@ export function buildRunner(root: string, packages: ReadonlyMap<string, PackageD
     const nextTrace = [...trace, raw]
     const promise = Promise.all(
       target.deps.map(d => run(FQT.parse(d, { pkg: fqt.pkg, facet: fqt.facet }).toString(), nextTrace))
-    ).then(depResults => runTarget(fqt, target, depResults, root, deps, host))
+    ).then(depResults => runTarget(
+      fqt,
+      target,
+      depResults,
+      packageContexts.get(fqt.pkg) ?? join(root, fqt.pkg),
+      deps,
+      host,
+    ))
 
     memo.set(raw, promise)
     return promise

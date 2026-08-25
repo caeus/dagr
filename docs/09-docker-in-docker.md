@@ -20,6 +20,11 @@ So the repo exists at two paths simultaneously:
 - `/repo` — inside the dagr container.
 - `$HOST_REPO_ROOT` (e.g. `/Users/you/repos/thing`) — on the host, where the daemon lives.
 
+Mounted package trees have the same dual-path arrangement:
+
+- `/mounts` — inside the dagr container, where package discovery reads them.
+- `$HOST_MOUNT_ROOT` — a temporary host directory, where extraction containers write them.
+
 ## The rule
 
 > **Paths interpreted by the Docker CLI use `/repo`. Paths interpreted by the Docker daemon
@@ -38,6 +43,8 @@ Applied to dagr:
 | Reading `dagr.index.js` files | `/repo` | Plain `fs` calls in the dagr process. |
 | `docker buildx build <context>` | `/repo/<package>` | The CLI reads and uploads the context itself. |
 | `docker run -v <dir>:/host-out` for `EXPORT` | `$HOST_REPO_ROOT/<package>` | The **daemon** resolves the bind mount. |
+| `docker run -v <dir>:/host-out` for `#mount` | `$HOST_MOUNT_ROOT` | The daemon writes the materialized workdir. |
+| Reading a materialized `#mount` | `/mounts/<identity>` | Plain `fs` calls in the dagr process. |
 
 That is exactly why `wire.ts` binds two keys and hands them to different consumers:
 
@@ -51,6 +58,10 @@ If you ever refactor extraction to receive `root` instead of `hostRoot`, `EXPORT
 starts writing into a fresh empty directory inside the ephemeral dagr container and the
 files vanish when it exits. There is no error — the copy succeeds, into nowhere. Keep the two
 straight.
+
+`cli.sh` creates `$HOST_MOUNT_ROOT`, bind-mounts it at `/mounts`, and removes it when dagr exits.
+This is why mount extraction can reuse the existing Docker-based exporter without copying files
+into the repository or trying to attach a new mount to an already-running dagr container.
 
 ## Consequences
 

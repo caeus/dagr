@@ -99,6 +99,12 @@ export class RunCommandRunner {
       cmd.fqts.map((raw) => this.runner(FQT.parse(raw, context))),
     );
 
+    const mountedExport = results.find(
+      result => result.export && result.fqt.pkg.includes('//'),
+    );
+    if (mountedExport)
+      throw new Error(`Cannot EXPORT from a mounted package: ${mountedExport.fqt}`);
+
     for (const result of results) {
       if (result.export) {
         const packageDir = resolve(this.root, result.fqt.pkg);

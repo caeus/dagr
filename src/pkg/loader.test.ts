@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
-import { loadPackages } from '#pkg/loader.js'
+import { loadPackages, type MountMaterializer } from '#pkg/loader.js'
 
 async function fixture(
   marker: string,
@@ -51,7 +51,7 @@ describe('loadPackages', () => {
     )
 
     try {
-      const packages = await loadPackages(root)
+      const { definitions: packages } = await loadPackages(root)
       const run = packages.get('.')?.['ci']?.['build']?.run({
         images: {},
         host: { os: 'linux', arch: 'x64' },
@@ -88,4 +88,162 @@ describe('loadPackages', () => {
       }
     })
   }
+
+  it('replaces a mount directory with packages from the materialized workdir', async () => {
+    const root = await fixture('', {
+      'packages/tools/dagr.index.js': `
+        export default {
+          '#mount': { FROM: 'tools:latest', steps: [], IGNORE: [] }
+        }
+      `,
+    })
+    const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
+    await mkdir(join(mountedRoot, 'c'), { recursive: true })
+    await writeFile(join(mountedRoot, 'dagr.shared.js'), `export const image = 'alpine'`)
+    await writeFile(join(mountedRoot, 'c', 'dagr.index.js'), `
+      import { image } from '/dagr.shared.js'
+      export default {
+        ci: {
+          pack: {
+            deps: [],
+            run: () => ({ FROM: image, steps: [], IGNORE: [] })
+          }
+        }
+      }
+    `)
+    const calls: string[] = []
+    const materializer: MountMaterializer = {
+      materialize: async (_mount, logicalPath) => {
+        calls.push(logicalPath)
+        return { root: mountedRoot, identity: 'sha256:tools:/work' }
+      },
+    }
+
+    try {
+      const { definitions: packages, contexts } = await loadPackages(root, materializer)
+      const run = packages.get('packages/tools//c')?.['ci']?.['pack']?.run({
+        images: {},
+        host: { os: 'linux', arch: 'x64' },
+      })
+
+      assert.equal(run?.FROM, 'alpine')
+      assert.equal(contexts.get('packages/tools//c'), join(mountedRoot, 'c'))
+      assert.equal(packages.has('packages/tools/c'), false)
+      assert.equal(calls.length, 1)
+      assert.equal(calls[0], 'packages/tools')
+    } finally {
+      await Promise.all([
+        rm(root, { recursive: true }),
+        rm(mountedRoot, { recursive: true }),
+      ])
+    }
+  })
+
+  it('marks a package at the mounted WORKDIR root with a trailing boundary', async () => {
+    const root = await fixture('', {
+      'packages/tools/dagr.index.js': `
+        export default {
+          '#mount': { FROM: 'tools:latest', steps: [], IGNORE: [] }
+        }
+      `,
+    })
+    const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
+    await writeFile(join(mountedRoot, 'dagr.index.js'), `
+      export default {
+        ci: {
+          pack: {
+            deps: [],
+            run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
+          }
+        }
+      }
+    `)
+    const materializer: MountMaterializer = {
+      materialize: async () => ({
+        root: mountedRoot,
+        identity: 'sha256:tools:/work',
+      }),
+    }
+
+    try {
+      const { definitions, contexts } = await loadPackages(root, materializer)
+      assert.equal(definitions.has('packages/tools//'), true)
+      assert.equal(definitions.has('packages/tools'), false)
+      assert.equal(contexts.get('packages/tools//'), mountedRoot)
+    } finally {
+      await Promise.all([
+        rm(root, { recursive: true }),
+        rm(mountedRoot, { recursive: true }),
+      ])
+    }
+  })
+
+  it('preserves every nested mount boundary in the package identity', async () => {
+    const mountIndex = (image: string) => `
+      export default {
+        '#mount': { FROM: '${image}', steps: [], IGNORE: [] }
+      }
+    `
+    const root = await fixture('', {
+      'packages/tools/dagr.index.js': mountIndex('outer'),
+    })
+    const outerRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
+    const innerRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
+    await mkdir(join(outerRoot, 'c', 'd'), { recursive: true })
+    await writeFile(join(outerRoot, 'c', 'd', 'dagr.index.js'), mountIndex('inner'))
+    await mkdir(join(innerRoot, 'e'), { recursive: true })
+    await writeFile(join(innerRoot, 'e', 'dagr.index.js'), `
+      export default {
+        ci: {
+          pack: {
+            deps: [],
+            run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
+          }
+        }
+      }
+    `)
+    const materializer: MountMaterializer = {
+      materialize: async (_mount, logicalPath) => logicalPath === 'packages/tools'
+        ? { root: outerRoot, identity: 'sha256:outer:/work' }
+        : { root: innerRoot, identity: 'sha256:inner:/work' },
+    }
+
+    try {
+      const { definitions } = await loadPackages(root, materializer)
+      assert.equal(definitions.has('packages/tools//c/d//e'), true)
+      assert.equal(definitions.has('packages/tools/c/d/e'), false)
+    } finally {
+      await Promise.all([
+        rm(root, { recursive: true }),
+        rm(outerRoot, { recursive: true }),
+        rm(innerRoot, { recursive: true }),
+      ])
+    }
+  })
+
+  it('detects recursive mounts by materialized image identity', async () => {
+    const declaration = `
+      export default {
+        '#mount': { FROM: 'recursive:latest', steps: [], IGNORE: [] }
+      }
+    `
+    const root = await fixture('', { 'packages/loop/dagr.index.js': declaration })
+    const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
+    await writeFile(join(mountedRoot, 'dagr.index.js'), declaration)
+    const materializer: MountMaterializer = {
+      materialize: async () => ({
+        root: mountedRoot,
+        identity: 'sha256:recursive:/work',
+      }),
+    }
+
+    try {
+      await assert.rejects(loadPackages(root, materializer), /Circular mount: packages\/loop -> packages\/loop/)
+    } finally {
+      await Promise.all([
+        rm(root, { recursive: true }),
+        rm(mountedRoot, { recursive: true }),
+      ])
+    }
+  })
 })

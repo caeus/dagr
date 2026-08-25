@@ -3,13 +3,30 @@ import { readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
-import { PackageDef } from '#pkg/schema.js'
+import { IndexDef, type MountDef, type MountIndex, type PackageDef } from '#pkg/schema.js'
 
 const PACKAGE_FILE = 'dagr.index.js'
 const IMPORT_FILE = /^dagr\..+\.(?:js|json|yaml|toml)$/
 
 export interface PackageLoader {
-  loadPackages(root: string): Promise<ReadonlyMap<string, PackageDef>>
+  loadPackages(root: string): Promise<LoadedPackages>
+}
+
+export interface LoadedPackages {
+  readonly definitions: ReadonlyMap<string, PackageDef>
+  readonly contexts: ReadonlyMap<string, string>
+}
+
+export interface MaterializedMount {
+  readonly root: string
+  readonly identity: string
+}
+
+export interface MountMaterializer {
+  materialize(
+    mount: MountDef,
+    logicalPath: string,
+  ): Promise<MaterializedMount>
 }
 
 interface LoadContext {
@@ -82,43 +99,181 @@ async function link(specifier: string, ctx: LoadContext): Promise<vm.Module> {
   return mod
 }
 
-async function loadPackage(filePath: string, ctx: LoadContext): Promise<PackageDef | null> {
-  const code = await readFile(filePath, 'utf-8')
-  const mod = new vm.SourceTextModule(code, { context: ctx.context, identifier: filePath })
+async function loadIndex(filePath: string, ctx: LoadContext): Promise<IndexDef | null> {
+  const path = await realpath(filePath)
+  if (isOutside(ctx.root, path))
+    throw new Error(`Dagr index must stay inside its source root, got: ${filePath}`)
+
+  const code = await readFile(path, 'utf-8')
+  const mod = new vm.SourceTextModule(code, { context: ctx.context, identifier: path })
   await mod.link((specifier) => link(specifier, ctx))
   await mod.evaluate()
   const defaultExport = (mod.namespace as Record<string, unknown>)['default']
-  const result = PackageDef.safeParse(defaultExport)
+  const result = IndexDef.safeParse(defaultExport)
   return result.success ? deepFreeze(result.data) : null
 }
 
-export async function loadPackages(root: string): Promise<ReadonlyMap<string, PackageDef>> {
+function isMountIndex(index: IndexDef): index is MountIndex {
+  return Object.hasOwn(index, '#mount')
+}
+
+export async function loadPackages(
+  root: string,
+  mountMaterializer?: MountMaterializer,
+): Promise<LoadedPackages> {
   const canonicalRoot = await realpath(root)
   const ctx: LoadContext = {
     root: canonicalRoot,
     context: vm.createContext(Object.assign(Object.create(null), { Buffer })),
     cache: new Map(),
   }
-  const result = new Map<string, PackageDef>()
-  const rootEntries = await readdir(canonicalRoot, { withFileTypes: true })
-  if (rootEntries.some(e => !e.isDirectory() && e.name === PACKAGE_FILE)) {
-    const pkg = await loadPackage(resolve(canonicalRoot, PACKAGE_FILE), ctx)
-    if (pkg) result.set('.', pkg)
-  }
-  await walk(resolve(canonicalRoot, 'packages'), ctx, result)
-  return Object.freeze(result)
+  const definitions = new Map<string, PackageDef>()
+  const contexts = new Map<string, string>()
+  await loadRepository(canonicalRoot, '.', ctx, definitions, contexts, mountMaterializer, [])
+  return Object.freeze({
+    definitions: Object.freeze(definitions),
+    contexts: Object.freeze(contexts),
+  })
 }
 
-async function walk(dir: string, ctx: LoadContext, acc: Map<string, PackageDef>): Promise<void> {
+interface MountTrace {
+  readonly identity: string
+  readonly logicalPath: string
+}
+
+async function loadRepository(
+  root: string,
+  logicalRoot: string,
+  ctx: LoadContext,
+  acc: Map<string, PackageDef>,
+  contexts: Map<string, string>,
+  mountMaterializer: MountMaterializer | undefined,
+  trace: readonly MountTrace[],
+): Promise<void> {
+  const entries = await readdir(root, { withFileTypes: true })
+  if (entries.some(e => !e.isDirectory() && e.name === PACKAGE_FILE)) {
+    const index = await loadIndex(resolve(root, PACKAGE_FILE), ctx)
+    if (index && isMountIndex(index)) {
+      const mounted = await materialize(index['#mount'], logicalRoot, mountMaterializer, trace)
+      const mountedRoot = await realpath(mounted.root)
+      await loadRepository(
+        mountedRoot,
+        mountBoundary(logicalRoot),
+        { ...ctx, root: mountedRoot },
+        acc,
+        contexts,
+        mountMaterializer,
+        mounted.trace,
+      )
+      return
+    }
+    if (index) {
+      acc.set(logicalRoot, index)
+      contexts.set(logicalRoot, root)
+    }
+  }
+
+  const packages = resolve(root, 'packages')
+  const packageEntries = await readdir(packages, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return []
+    throw error
+  })
+  await Promise.all(
+    packageEntries
+      .filter(e => e.isDirectory())
+      .map(e => walk(
+        resolve(packages, e.name),
+        logicalRoot === '.'
+          ? joinLogical('packages', e.name)
+          : joinLogical(logicalRoot, 'packages', e.name),
+        ctx,
+        acc,
+        contexts,
+        mountMaterializer,
+        trace,
+      ))
+  )
+}
+
+async function walk(
+  dir: string,
+  logicalPath: string,
+  ctx: LoadContext,
+  acc: Map<string, PackageDef>,
+  contexts: Map<string, string>,
+  mountMaterializer: MountMaterializer | undefined,
+  trace: readonly MountTrace[],
+): Promise<void> {
   const entries = await readdir(dir, { withFileTypes: true })
   if (entries.some(e => !e.isDirectory() && e.name === PACKAGE_FILE)) {
-    const pkg = await loadPackage(resolve(dir, PACKAGE_FILE), ctx)
-    if (pkg) acc.set(relative(ctx.root, dir), pkg)
+    const index = await loadIndex(resolve(dir, PACKAGE_FILE), ctx)
+    if (index && isMountIndex(index)) {
+      const mounted = await materialize(
+        index['#mount'],
+        logicalPath,
+        mountMaterializer,
+        trace,
+      )
+      const mountedRoot = await realpath(mounted.root)
+      await walk(
+        mountedRoot,
+        mountBoundary(logicalPath),
+        { ...ctx, root: mountedRoot },
+        acc,
+        contexts,
+        mountMaterializer,
+        mounted.trace,
+      )
+      return
+    }
+    if (index) {
+      acc.set(logicalPath, index)
+      contexts.set(logicalPath, dir)
+    }
     return
   }
   await Promise.all(
     entries
       .filter(e => e.isDirectory())
-      .map(e => walk(resolve(dir, e.name), ctx, acc))
+      .map(e => walk(
+        resolve(dir, e.name),
+        joinLogical(logicalPath, e.name),
+        ctx,
+        acc,
+        contexts,
+        mountMaterializer,
+        trace,
+      ))
   )
+}
+
+function joinLogical(parent: string, ...children: readonly string[]): string {
+  return [parent, ...children].reduce(
+    (path, child) => path.endsWith('/') ? `${path}${child}` : `${path}/${child}`,
+  )
+}
+
+function mountBoundary(logicalPath: string): string {
+  return `${logicalPath.replace(/\/+$/, '')}//`
+}
+
+async function materialize(
+  mount: MountDef,
+  logicalPath: string,
+  mountMaterializer: MountMaterializer | undefined,
+  trace: readonly MountTrace[],
+): Promise<{ readonly root: string; readonly trace: readonly MountTrace[] }> {
+  if (!mountMaterializer)
+    throw new Error(`Cannot load mount at ${logicalPath}: no mount materializer configured`)
+
+  const mounted = await mountMaterializer.materialize(mount, logicalPath)
+  if (trace.some(entry => entry.identity === mounted.identity))
+    throw new Error(
+      `Circular mount: ${[...trace.map(entry => entry.logicalPath), logicalPath].join(' -> ')}`,
+    )
+
+  return {
+    root: mounted.root,
+    trace: [...trace, { identity: mounted.identity, logicalPath }],
+  }
 }

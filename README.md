@@ -15,6 +15,10 @@ Build files are `dagr.index.js` — plain ES modules evaluated inside a `node:vm
 can compute their contents with real JavaScript (loops, templates, shared helper modules)
 without being able to touch the filesystem, the network, or the host process.
 
+A build file may instead declare `#mount`: dagr builds that image, exposes its final `WORKDIR` as
+the declaring directory, and discovers the package tree inside it. A `//` in the package address
+marks each image boundary, for example `packages/tools//eslint#ci#pack`.
+
 ## Philosophy
 
 ### Open code, not a package
@@ -78,7 +82,8 @@ to `packages/greeter/dist` on your host:
 
 Docker output is captured but hidden unless the build fails, in which case the tail is printed
 under the error. Pass `--verbose` to watch every line as it happens. `dagr list` prints the whole
-target graph in topological order without building anything.
+target graph in topological order. It does not build targets, though it must build and extract any
+mounts before it can discover the graph inside them.
 
 ## Documentation
 

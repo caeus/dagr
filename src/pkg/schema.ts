@@ -27,13 +27,19 @@ export const Step = z.union([
 ]);
 export type Step = z.infer<typeof Step>;
 
-export const Run = z
-  .object({
-    FROM: z.string(),
-    steps: z.array(Step).readonly(),
-    IGNORE: z.array(z.string()).readonly(),
-    EXPORT: z.record(z.string(), z.string()).readonly().optional(),
-  })
+const ImageRecipeObject = z.object({
+  FROM: z.string(),
+  steps: z.array(Step).readonly(),
+  IGNORE: z.array(z.string()).readonly(),
+}).strict();
+
+export const ImageRecipe = ImageRecipeObject.readonly();
+export interface ImageRecipe extends z.infer<typeof ImageRecipe> {}
+
+export const Run = ImageRecipeObject.extend({
+  EXPORT: z.record(z.string(), z.string()).readonly().optional(),
+})
+  .strict()
   .readonly()
   .superRefine((run, ctx) => {
     for (const [src, dest] of Object.entries(run.EXPORT ?? {})) {
@@ -81,3 +87,15 @@ export interface FacetDef extends z.infer<typeof FacetDef> {}
 
 export const PackageDef = z.record(Name, FacetDef).readonly();
 export interface PackageDef extends z.infer<typeof PackageDef> {}
+
+export const MountDef = ImageRecipe;
+export interface MountDef extends z.infer<typeof MountDef> {}
+
+export const MountIndex = z
+  .object({ "#mount": MountDef })
+  .strict()
+  .readonly();
+export interface MountIndex extends z.infer<typeof MountIndex> {}
+
+export const IndexDef = z.union([MountIndex, PackageDef]);
+export type IndexDef = z.infer<typeof IndexDef>;

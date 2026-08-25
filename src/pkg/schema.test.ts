@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { Name, PackageDef } from '#pkg/schema.js'
+import { IndexDef, Name, PackageDef } from '#pkg/schema.js'
 
 const target = { deps: [], run: () => ({ FROM: 'scratch', steps: [], IGNORE: [] }) }
 
@@ -40,5 +40,24 @@ describe('PackageDef names', () => {
 
   it('applies Name to target keys', () => {
     assert.equal(PackageDef.safeParse({ ci: { 'build/run': target } }).success, false)
+  })
+})
+
+describe('IndexDef', () => {
+  const mount = { FROM: 'alpine', steps: [], IGNORE: [] }
+
+  it('accepts a mount as an alternative to a package', () => {
+    assert.deepEqual(IndexDef.parse({ '#mount': mount }), { '#mount': mount })
+  })
+
+  it('rejects facets alongside a mount', () => {
+    assert.equal(IndexDef.safeParse({ '#mount': mount, ci: { build: target } }).success, false)
+  })
+
+  it('rejects EXPORT on a mount', () => {
+    assert.equal(
+      IndexDef.safeParse({ '#mount': { ...mount, EXPORT: { '/out': 'out' } } }).success,
+      false,
+    )
   })
 })

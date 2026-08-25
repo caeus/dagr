@@ -1,4 +1,3 @@
-import { join } from 'node:path'
 import { Run, type HostPlatform, type TargetDef } from '#pkg/schema.js'
 import type { Reporter } from '#report/reporter.js'
 import type { BuildResult } from '#runner/docker-builder.js'
@@ -10,8 +9,7 @@ export interface TargetRunnerDeps {
   readonly reporter: Reporter
 }
 
-export async function runTarget(fqt: FQT, target: TargetDef, depResults: TargetResult[], root: string, deps: TargetRunnerDeps, host: HostPlatform): Promise<TargetResult> {
-  const packageDir = join(root, fqt.pkg)
+export async function runTarget(fqt: FQT, target: TargetDef, depResults: TargetResult[], packageDir: string, deps: TargetRunnerDeps, host: HostPlatform): Promise<TargetResult> {
   const tag = fqt.toString().replace(/#/g, '-').replace(/\//g, '_').replace(/^[^a-zA-Z0-9]+/, '')
 
   const images = Object.fromEntries(

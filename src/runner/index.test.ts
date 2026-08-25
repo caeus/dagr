@@ -74,6 +74,21 @@ describe('buildRunner', () => {
     assert.equal(result.imageTag, 'pkg-ci-a')
   })
 
+  it('uses the loaded physical context for a mounted package', async () => {
+    let context = ''
+    const mountedPackages = new Map([['pkg//tools', makePackage().get('pkg')!]])
+    const runner = buildRunner('/', mountedPackages, {
+      ...stubDeps,
+      buildDockerImage: async (_content, tag, actualContext) => {
+        context = actualContext
+        return { tag, digest: `sha256:${tag}` }
+      },
+    }, stubHost, new Map([['pkg//tools', '/mounts/tools']]))
+
+    await runner(FQT.parse('pkg//tools#ci#a'))
+    assert.equal(context, '/mounts/tools')
+  })
+
   it('memoizes — same promise returned for same fqt', async () => {
     let calls = 0
     const countingDeps: TargetRunnerDeps = {

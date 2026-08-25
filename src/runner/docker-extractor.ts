@@ -12,7 +12,10 @@ export async function extractFromImage(
   for (const [src, dest] of Object.entries(exportMap)) {
     await processRunner.run(
       'docker',
-      ['run', '--rm', '-v', `${destDir}:${MOUNT}`, imageTag, 'sh', '-c', copyScript(src, dest)],
+      [
+        'run', '--rm', '-v', `${destDir}:${MOUNT}`,
+        '--entrypoint', 'sh', imageTag, '-c', copyScript(src, dest),
+      ],
       `image.extract ${imageTag}`,
     )
   }
@@ -38,10 +41,12 @@ export function copyScript(src: string, dest: string): string {
 
   const destDir = atPackageRoot ? MOUNT : `${MOUNT}/${destPath}`
 
-  if (contentsOf) return `mkdir -p "${destDir}" && cp -a "${srcPath}"/. "${destDir}"/`
+  if (contentsOf)
+    return `mkdir -p ${shellQuote(destDir)} && cp -a ${shellQuote(srcPath)}/. ${shellQuote(destDir)}/`
 
   const target = intoDirectory ? `${destDir}/${basename(srcPath)}` : destDir
-  return `mkdir -p "$(dirname "${target}")" && rm -rf "${target}" && cp -a "${srcPath}" "${target}"`
+  return `mkdir -p "$(dirname ${shellQuote(target)})" && rm -rf ${shellQuote(target)} && cp -a ${shellQuote(srcPath)} ${shellQuote(target)}`
 }
 
 const trimSlashes = (path: string): string => path.replace(/\/+$/, '')
+const shellQuote = (path: string): string => `'${path.replaceAll("'", "'\"'\"'")}'`
