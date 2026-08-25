@@ -1,4 +1,5 @@
-import { readdir, rm } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import { Module, toClass, toFactory, toValue, type ValidModule } from '@caeus/wyr'
 import { AsyncDisposeStack } from '#sys/dispose-stack.js'
@@ -17,6 +18,7 @@ import type { BuildResult } from '#runner/docker-builder.js'
 import { renderDockerfile } from '#runner/dockerfile-renderer.js'
 import { buildDockerImage } from '#runner/docker-builder.js'
 import { extractFromImage } from '#runner/docker-extractor.js'
+import { copyFromImage } from '#runner/docker-copier.js'
 import { inspectImageWorkdir } from '#runner/docker-inspector.js'
 import { createMountMaterializer } from '#runner/mount-materializer.js'
 import {
@@ -54,6 +56,10 @@ export interface DockerImageInspector {
   inspectImageWorkdir(imageTag: string): Promise<string>
 }
 
+export interface DockerImageCopier {
+  copyFromImage(imageTag: string, src: string, dest: string): Promise<void>
+}
+
 export interface WiredCommand {
   readonly commandRunner: CommandRunner
 }
@@ -69,15 +75,10 @@ export function defaultModule(
   cmd: Cmd,
   stack: AsyncDisposeStack
 ) {
-  const temporaryMountRoot = env['CLEAN_MOUNT_ROOT'] === '1' ? env['MOUNT_ROOT'] : undefined
-  if (temporaryMountRoot && temporaryMountRoot !== '/') {
-    stack.defer(async () => {
-      const entries = await readdir(temporaryMountRoot).catch(() => [])
-      await Promise.all(entries.map(entry =>
-        rm(join(temporaryMountRoot, entry), { recursive: true, force: true })
-      ))
-    })
-  }
+  const mountRoot = env['MOUNT_ROOT'] ?? join(tmpdir(), `dagr-mounts-${process.pid}`)
+  const cleanMountRoot = env['CLEAN_MOUNT_ROOT'] === '1' || env['MOUNT_ROOT'] === undefined
+  if (cleanMountRoot && mountRoot !== '/')
+    stack.defer(() => rm(mountRoot, { recursive: true, force: true }))
 
   return Module({
     env: toValue(env),
@@ -90,14 +91,7 @@ export function defaultModule(
       ['env', 'root'],
       (env: NodeJS.ProcessEnv, root: string) => env['HOST_REPO_ROOT'] ?? root
     ),
-    mountRoot: toFactory(
-      ['env', 'root'],
-      (env: NodeJS.ProcessEnv, root: string) => env['MOUNT_ROOT'] ?? resolve(root, '.dagr-mounts')
-    ),
-    hostMountRoot: toFactory(
-      ['env', 'mountRoot'],
-      (env: NodeJS.ProcessEnv, mountRoot: string) => env['HOST_MOUNT_ROOT'] ?? mountRoot
-    ),
+    mountRoot: toValue(mountRoot),
     currentPackage: toFactory(
       ['env', 'hostRoot'],
       (env: NodeJS.ProcessEnv, hostRoot: string) =>
@@ -136,29 +130,32 @@ export function defaultModule(
         inspectImageWorkdir: (imageTag) => inspectImageWorkdir(imageTag, runner)
       })
     ),
+    dockerImageCopier: toFactory(
+      ['processRunner'],
+      (runner: ProcessRunner): DockerImageCopier => ({
+        copyFromImage: (imageTag, src, dest) => copyFromImage(imageTag, src, dest, runner)
+      })
+    ),
     mountMaterializer: toFactory(
       [
         'dockerfileRenderer',
         'dockerImageBuilder',
-        'dockerImageExtractor',
+        'dockerImageCopier',
         'dockerImageInspector',
-        'mountRoot',
-        'hostMountRoot'
+        'mountRoot'
       ],
       (
         renderer: DockerfileRenderer,
         builder: DockerImageBuilder,
-        extractor: DockerImageExtractor,
+        copier: DockerImageCopier,
         inspector: DockerImageInspector,
-        mountRoot: string,
-        hostMountRoot: string
+        mountRoot: string
       ) => createMountMaterializer({
         renderer,
         builder,
-        extractor,
+        copier,
         inspector,
-        mountRoot,
-        hostMountRoot
+        mountRoot
       })
     ),
     packageLoader: toFactory(

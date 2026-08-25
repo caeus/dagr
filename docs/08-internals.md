@@ -23,6 +23,7 @@ src/
     ├── target-runner.ts        runTarget: one target → one image
     ├── dockerfile-renderer.ts  Run → Dockerfile text
     ├── docker-builder.ts       docker buildx build
+    ├── docker-copier.ts        docker create + cp + rm for mounted trees
     ├── docker-inspector.ts     reads an image's configured WORKDIR
     ├── docker-extractor.ts     docker run + bind mount to pull files out
     └── mount-materializer.ts   mount build, extraction, memo, and symlink validation
@@ -254,9 +255,8 @@ builder.
   Reorder the keys and it stops compiling.
 - `Container.get` is async, memoizes the *promise* per key, resolves dependencies with
   `Promise.all`, and detects cycles with a trace — the same shape as the target runner.
-- `AsyncDisposeStack` collects finalizers and runs them LIFO in `main`'s `finally`. Nothing
-  registers one today; it is there so a binding that opens a resource has somewhere to put its
-  teardown.
+- `AsyncDisposeStack` collects finalizers and runs them LIFO in `main`'s `finally`. Mount storage
+  registers its temporary-directory cleanup there.
 
 The bindings in `wire.ts`:
 
@@ -264,13 +264,13 @@ The bindings in `wire.ts`:
 | --- | --- |
 | `root` | `REPO_ROOT`, or dagr's parent directory |
 | `hostRoot` | `HOST_REPO_ROOT`, falling back to `root` |
-| `mountRoot` | `MOUNT_ROOT`, falling back to `<root>/.dagr-mounts` |
-| `hostMountRoot` | `HOST_MOUNT_ROOT`, falling back to `mountRoot` |
+| `mountRoot` | `MOUNT_ROOT`, falling back to a process-specific temporary directory |
 | `currentPackage` | `relative(hostRoot, WORKING_DIR ?? hostRoot)` |
 | `reporter` | human-readable progress and failure writer targeting stderr |
 | `output` | command-result writer targeting stdout |
 | `processRunner` | child-process runner capturing both streams and feeding the reporter |
-| `mountMaterializer` | mount builder, inspector, extractor, and validator |
+| `dockerImageCopier` | stopped-container `docker cp` adapter |
+| `mountMaterializer` | mount builder, inspector, copier, and validator |
 | `packageLoader` | `{ loadPackages(root, mountMaterializer) }` |
 | `loadedPackages` | `packageLoader.loadPackages(root)` |
 | `packages` | `loadedPackages.definitions` |

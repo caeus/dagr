@@ -2,15 +2,14 @@ import { mkdir, readdir, realpath } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import type { MountMaterializer } from '#pkg/loader.js'
-import type { DockerfileRenderer, DockerImageBuilder, DockerImageExtractor, DockerImageInspector } from '#wire.js'
+import type { DockerfileRenderer, DockerImageBuilder, DockerImageCopier, DockerImageInspector } from '#wire.js'
 
 export interface MountMaterializerDeps {
   readonly renderer: DockerfileRenderer
   readonly builder: DockerImageBuilder
-  readonly extractor: DockerImageExtractor
+  readonly copier: DockerImageCopier
   readonly inspector: DockerImageInspector
   readonly mountRoot: string
-  readonly hostMountRoot: string
 }
 
 export function createMountMaterializer(deps: MountMaterializerDeps): MountMaterializer {
@@ -47,13 +46,7 @@ async function extractMount(
 ): Promise<string> {
   const key = createHash('sha256').update(`${imageDigest}\0${workdir}`).digest('hex')
   const root = join(deps.mountRoot, key)
-  const src = `${workdir.replace(/\/+$/, '')}/`
-
-  await deps.extractor.extractFromImage(
-    imageTag,
-    { [src]: `${key}/` },
-    deps.hostMountRoot,
-  )
+  await deps.copier.copyFromImage(imageTag, workdir, root)
   await validateSymlinks(root)
   return root
 }

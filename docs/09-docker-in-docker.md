@@ -20,10 +20,8 @@ So the repo exists at two paths simultaneously:
 - `/repo` — inside the dagr container.
 - `$HOST_REPO_ROOT` (e.g. `/Users/you/repos/thing`) — on the host, where the daemon lives.
 
-Mounted package trees have the same dual-path arrangement:
-
-- `/mounts` — inside the dagr container, where package discovery reads them.
-- `$HOST_MOUNT_ROOT` — a temporary host directory, where extraction containers write them.
+Mounted package trees do not need a second host path. `docker cp` writes to the local filesystem
+of the Docker CLI process, which is the dagr container itself.
 
 ## The rule
 
@@ -43,8 +41,8 @@ Applied to dagr:
 | Reading `dagr.index.js` files | `/repo` | Plain `fs` calls in the dagr process. |
 | `docker buildx build <context>` | `/repo/<package>` | The CLI reads and uploads the context itself. |
 | `docker run -v <dir>:/host-out` for `EXPORT` | `$HOST_REPO_ROOT/<package>` | The **daemon** resolves the bind mount. |
-| `docker run -v <dir>:/host-out` for `#mount` | `$HOST_MOUNT_ROOT` | The daemon writes the materialized workdir. |
-| Reading a materialized `#mount` | `/mounts/<identity>` | Plain `fs` calls in the dagr process. |
+| `docker cp <container>:<workdir>/. <mount>` for `#mount` | `/tmp/dagr-mounts/<identity>` | The **CLI** writes the archive to its own filesystem. |
+| Reading a materialized `#mount` | `/tmp/dagr-mounts/<identity>` | Plain `fs` calls in the dagr process. |
 
 That is exactly why `wire.ts` binds two keys and hands them to different consumers:
 
@@ -59,9 +57,9 @@ starts writing into a fresh empty directory inside the ephemeral dagr container 
 files vanish when it exits. There is no error — the copy succeeds, into nowhere. Keep the two
 straight.
 
-`cli.sh` creates `$HOST_MOUNT_ROOT`, bind-mounts it at `/mounts`, and removes it when dagr exits.
-This is why mount extraction can reuse the existing Docker-based exporter without copying files
-into the repository or trying to attach a new mount to an already-running dagr container.
+For `#mount`, dagr uses `docker create`, `docker cp`, and `docker rm`. The temporary container is
+never started, so its entrypoint and command do not run and the image needs no shell. The copied
+tree lives only inside dagr's temporary filesystem and is removed on disposal.
 
 ## Consequences
 

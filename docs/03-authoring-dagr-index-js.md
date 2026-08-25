@@ -74,10 +74,10 @@ be discovered.
 
 After building the image, dagr reads its configured final `WORKDIR`, copies that directory into
 private temporary storage, validates that no symlink escapes the copied root, and continues
-package discovery there. The final `WORKDIR` is required and cannot be `/`; this avoids treating
-the entire image filesystem, including the extraction bind mount itself, as a package tree. The
-mounted files never get written into the repository. As with `EXPORT`, the final image needs `sh`,
-`mkdir`, `cp`, and `dirname` for extraction; its normal entrypoint is overridden.
+package discovery there. The final `WORKDIR` is required and cannot be `/`; the entire image
+filesystem is not a package namespace. Dagr creates a stopped container, copies the workdir with
+`docker cp`, and removes the container. The image needs no shell or utilities, and neither its
+entrypoint nor its command runs. The mounted files never get written into the repository.
 
 For example, a mount at `packages/tools` whose final workdir contains `c/dagr.index.js` exposes
 `packages/tools//c#facet#target`. The `//` is a canonical image-boundary marker, not a filesystem

@@ -1,20 +1,20 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import { createMountMaterializer, validateSymlinks } from '#runner/mount-materializer.js'
 import type {
   DockerfileRenderer,
   DockerImageBuilder,
-  DockerImageExtractor,
+  DockerImageCopier,
   DockerImageInspector,
 } from '#wire.js'
 
 describe('createMountMaterializer', () => {
   it('builds the recipe and extracts the final WORKDIR contents', async () => {
     const mountRoot = await mkdtemp(join(tmpdir(), 'dagr-mounts-'))
-    const calls: Array<{ exportMap: Readonly<Record<string, string>>; destDir: string }> = []
+    const calls: Array<{ src: string; dest: string }> = []
     const renderer: DockerfileRenderer = { renderDockerfile: () => 'FROM tools\n' }
     const builder: DockerImageBuilder = {
       buildDockerImage: async (_content, tag, context, ignore) => {
@@ -27,11 +27,10 @@ describe('createMountMaterializer', () => {
     const inspector: DockerImageInspector = {
       inspectImageWorkdir: async () => '/dagr',
     }
-    const extractor: DockerImageExtractor = {
-      extractFromImage: async (_imageTag, exportMap, destDir) => {
-        calls.push({ exportMap, destDir })
-        const key = basename(Object.values(exportMap)[0]!.replace(/\/$/, ''))
-        await mkdir(join(mountRoot, key))
+    const copier: DockerImageCopier = {
+      copyFromImage: async (_imageTag, src, dest) => {
+        calls.push({ src, dest })
+        await mkdir(dest)
       },
     }
 
@@ -39,10 +38,9 @@ describe('createMountMaterializer', () => {
       const materializer = createMountMaterializer({
         renderer,
         builder,
-        extractor,
+        copier,
         inspector,
         mountRoot,
-        hostMountRoot: '/host/mounts',
       })
       const mounted = await materializer.materialize(
         { FROM: 'tools', steps: [], IGNORE: ['node_modules'] },
@@ -51,8 +49,7 @@ describe('createMountMaterializer', () => {
 
       assert.equal(mounted.identity, 'sha256:tools:/dagr')
       assert.equal(calls.length, 1)
-      assert.deepEqual(calls[0]?.exportMap, { '/dagr/': `${basename(mounted.root)}/` })
-      assert.equal(calls[0]?.destDir, '/host/mounts')
+      assert.deepEqual(calls[0], { src: '/dagr', dest: mounted.root })
     } finally {
       await rm(mountRoot, { recursive: true })
     }
@@ -60,18 +57,17 @@ describe('createMountMaterializer', () => {
 
   it('rejects an unset or root final WORKDIR', async () => {
     const mountRoot = await mkdtemp(join(tmpdir(), 'dagr-mounts-'))
-    let extracted = false
+    let copied = false
     const materializer = createMountMaterializer({
       renderer: { renderDockerfile: () => 'FROM tools\n' },
       builder: {
         buildDockerImage: async (_content, tag) => ({ tag, digest: 'sha256:tools' }),
       },
       inspector: { inspectImageWorkdir: async () => '/' },
-      extractor: {
-        extractFromImage: async () => { extracted = true },
+      copier: {
+        copyFromImage: async () => { copied = true },
       },
       mountRoot,
-      hostMountRoot: '/host/mounts',
     })
 
     try {
@@ -82,7 +78,7 @@ describe('createMountMaterializer', () => {
         ),
         /non-root final WORKDIR/,
       )
-      assert.equal(extracted, false)
+      assert.equal(copied, false)
     } finally {
       await rm(mountRoot, { recursive: true })
     }

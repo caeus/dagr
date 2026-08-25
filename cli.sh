@@ -5,8 +5,6 @@ set -e
 # directory can be renamed or vendored anywhere without editing this file.
 DAGR_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$DAGR_DIR/.." && pwd)"
-HOST_MOUNT_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/dagr-mounts.XXXXXX")"
-trap 'rm -rf -- "$HOST_MOUNT_ROOT"' EXIT HUP INT TERM
 
 # dagr runs inside an Alpine container, so it cannot see the real platform. Detect it here
 # and pass it in, normalised to the values Node and package.json use.
@@ -26,11 +24,9 @@ fi
 docker build -t dagr "$DAGR_DIR"
 docker run --rm \
   -v "$REPO_ROOT:/repo" \
-  -v "$HOST_MOUNT_ROOT:/mounts" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e HOST_REPO_ROOT="$REPO_ROOT" \
-  -e HOST_MOUNT_ROOT="$HOST_MOUNT_ROOT" \
-  -e MOUNT_ROOT=/mounts \
+  -e MOUNT_ROOT=/tmp/dagr-mounts \
   -e CLEAN_MOUNT_ROOT=1 \
   -e WORKING_DIR="${WORKING_DIR:-$REPO_ROOT}" \
   -e HOST_OS="$HOST_OS" \
