@@ -6,19 +6,21 @@ which is which saves time.
 ## Hardwired (you cannot change without editing dagr)
 
 - **The build file is named `dagr.index.js`.** `PACKAGE_FILE` in `src/pkg/loader.ts`.
-- **Only two places are scanned**: the repository root, and everything under `packages/`.
-  A package at `apps/web/dagr.index.js` is invisible.
-- **`packages/` must exist.** The loader unconditionally reads it; a repo without that
-  directory fails with `ENOENT`.
-- **The root `dagr.index.js` gets the package name `.`** — so its FQTs look like `.#ci#deploy`.
-- **Discovery stops at the first `dagr.index.js`.** The walker descends `packages/` recursively,
+- **`dagr list` scans two places**: the repository root and everything under `packages/`.
+  `dagr run apps/web:ci:build` still loads `apps/web/dagr.index.js` directly; it simply will not
+  appear in `dagr list` unless the scan convention is extended.
+- **`packages/` may be absent.** It is treated as an empty list source.
+- **The root `dagr.index.js` gets the package name `.`** — so its FQTs look like `.:ci:deploy`.
+- **List discovery stops at the first `dagr.index.js`.** The walker descends `packages/` recursively,
   but as soon as a directory contains a `dagr.index.js` it records that package and does **not**
   look inside it. Nested packages (`packages/group/sub/dagr.index.js` where
-  `packages/group/dagr.index.js` also exists) are unreachable. To group packages, leave the
+  `packages/group/dagr.index.js` also exists) do not appear in `dagr list`. They remain directly
+  addressable. To make grouped packages discoverable, leave the
   intermediate directory without a build file — `packages/group/a/dagr.index.js` and
   `packages/group/b/dagr.index.js` both work and are named by their full relative path.
-- **Imports are monorepo-root-relative and start with `/`.** Only files named
-  `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml` can be imported.
+- **Imports are source-root-relative and start with `/`.** Local modules use the host repository
+  root. Modules reached through `//` use the mounted root. Only files named `dagr.*.js`,
+  `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml` can be imported.
 - **The build context is the package's own directory** — always, with no option to widen or
   narrow it.
 
@@ -103,12 +105,12 @@ import versions from '/lib/dagr.versions.js'
 import { writeJson } from '/lib/dagr.file_utils.js'
 import { RECOMMENDED_IGNORE } from '/lib/dagr.dockerignore.js'
 
-const BASE = 'packages/base#ci#node-pnpm'
+const BASE = 'packages/base:ci:node-pnpm'
 const IGNORE = RECOMMENDED_IGNORE
 
 export function stack({ name, scope, version, deps = [] }) {
   const localDeps = deps.filter(d => 'local' in d)
-  const packTargets = localDeps.map(d => `packages/${d.local}#ci#pack`)
+  const packTargets = localDeps.map(d => `packages/${d.local}:ci:pack`)
 
   return {
     config: {
@@ -119,17 +121,17 @@ export function stack({ name, scope, version, deps = [] }) {
     },
     dev: {
       sync: {
-        deps: ['config#manifest'],
+        deps: ['config:manifest'],
         run: ({ images }) => ({
-          FROM: images['config#manifest'], steps: [], IGNORE,
+          FROM: images['config:manifest'], steps: [], IGNORE,
           EXPORT: { '/repo/package.json': 'package.json', '/repo/tsconfig.json': 'tsconfig.json' },
         }),
       },
     },
     ci: {
       install: {
-        deps: ['config#manifest', ...packTargets],
-        run: ({ images }) => ({ FROM: images['config#manifest'], steps: [ /* pnpmfile, install */ ], IGNORE }),
+        deps: ['config:manifest', ...packTargets],
+        run: ({ images }) => ({ FROM: images['config:manifest'], steps: [ /* pnpmfile, install */ ], IGNORE }),
       },
       build:     { deps: ['install'], run: ({ images }) => ({ FROM: images['install'], steps: [ /* … */ ], IGNORE }) },
       pack:      { deps: ['build'],   run: ({ images }) => ({ FROM: images['build'],   steps: [ /* … */ ], IGNORE }) },
@@ -155,19 +157,19 @@ export default stack({
 
 ### Why `config` is its own facet
 
-`config#manifest` exists so that exactly one target generates a package's manifests, and both
+`config:manifest` exists so that exactly one target generates a package's manifests, and both
 `ci` and `dev` consume them:
 
 ```
-config#manifest    package.json, tsconfig.json, … (cheap, no install)
-   ├── ci#install    + .pnpmfile.cjs + dep tarballs + pnpm install
-   └── dev#sync      EXPORT the manifests to the host
+config:manifest    package.json, tsconfig.json, … (cheap, no install)
+   ├── ci:install    + .pnpmfile.cjs + dep tarballs + pnpm install
+   └── dev:sync      EXPORT the manifests to the host
 ```
 
-Neither `ci` nor `dev` owns the manifest, so the two can't drift. `dev#sync` gets a
+Neither `ci` nor `dev` owns the manifest, so the two can't drift. `dev:sync` gets a
 host-usable manifest purely by *not* adding the container-only `.pnpmfile.cjs` step — the
 generated file already carries plain version ranges. Cross-facet deps like
-`deps: ['config#manifest']` resolve exactly like same-facet ones.
+`deps: ['config:manifest']` resolve exactly like same-facet ones.
 
 A useful convention inside these factories is tagging deps by kind — `{ remote: 'zod' }` for a
 registry package versus `{ local: 'common' }` for a sibling package — so the factory can turn
@@ -196,7 +198,7 @@ export default {
 }
 ```
 
-Then every install target uses `FROM: images['packages/base#ci#node-pnpm']`. One image, built
+Then every install target uses `FROM: images['packages/base:ci:node-pnpm']`. One image, built
 once, shared by the whole repo — and bumping the pnpm version invalidates exactly one layer.
 
 ## Depending on the local package manager inside a container
@@ -231,7 +233,7 @@ range keeps the manifest valid everywhere:
 Three things fall out of that choice. The consumer needs no knowledge of the sibling's version,
 so there's no cross-package coupling. The same manifest works in CI (where `.pnpmfile.cjs`
 redirects it to a tarball) and on a developer's host (where a real workspace root links the
-sibling), which is what lets a single `config#manifest` target serve both. And since there's no
+sibling), which is what lets a single `config:manifest` target serve both. And since there's no
 `workspace:` marker to key on, the pnpmfile matches on the package *name* instead:
 
 ```js

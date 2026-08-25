@@ -6,7 +6,7 @@ import type { InferValue } from "@optique/core/parser";
 import { message } from "@optique/core/message";
 import { run } from "@optique/run";
 import { resolve } from "node:path";
-import type { PackageDef } from "#pkg/schema.js";
+import type { PackageLoader } from "#pkg/loader.js";
 import { FQT, type Runner } from "#runner/index.js";
 import type { DockerImageExtractor } from "#runner/docker-extractor.js";
 const runCommand = command('run', object({
@@ -19,7 +19,7 @@ const runCommand = command('run', object({
   ),
   fqts: multiple(
     argument(string({ metavar: 'TARGET' }), {
-      description: message`A target as package#facet#target; the package, or package and facet, may be omitted and taken from the working directory.`,
+      description: message`A target as package:facet:target; the package, or package and facet, may be omitted and taken from the working directory.`,
     }),
     { min: 1 },
   ),
@@ -48,14 +48,16 @@ export interface Output {
 
 export class ListCommandRunner implements CommandRunner {
   constructor(
-    private readonly packages: ReadonlyMap<string, PackageDef>,
+    private readonly packageLoader: PackageLoader,
     private readonly output: Output,
   ) {}
 
   async execute(): Promise<void> {
     const graph = new Map<string, readonly string[]>();
+    const packages = await this.packageLoader.loadAllPackages();
 
-    for (const [packageName, facets] of this.packages) {
+    for (const [packageName, loaded] of packages) {
+      const facets = loaded.definition;
       for (const [facetName, targets] of Object.entries(facets)) {
         for (const [targetName, target] of Object.entries(targets)) {
           const fqt = new FQT(packageName, facetName, targetName);

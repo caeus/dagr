@@ -61,14 +61,14 @@ From anywhere inside the monorepo:
 dagr list
 ```
 
-This loads every `dagr.index.js` in the repo and prints the whole target graph in topological
-order. It builds nothing, so it is the safe way to confirm your setup and to check that a
-build file you just wrote actually parsed.
+This scans the root package and `packages/`, then prints the discovered target graph in
+topological order. It does not build targets, though it materializes any mounts needed for
+discovery. Use it to confirm your setup and check that a build file actually parsed.
 
 Then build something:
 
 ```sh
-dagr run packages/ui#ci#build
+dagr run packages/ui:ci:build
 ```
 
 ## Running from inside a package
@@ -78,7 +78,7 @@ segment of the target name:
 
 ```sh
 cd packages/ui
-dagr run ci#build      # same as: dagr run packages/ui#ci#build
+dagr run ci:build      # same as: dagr run packages/ui:ci:build
 ```
 
 The facet is never inferred — `dagr run build` fails. See

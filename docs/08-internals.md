@@ -62,18 +62,19 @@ argv ──► parseCmd ──► Cmd
          ▼                            ▼
   RunCommandRunner            ListCommandRunner
          │                            │
-   FQT.parse(cmd.fqt,           topological sort of
-     {pkg: currentPackage})     the loaded graph → stdout
+   FQT.parse(cmd.fqt,           packageLoader.loadAllPackages()
+     {pkg: currentPackage})     then topological sort → stdout
          │
          ▼
-  buildRunner(root, packages, deps, host)   ── memo: Map<string, Promise<TargetResult>>
+  buildRunner(packageLoader, deps, host)   ── memo: Map<string, Promise<TargetResult>>
          │
-         │  for each dep, recursively (Promise.all), with a cycle trace
+         ├─ packageLoader.loadPackage(fqt.pkg)
+         │  for each dep, load its package and recurse with Promise.all
          ▼
-  runTarget(fqt, target, depResults, root, deps, host)
+  runTarget(fqt, target, depResults, loaded.context, deps, host)
          │
-         ├─ tag       = fqt.toString() with # → -, / → _, leading non-alnum stripped
-         ├─ packageDir = join(root, fqt.pkg)
+         ├─ tag       = fqt.toString() with : → -, / → _, leading non-alnum stripped
+         ├─ packageDir = loaded.context
          ├─ images    = { <raw dep string>: <dep image tag> }
          ├─ runDef    = target.run({ images, host })
          ├─ content   = renderDockerfile(runDef)
@@ -93,35 +94,42 @@ exports" fall out of the structure rather than needing a flag.
 
 ## Loading
 
-`loadPackages(root, mountMaterializer)` creates a shared VM context and module cache. Each
-physical source tree gets a `LoadContext` whose `root` is that source's import root:
+`RepositoryPackageLoader` owns package, mount, index, and module caches for one invocation.
+`loadPackage(logicalPath)` resolves one exact path without scanning siblings.
+`loadAllPackages()` performs the conventional root and `packages/` scan used by `dagr list`.
 
-- `context` is a single `vm.createContext(Object.assign(Object.create(null), { Buffer }))`.
-- `cache` is a `Map<resolvedPath, vm.Module>` shared by every root-relative import in the repo.
+Each physical source tree gets a `LoadContext` containing:
 
-Then:
+- `vmContext`, the one VM context shared by the invocation.
+- `root`, the physical source root for `/` imports.
+- `logicalRoot`, the mount path that produced that source.
+- `trace`, the mount identities used for cycle detection.
+- `cache`, keyed by logical source root and resolved module path.
 
-1. `readdir(root)`. If a non-directory entry named `dagr.index.js` exists, load it as package `.`.
-2. `walk(root/packages)`. For each directory: if it contains a `dagr.index.js`, load it under
-   `relative(root, dir)` and **return without descending**. Otherwise recurse into all
-   subdirectories in parallel.
-3. Each marker becomes a `vm.SourceTextModule`. Its imports are resolved from the monorepo
-   root and restricted to `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, and `dagr.*.toml` files.
-   JavaScript imports become `vm.SourceTextModule`s. Parsed data imports become
-   `vm.SyntheticModule`s with a deep-frozen default export.
-4. The marker is linked, evaluated, and its `default` export run through `IndexDef.safeParse`.
-   A normal package is stored. A `#mount` is built, its final `WORKDIR` is extracted, and the
-   walk resumes after appending a `//` boundary to the logical package path, using the extracted
-   tree as the physical and import root.
-5. On success the parsed value is deep-frozen and stored. **On failure `null` is returned and
-   the package is skipped with no diagnostic.**
-6. Mount identities are `<image digest>:<final workdir>` and are threaded through the recursive
-   walk to detect mount cycles. Equivalent mount results share one extraction per invocation.
-7. The loader returns frozen `definitions` and `contexts` maps. The first maps logical package
-   IDs to definitions; the second maps the same IDs to their local or extracted physical build
-   contexts.
+Exact package resolution works as follows:
 
-That silent skip in step 5 is the single biggest ergonomic wart in dagr. See
+1. Split the logical package path on `//`.
+2. Resolve the first segment directly from the host repository root.
+3. Every non-final segment must contain a `/` index. Materialize it, append the boundary to
+   the logical root, and continue from the extracted final `WORKDIR`.
+4. Parse the final `dagr.index.js` as a normal package and return its definition plus physical
+   build context.
+5. Cache the promise by logical package path before awaiting it, so concurrent branches share
+   both successful loads and failures.
+
+Imports follow the same source-root model. `/lib/dagr.shared.js` stays within the importing
+module's source tree. `/tools//dagr.shared.js` materializes the mount at `tools`, then links the
+module with the mounted root as its new `/`. If that module imports `/c//dagr.next.js`, `c` is
+resolved inside the mounted tree. Each module carries its destination `LoadContext`, so nested
+imports never fall back to the original host root.
+
+Indexes and JavaScript imports are `vm.SourceTextModule`s. JSON, YAML, and TOML imports become
+`vm.SyntheticModule`s with deep-frozen default exports. An index's default export is parsed with
+`IndexDef.safeParse`; on schema failure the package is silently skipped. Mount identities are
+`<image digest>:<final workdir>` and are threaded through package and import resolution to detect
+cycles.
+
+That silent skip is the single biggest ergonomic wart in dagr. See
 [11 — Troubleshooting](11-troubleshooting.md#my-package-doesnt-show-up-in-dagr-list).
 
 ## `FQT`
@@ -131,13 +139,13 @@ A value class, not a string alias, so it is parsed once and passed around struct
 ```ts
 class FQT {
   constructor(readonly pkg: string, readonly facet: string, readonly target: string) {}
-  toString(): string          // `${pkg}#${facet}#${target}`
+  toString(): string          // `${pkg}:${facet}:${target}`
   toJSON(): string            // === toString(), so it serializes as a plain string
   static parse(raw: string, context?: { pkg: string; facet?: string }): FQT
 }
 ```
 
-`parse` splits on `#` and fills missing leading segments from `context`, throwing
+`parse` splits on `:` and fills missing leading segments from `context`, throwing
 `Package required...` or `Facet required...` when context is insufficient. `Runner` is
 `(fqt: FQT) => Promise<TargetResult>` — it takes the parsed object, never a string, so no layer
 re-parses what an earlier layer already parsed.
@@ -153,6 +161,9 @@ string. Because the *promise* is memoized rather than the result, two concurrent
 the same target share one in-flight build — the `memoizes` test asserts exactly one
 `buildDockerImage` call for two parallel `runner()` invocations.
 
+Before looking up each target, the runner asks `PackageLoader.loadPackage(fqt.pkg)`. A dependency
+in another package therefore extends the loaded graph only when recursion reaches it.
+
 Cycle detection uses an explicit `trace` array threaded through the recursion, so the error
 message contains the full path rather than just "cycle detected". The memo and the trace are
 independent: a diamond dependency hits the memo and is fine; a true cycle hits the trace and
@@ -162,18 +173,18 @@ throws.
 
 ```ts
 const tag = fqt.toString()
-  .replace(/#/g, '-')
+  .replace(/:/g, '-')
   .replace(/\//g, '_')
   .replace(/^[^a-zA-Z0-9]+/, '')
 ```
 
 | FQT | Tag |
 | --- | --- |
-| `packages/ui#ci#build` | `packages_ui-ci-build` |
-| `packages/base#ci#node-pnpm` | `packages_base-ci-node-pnpm` |
-| `.#ci#deploy` | `ci-deploy` |
+| `packages/ui:ci:build` | `packages_ui-ci-build` |
+| `packages/base:ci:node-pnpm` | `packages_base-ci-node-pnpm` |
+| `.:ci:deploy` | `ci-deploy` |
 
-The leading-character strip exists for the root package: `.#ci#deploy` would otherwise become
+The leading-character strip exists for the root package: `.:ci:deploy` would otherwise become
 `.-ci-deploy`, and Docker rejects a tag starting with `.`.
 
 Tags are **stable and unversioned**. Rebuilding a target overwrites the tag, and the previous
@@ -269,21 +280,20 @@ The bindings in `wire.ts`:
 | `processRunner` | child-process runner capturing both streams and feeding the reporter |
 | `dockerImageCopier` | stopped-container `docker cp` adapter |
 | `mountMaterializer` | mount builder, inspector, copier, and validator |
-| `packageLoader` | `{ loadPackages(root, mountMaterializer) }` |
-| `loadedPackages` | `packageLoader.loadPackages(root)` |
-| `packages` | `loadedPackages.definitions` |
-| `packageContexts` | `loadedPackages.contexts` |
+| `packageLoader` | `RepositoryPackageLoader(root, mountMaterializer)` |
 | `dockerfileRenderer` | `{ renderDockerfile }` |
 | `dockerImageBuilder` | `{ buildDockerImage }` |
 | `dockerImageExtractor` | `{ extractFromImage }` |
 | `hostPlatform` | `hostPlatform(env)` |
-| `runner` | `buildRunner(root, packages, deps, hostPlatform, packageContexts)` |
-| `listCommandRunner` | `ListCommandRunner(packages)` |
+| `runner` | `buildRunner(packageLoader, deps, hostPlatform)` |
+| `listCommandRunner` | `ListCommandRunner(packageLoader)` |
 | `runCommandRunner` | `RunCommandRunner(runner, extractor, root, currentPackage)` |
 | `commandRunner` | `CompositeCommandRunner(runCommandRunner, listCommandRunner)` |
 
-Both target build contexts and `EXPORT` destinations use `root`, the container-side repository
-path. `docker cp` is a CLI operation and writes through the existing `/repo` bind mount.
+Target build contexts come from `LoadedPackage.context`, which may be a local directory or an
+extracted mount. `EXPORT` destinations use the container-side repository root; direct exports from
+mounted package identities are rejected. `docker cp` writes through the existing `/repo` bind
+mount.
 
 ## Command dispatch
 

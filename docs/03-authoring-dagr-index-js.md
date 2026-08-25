@@ -29,13 +29,13 @@ FacetDef   = Record<string, TargetDef>
 TargetDef  = { deps: string[], run: (ctx: RunContext) => Run }
 RunContext = { images: Record<string, string>, host: HostPlatform }
 Run        = { FROM: string, steps: Step[], IGNORE: string[], EXPORT?: Record<string, string> }
-IndexDef   = PackageDef | { '#mount': MountDef }
+IndexDef   = PackageDef | { '/': MountDef }
 MountDef   = { FROM: string, steps: Step[], IGNORE: string[] }
 ```
 
 Facet and target names must match `[A-Za-z0-9][A-Za-z0-9._-]*`. The leading alphanumeric
 requirement prevents names from behaving like command options, hidden paths, or dagr directives.
-In particular, `#mount` cannot collide with a facet.
+In particular, `/` cannot collide with a facet.
 
 Notes on validation:
 
@@ -50,14 +50,14 @@ Notes on validation:
   see [`IGNORE`](#ignore) below.
 - Every `Step` object is `.strict()`: an unknown or misspelled key makes validation fail.
 
-## `#mount`
+## `/`
 
 A mount replaces the directory containing its `dagr.index.js` with the resulting image's final
 `WORKDIR`:
 
 ```js
 export default {
-  '#mount': {
+  '/': {
     FROM: 'ghcr.io/acme/dagr-tools:1',
     steps: [{ WORKDIR: '/dagr' }],
     IGNORE: [],
@@ -70,7 +70,7 @@ the same Dockerfile semantics as a target's returned run definition, but a mount
 build context because its directory is the namespace slot being replaced, not an input. A `COPY`
 without `from` therefore has nothing useful to copy. `IGNORE` remains required for structural
 consistency. The mount cannot depend on a target because it must be materialized before targets can
-be discovered.
+inside it can be loaded.
 
 After building the image, dagr reads its configured final `WORKDIR`, copies that directory into
 private temporary storage, validates that no symlink escapes the copied root, and continues
@@ -80,9 +80,13 @@ filesystem is not a package namespace. Dagr creates a stopped container, copies 
 entrypoint nor its command runs. The mounted files never get written into the repository.
 
 For example, a mount at `packages/tools` whose final workdir contains `c/dagr.index.js` exposes
-`packages/tools//c#facet#target`. The `//` is a canonical image-boundary marker, not a filesystem
+`packages/tools//c:facet:target`. The `//` is a canonical image-boundary marker, not a filesystem
 path normalization accident. A `dagr.index.js` at the workdir root exposes
-`packages/tools//#facet#target`. Nested mounts add one `//` at every boundary.
+`packages/tools//:facet:target`. Nested mounts add one `//` at every boundary.
+
+The same boundary syntax works in root-relative build-file imports. For example,
+`/packages/tools//dagr.shared.js` materializes the mount at `packages/tools` and imports the file
+from its final `WORKDIR`. Imports made by that module use the mounted tree as their `/` root.
 
 Targets discovered inside the mounted tree remain ordinary targets, including their `deps` and
 image recipes. They may be used as dependencies. If such a target declares `EXPORT` and is run
@@ -168,7 +172,7 @@ With `from`, `src` is an absolute path inside the referenced image and the conte
 involved:
 
 ```js
-{ COPY: { from: images['packages/common#ci#pack'], src: '/out/pkg.tgz', dest: '/repo/pkg.tgz' } }
+{ COPY: { from: images['packages/common:ci:pack'], src: '/out/pkg.tgz', dest: '/repo/pkg.tgz' } }
 ```
 
 ## Ordering gotcha: `WORKDIR` creates directories

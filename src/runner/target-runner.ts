@@ -10,7 +10,7 @@ export interface TargetRunnerDeps {
 }
 
 export async function runTarget(fqt: FQT, target: TargetDef, depResults: TargetResult[], packageDir: string, deps: TargetRunnerDeps, host: HostPlatform): Promise<TargetResult> {
-  const tag = fqt.toString().replace(/#/g, '-').replace(/\//g, '_').replace(/^[^a-zA-Z0-9]+/, '')
+  const tag = fqt.toString().replace(/:/g, '-').replace(/\//g, '_').replace(/^[^a-zA-Z0-9]+/, '')
 
   const images = Object.fromEntries(
     target.deps.map((dep, i) => [dep, depResults[i]!.imageTag])

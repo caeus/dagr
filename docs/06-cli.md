@@ -18,9 +18,9 @@ own `EXPORT` map if it has one. Requested targets run concurrently and share one
 cache, so a common dependency builds only once.
 
 ```sh
-dagr run packages/ui#ci#build
-dagr run ci#build          # package inferred from cwd
-dagr run packages/common#ci#test packages/ui#ci#test
+dagr run packages/ui:ci:build
+dagr run ci:build          # package inferred from cwd
+dagr run packages/common:ci:test packages/ui:ci:test
 ```
 
 The FQT may omit the package segment, which is then taken from your working directory. The
@@ -29,10 +29,11 @@ facet can never be omitted on the command line. See
 
 What happens, in order:
 
-1. Every `dagr.index.js` in the repo is loaded and validated.
+1. The requested target's package path is loaded directly. No repository scan happens.
 2. The target is looked up. Unknown target → `Error: Unknown target: <fqt>`.
-3. Dependencies are resolved recursively and built with `Promise.all`, so independent branches
-   are launched together. Each FQT is built at most once per invocation.
+3. Dependencies are resolved recursively. Each newly reached package is loaded on demand and
+   cached. Independent branches are built with `Promise.all`, so they are launched together.
+   Each FQT is built at most once per invocation.
 4. The target's own image is built. Docker output is captured line by line and kept as a
    bounded tail; it is only printed if the build fails or you passed `--verbose`.
 5. If the target declared `EXPORT`, a throwaway container copies each mapped path to the
@@ -41,12 +42,12 @@ What happens, in order:
 Each target reports itself as it goes, transitive dependencies included:
 
 ```
-  ▶ packages/base#ci#node-pnpm
-  ✓ packages/base#ci#node-pnpm  4.1s
-  ▶ packages/ui#ci#install
-  ✓ packages/ui#ci#install  12.7s
-  ▶ packages/ui#ci#build
-  ✗ packages/ui#ci#build  3.2s
+  ▶ packages/base:ci:node-pnpm
+  ✓ packages/base:ci:node-pnpm  4.1s
+  ▶ packages/ui:ci:install
+  ✓ packages/ui:ci:install  12.7s
+  ▶ packages/ui:ci:build
+  ✗ packages/ui:ci:build  3.2s
 ```
 
 Exit code is non-zero if any dependency's Docker build fails; the error propagates and no
@@ -68,7 +69,7 @@ most recent 100 lines of each. Those lines are normally invisible; they surface 
 compiler output you actually wanted:
 
 ```
-  ✗ packages/ui#ci#build  3.2s
+  ✗ packages/ui:ci:build  3.2s
 error: docker exited with code 1
   #8 3.001 src/app.ts(12,3): error TS2322: Type 'string' is not assignable to type 'number'.
   #8 ERROR: process "pnpm build" did not complete successfully
@@ -87,21 +88,21 @@ Nested errors print their `cause` chain indented beneath the message.
 
 ## `dagr list`
 
-Loads the whole repo and prints every target with its resolved dependencies, in topological
+Scans the whole repo and prints every target with its resolved dependencies, in topological
 order (dependencies before dependents). It does not build targets. Because mount contents define
-part of the graph, it does build and extract `#mount` images during loading.
+part of the graph, it does build and extract mount images during loading.
 
 ```
-packages/base#ci#node-pnpm[]
-packages/common#ci#install[packages/base#ci#node-pnpm]
-packages/common#ci#build[packages/common#ci#install]
-packages/common#ci#pack[packages/common#ci#build]
-packages/ui#ci#install[packages/common#ci#pack, packages/base#ci#node-pnpm]
-packages/ui#ci#build[packages/ui#ci#install]
-.#ci#deploy[packages/ui#ci#build]
+packages/base:ci:node-pnpm[]
+packages/common:ci:install[packages/base:ci:node-pnpm]
+packages/common:ci:build[packages/common:ci:install]
+packages/common:ci:pack[packages/common:ci:build]
+packages/ui:ci:install[packages/common:ci:pack, packages/base:ci:node-pnpm]
+packages/ui:ci:build[packages/ui:ci:install]
+.:ci:deploy[packages/ui:ci:build]
 ```
 
-Format is `package#facet#target[dep, dep, ...]`. Dependencies are printed **fully expanded**,
+Format is `package:facet:target[dep, dep, ...]`. Dependencies are printed **fully expanded**,
 so this is the way to confirm that a shorthand like `'install'` resolved to the package you
 expected.
 

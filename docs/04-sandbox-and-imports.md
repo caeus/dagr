@@ -48,8 +48,12 @@ Dagr imports must start with /, got: <specifier>
 
 The rules:
 
-- **Specifiers start with `/`.** The slash means monorepo root. Bare specifiers, relative paths,
-  URLs, and filesystem paths outside the monorepo are rejected.
+- **Specifiers start with `/`.** The slash means the physical source root containing the importing
+  module. For local modules that is the host repository; after a mount boundary it is the mounted
+  image's final `WORKDIR`. Bare specifiers, relative paths, URLs, and escapes are rejected.
+- **`//` crosses a mount.** `/tools//dagr.shared.js` loads the `/` declared at `tools` in the
+  current source root, then imports `dagr.shared.js` from the mounted root. Every additional `//`
+  crosses another mount.
 - **Filenames match `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml`.** The full
   filename and extension are required. There is no extension inference.
 - **JavaScript modules support named and default exports.** JSON, YAML, and TOML files expose
@@ -60,18 +64,22 @@ import versions from '/lib/dagr.versions.js'                   // default export
 import { writeJson, writeText } from '/lib/dagr.file_utils.js' // named exports
 import toolchain from '/config/dagr.toolchain.toml'             // parsed default export
 import { stack } from '/stacks/dagr.ts-lib.js'
+import mounted from '/tools//dagr.shared.js'
 ```
 
 Imported `dagr.*.js` files are ordinary modules. They can import other allowed root-relative
-modules and export constants, helper functions, or whole facet factories.
+modules and export constants, helper functions, or whole facet factories. The source root belongs
+to the imported module, not its original importer. Thus an import made by
+`/tools//dagr.shared.js` resolves `/c/dagr.util.js` inside the mounted `tools` tree.
 
 ## Caching and sharing
 
-One `dagr` invocation loads the entire repo in a single session with a **shared module cache
-keyed by resolved path**. Consequences worth knowing:
+One `dagr` invocation uses a single VM session and a **shared module cache keyed by logical source
+root and resolved path**. `dagr run` still loads packages on demand; sharing applies to whatever
+the invocation reaches. Consequences worth knowing:
 
-- An imported module or data file is loaded at most once per invocation, no matter how many
-  `dagr.index.js` files import it. JavaScript module-level state is therefore shared.
+- An imported module or data file is loaded at most once per logical source root per invocation.
+  JavaScript module-level state is therefore shared within that source.
 - All modules share one V8 context, so they share intrinsics. An object created in
   `lib/dagr.versions.js` is `instanceof Object` in `packages/ui/dagr.index.js`.
 

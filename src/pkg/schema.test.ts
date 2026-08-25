@@ -14,11 +14,10 @@ describe('Name', () => {
   it('rejects separators, shell syntax, whitespace, and unsafe leading characters', () => {
     for (const name of [
       '',
-      '#mount',
-      'ci#build',
+      '/',
+      'ci:build',
       'ci/build',
       'ci\\build',
-      'ci:build',
       'ci;build',
       'ci build',
       'ci\nbuild',
@@ -47,16 +46,16 @@ describe('IndexDef', () => {
   const mount = { FROM: 'alpine', steps: [], IGNORE: [] }
 
   it('accepts a mount as an alternative to a package', () => {
-    assert.deepEqual(IndexDef.parse({ '#mount': mount }), { '#mount': mount })
+    assert.deepEqual(IndexDef.parse({ '/': mount }), { '/': mount })
   })
 
   it('rejects facets alongside a mount', () => {
-    assert.equal(IndexDef.safeParse({ '#mount': mount, ci: { build: target } }).success, false)
+    assert.equal(IndexDef.safeParse({ '/': mount, ci: { build: target } }).success, false)
   })
 
   it('rejects EXPORT on a mount', () => {
     assert.equal(
-      IndexDef.safeParse({ '#mount': { ...mount, EXPORT: { '/out': 'out' } } }).success,
+      IndexDef.safeParse({ '/': { ...mount, EXPORT: { '/out': 'out' } } }).success,
       false,
     )
   })

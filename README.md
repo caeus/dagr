@@ -23,6 +23,10 @@ Build definitions are `dagr.index.js` files. They are plain ES modules evaluated
 `node:vm` sandbox, so they can use JavaScript, templates, loops, and shared helper modules without
 access to the filesystem, network, or host process.
 
+A build definition may instead declare `/`. dagr builds that mount image and exposes its final
+`WORKDIR` as a package source root. A `//` in a package address or build-file import crosses that
+mount boundary, for example `packages/tools//eslint:ci:pack`.
+
 There is no separate task cache, artifact store, or lockfile of build outputs. Docker images and
 layers provide those mechanics.
 
@@ -87,7 +91,7 @@ export default {
 Run the target:
 
 ```sh
-dagr run packages/greeter#ci#build
+dagr run packages/greeter:ci:build
 ```
 
 The first run builds the target. Later runs reuse every Docker layer unaffected by your changes.
@@ -95,9 +99,10 @@ Here, `EXPORT` makes the result available at `packages/greeter/dist`. Without `E
 image can remain an internal build input for downstream targets without writing anything to the
 host.
 
-Docker output stays hidden unless a build fails, in which case dagr prints the captured tail under
-the error. Pass `--verbose` to stream every line. Use `dagr list` to inspect the complete target
-graph without building targets, except for any mounts required to discover that graph.
+`dagr run` loads only packages reached by the requested targets and their dependencies. Docker
+output stays hidden unless a build fails, in which case dagr prints the captured tail under the
+error. Pass `--verbose` to stream every line. Use `dagr list` to scan and inspect the complete
+target graph without building targets, except for mounts required to discover that graph.
 
 ## Documentation
 
