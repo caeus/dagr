@@ -90,7 +90,7 @@ Nested errors print their `cause` chain indented beneath the message.
 
 Scans the whole repo and prints every target with its resolved dependencies, in topological
 order (dependencies before dependents). It does not build targets. Because mount contents define
-part of the graph, it does build and extract `:mount` images during loading.
+part of the graph, it does build and extract mount images during loading.
 
 ```
 packages/base:ci:node-pnpm[]

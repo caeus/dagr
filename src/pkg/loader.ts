@@ -115,7 +115,7 @@ async function loadIndex(filePath: string, ctx: LoadContext): Promise<IndexDef |
 }
 
 function isMountIndex(index: IndexDef): index is MountIndex {
-  return Object.hasOwn(index, ':mount')
+  return Object.hasOwn(index, '/')
 }
 
 export class RepositoryPackageLoader implements PackageLoader {
@@ -206,7 +206,7 @@ export class RepositoryPackageLoader implements PackageLoader {
       }
       if (!index || !isMountIndex(index)) return undefined
 
-      const mounted = await this.materialize(index[':mount'], declarationPath, trace)
+      const mounted = await this.materialize(index['/'], declarationPath, trace)
       sourceRoot = await realpath(mounted.root)
       logicalRoot = mountBoundary(declarationPath)
       trace = mounted.trace
@@ -233,7 +233,7 @@ export class RepositoryPackageLoader implements PackageLoader {
       if (!index || !isMountIndex(index))
         throw new Error(`Dagr import crosses a non-mount path: ${specifier}`)
 
-      const mounted = await this.materialize(index[':mount'], declarationPath, trace)
+      const mounted = await this.materialize(index['/'], declarationPath, trace)
       sourceRoot = await realpath(mounted.root)
       logicalRoot = mountBoundary(declarationPath)
       trace = mounted.trace
@@ -296,7 +296,7 @@ export class RepositoryPackageLoader implements PackageLoader {
   ): Promise<void> {
     const index = await this.indexAt(root, sourceRoot, sourceLogicalRoot, trace)
     if (index && isMountIndex(index)) {
-      const mounted = await this.materialize(index[':mount'], logicalRoot, trace)
+      const mounted = await this.materialize(index['/'], logicalRoot, trace)
       const mountedRoot = await realpath(mounted.root)
       await this.scanRepository(
         mountedRoot,
@@ -334,7 +334,7 @@ export class RepositoryPackageLoader implements PackageLoader {
   ): Promise<void> {
     const index = await this.indexAt(dir, sourceRoot, sourceLogicalRoot, trace)
     if (index && isMountIndex(index)) {
-      const mounted = await this.materialize(index[':mount'], logicalPath, trace)
+      const mounted = await this.materialize(index['/'], logicalPath, trace)
       const mountedRoot = await realpath(mounted.root)
       await this.walk(
         mountedRoot,

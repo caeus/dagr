@@ -103,7 +103,7 @@ export const MountDef = ImageRecipe;
 export interface MountDef extends z.infer<typeof MountDef> {}
 
 export const MountIndex = z
-  .object({ ":mount": MountDef })
+  .object({ "/": MountDef })
   .strict()
   .readonly();
 export interface MountIndex extends z.infer<typeof MountIndex> {}

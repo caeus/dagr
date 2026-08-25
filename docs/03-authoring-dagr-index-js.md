@@ -29,13 +29,13 @@ FacetDef   = Record<string, TargetDef>
 TargetDef  = { deps: string[], run: (ctx: RunContext) => Run }
 RunContext = { images: Record<string, string>, host: HostPlatform }
 Run        = { FROM: string, steps: Step[], IGNORE: string[], EXPORT?: Record<string, string> }
-IndexDef   = PackageDef | { ':mount': MountDef }
+IndexDef   = PackageDef | { '/': MountDef }
 MountDef   = { FROM: string, steps: Step[], IGNORE: string[] }
 ```
 
 Facet and target names must match `[A-Za-z0-9][A-Za-z0-9._-]*`. The leading alphanumeric
 requirement prevents names from behaving like command options, hidden paths, or dagr directives.
-In particular, `:mount` cannot collide with a facet.
+In particular, `/` cannot collide with a facet.
 
 Notes on validation:
 
@@ -50,14 +50,14 @@ Notes on validation:
   see [`IGNORE`](#ignore) below.
 - Every `Step` object is `.strict()`: an unknown or misspelled key makes validation fail.
 
-## `:mount`
+## `/`
 
 A mount replaces the directory containing its `dagr.index.js` with the resulting image's final
 `WORKDIR`:
 
 ```js
 export default {
-  ':mount': {
+  '/': {
     FROM: 'ghcr.io/acme/dagr-tools:1',
     steps: [{ WORKDIR: '/dagr' }],
     IGNORE: [],

@@ -51,7 +51,7 @@ The rules:
 - **Specifiers start with `/`.** The slash means the physical source root containing the importing
   module. For local modules that is the host repository; after a mount boundary it is the mounted
   image's final `WORKDIR`. Bare specifiers, relative paths, URLs, and escapes are rejected.
-- **`//` crosses a mount.** `/tools//dagr.shared.js` loads the `:mount` declared at `tools` in the
+- **`//` crosses a mount.** `/tools//dagr.shared.js` loads the `/` declared at `tools` in the
   current source root, then imports `dagr.shared.js` from the mounted root. Every additional `//`
   crosses another mount.
 - **Filenames match `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml`.** The full

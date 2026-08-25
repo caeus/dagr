@@ -15,7 +15,7 @@ Build files are `dagr.index.js` — plain ES modules evaluated inside a `node:vm
 can compute their contents with real JavaScript (loops, templates, shared helper modules)
 without being able to touch the filesystem, the network, or the host process.
 
-A build file may instead declare `:mount`: dagr builds that image and exposes its final `WORKDIR`
+A build file may instead declare `/`: dagr builds that image and exposes its final `WORKDIR`
 as a package source root. A `//` in the package address marks each image boundary, for example
 `packages/tools//eslint:ci:pack`.
 

@@ -110,7 +110,7 @@ Exact package resolution works as follows:
 
 1. Split the logical package path on `//`.
 2. Resolve the first segment directly from the host repository root.
-3. Every non-final segment must contain a `:mount` index. Materialize it, append the boundary to
+3. Every non-final segment must contain a `/` index. Materialize it, append the boundary to
    the logical root, and continue from the extracted final `WORKDIR`.
 4. Parse the final `dagr.index.js` as a normal package and return its definition plus physical
    build context.

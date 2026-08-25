@@ -52,7 +52,7 @@ image instead of declaring facets:
 ```js
 // packages/tools/dagr.index.js
 export default {
-  ':mount': {
+  '/': {
     FROM: 'ghcr.io/acme/dagr-tools:1',
     steps: [],
     IGNORE: [],
@@ -67,7 +67,7 @@ package address:
 packages/tools//c:ci:pack
 ```
 
-`:mount` is an alternate index kind, not a special facet. It cannot coexist with facets, has no
+`/` is an alternate index kind, not a special facet. It cannot coexist with facets, has no
 `deps`, and cannot declare `EXPORT`. A mount is built when a requested package path or import
 crosses its `//` boundary. Nested mounts work; cycles by resulting image identity are rejected.
 

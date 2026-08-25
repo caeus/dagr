@@ -51,7 +51,7 @@ describe('RepositoryPackageLoader', () => {
   it('materializes a mount once while loading packages below it on demand', async () => {
     const root = await fixture('', {
       'a/b/dagr.index.js': `
-        export default { ':mount': { FROM: 'tools', steps: [], IGNORE: [] } }
+        export default { '/': { FROM: 'tools', steps: [], IGNORE: [] } }
       `,
     })
     const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
@@ -152,7 +152,7 @@ describe('RepositoryPackageLoader', () => {
         }
       `,
       'b/dagr.index.js': `
-        export default { ':mount': { FROM: 'b', steps: [], IGNORE: [] } }
+        export default { '/': { FROM: 'b', steps: [], IGNORE: [] } }
       `,
     })
     const bRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-b-'))
@@ -163,7 +163,7 @@ describe('RepositoryPackageLoader', () => {
     `)
     await mkdir(join(bRoot, 'c'), { recursive: true })
     await writeFile(join(bRoot, 'c', 'dagr.index.js'), `
-      export default { ':mount': { FROM: 'c', steps: [], IGNORE: [] } }
+      export default { '/': { FROM: 'c', steps: [], IGNORE: [] } }
     `)
     await writeFile(join(cRoot, 'dagr.util2.js'), `export default 'nested-image'`)
     const calls: string[] = []
@@ -225,7 +225,7 @@ describe('RepositoryPackageLoader', () => {
     const root = await fixture('', {
       'packages/tools/dagr.index.js': `
         export default {
-          ':mount': { FROM: 'tools:latest', steps: [], IGNORE: [] }
+          '/': { FROM: 'tools:latest', steps: [], IGNORE: [] }
         }
       `,
     })
@@ -276,7 +276,7 @@ describe('RepositoryPackageLoader', () => {
     const root = await fixture('', {
       'packages/tools/dagr.index.js': `
         export default {
-          ':mount': { FROM: 'tools:latest', steps: [], IGNORE: [] }
+          '/': { FROM: 'tools:latest', steps: [], IGNORE: [] }
         }
       `,
     })
@@ -314,7 +314,7 @@ describe('RepositoryPackageLoader', () => {
   it('preserves every nested mount boundary in the package identity', async () => {
     const mountIndex = (image: string) => `
       export default {
-        ':mount': { FROM: '${image}', steps: [], IGNORE: [] }
+        '/': { FROM: '${image}', steps: [], IGNORE: [] }
       }
     `
     const root = await fixture('', {
@@ -357,7 +357,7 @@ describe('RepositoryPackageLoader', () => {
   it('detects recursive mounts by materialized image identity', async () => {
     const declaration = `
       export default {
-        ':mount': { FROM: 'recursive:latest', steps: [], IGNORE: [] }
+        '/': { FROM: 'recursive:latest', steps: [], IGNORE: [] }
       }
     `
     const root = await fixture('', { 'packages/loop/dagr.index.js': declaration })
