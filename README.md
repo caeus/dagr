@@ -23,7 +23,7 @@ The name compresses **DAG runner** into `dagr`.
 Run a target from the repository root:
 
 ```sh
-dagr run packages/ui:ci:build
+dagr run //packages/ui:ci:build
 ```
 
 This asks for the `build` target in the `ci` facet of `packages/ui`. dagr loads that target and its
@@ -40,7 +40,7 @@ dagr run ci:build
 Run several targets together:
 
 ```sh
-dagr run packages/ui:ci:lint packages/ui:ci:typecheck packages/ui:ci:test
+dagr run //packages/ui:ci:lint //packages/ui:ci:typecheck //packages/ui:ci:test
 ```
 
 Their shared dependencies are built once and independent branches are launched concurrently.

@@ -68,7 +68,7 @@ discovery. Use it to confirm your setup and check that a build file actually par
 Then build something:
 
 ```sh
-dagr run packages/ui:ci:build
+dagr run //packages/ui:ci:build
 ```
 
 ## Running from inside a package
@@ -78,7 +78,7 @@ segment of the target name:
 
 ```sh
 cd packages/ui
-dagr run ci:build      # same as: dagr run packages/ui:ci:build
+dagr run ci:build      # same as: dagr run //packages/ui:ci:build
 ```
 
 The facet is never inferred — `dagr run build` fails. See

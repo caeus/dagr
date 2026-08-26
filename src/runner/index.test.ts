@@ -8,11 +8,18 @@ import type { Reporter } from '#report/reporter.js'
 import type { LoadedPackage, PackageLoader } from '#pkg/loader.js'
 
 describe('FQT.parse', () => {
-  it('parses fully qualified package:facet:target', () => {
-    const fqt = FQT.parse('a:b:c')
+  it('parses fully qualified //package:facet:target', () => {
+    const fqt = FQT.parse('//a:b:c')
     assert.equal(fqt.pkg, 'a')
     assert.equal(fqt.facet, 'b')
     assert.equal(fqt.target, 'c')
+  })
+
+  it('parses the repository root package as //', () => {
+    const fqt = FQT.parse('//:ci:deploy')
+    assert.equal(fqt.pkg, '.')
+    assert.equal(fqt.facet, 'ci')
+    assert.equal(fqt.target, 'deploy')
   })
 
   it('parses facet:target using context package', () => {
@@ -30,13 +37,18 @@ describe('FQT.parse', () => {
     assert.throws(() => FQT.parse('c', { pkg: 'mod' }), /Facet required/)
   })
 
+  it('requires the repository-root marker on fully qualified targets', () => {
+    assert.throws(() => FQT.parse('a:b:c'), /must start with \/\//)
+  })
+
   it('rejects the old hash separator', () => {
     assert.throws(() => FQT.parse('a#b#c'), /Package required/)
     assert.throws(() => FQT.parse('b#c', { pkg: 'mod', facet: 'ci' }), /Invalid FQT/)
   })
 
-  it('toString returns package:facet:target', () => {
-    assert.equal(new FQT('a', 'b', 'c').toString(), 'a:b:c')
+  it('toString returns //package:facet:target', () => {
+    assert.equal(new FQT('a', 'b', 'c').toString(), '//a:b:c')
+    assert.equal(new FQT('.', 'b', 'c').toString(), '//:b:c')
   })
 
   it('toJSON equals toString', () => {
@@ -95,8 +107,8 @@ describe('buildRunner', () => {
 
   it('runs a target with no deps', async () => {
     const runner = buildRunner(packageLoader(makePackage()), stubDeps, stubHost)
-    const result = await runner(FQT.parse('pkg:ci:a'))
-    assert.equal(result.fqt.toString(), 'pkg:ci:a')
+    const result = await runner(FQT.parse('//pkg:ci:a'))
+    assert.equal(result.fqt.toString(), '//pkg:ci:a')
     assert.equal(result.imageTag, 'pkg-ci-a')
   })
 
@@ -114,7 +126,7 @@ describe('buildRunner', () => {
       },
     }, stubHost)
 
-    await runner(FQT.parse('pkg//tools:ci:a'))
+    await runner(FQT.parse('//pkg//tools:ci:a'))
     assert.equal(context, '/mounts/tools')
   })
 
@@ -125,7 +137,7 @@ describe('buildRunner', () => {
       buildDockerImage: async (_c, tag) => { calls++; return { tag, digest: `sha256:${tag}` } },
     }
     const runner = buildRunner(packageLoader(makePackage()), countingDeps, stubHost)
-    await Promise.all([runner(FQT.parse('pkg:ci:a')), runner(FQT.parse('pkg:ci:a'))])
+    await Promise.all([runner(FQT.parse('//pkg:ci:a')), runner(FQT.parse('//pkg:ci:a'))])
     assert.equal(calls, 1)
   })
 
@@ -136,7 +148,7 @@ describe('buildRunner', () => {
       buildDockerImage: async (_c, tag) => { order.push(tag); return { tag, digest: `sha256:${tag}` } },
     }
     const runner = buildRunner(packageLoader(makePackage()), orderDeps, stubHost)
-    await runner(FQT.parse('pkg:ci:b'))
+    await runner(FQT.parse('//pkg:ci:b'))
     assert.equal(order[0], 'pkg-ci-a')
     assert.equal(order[1], 'pkg-ci-b')
   })
@@ -147,9 +159,9 @@ describe('buildRunner', () => {
       ['a/b/c', {
         dev: {
           sync: {
-            deps: ['c/d/f:ci:pack'],
+            deps: ['//c/d/f:ci:pack'],
             run: ({ images }) => ({
-              FROM: images['c/d/f:ci:pack']!,
+              FROM: images['//c/d/f:ci:pack']!,
               steps: [],
               IGNORE: [],
             }),
@@ -167,7 +179,7 @@ describe('buildRunner', () => {
     ])
     const runner = buildRunner(packageLoader(packages, new Map(), calls), stubDeps, stubHost)
 
-    await runner(FQT.parse('a/b/c:dev:sync'))
+    await runner(FQT.parse('//a/b/c:dev:sync'))
 
     assert.deepEqual(calls, ['a/b/c', 'c/d/f'])
   })
@@ -181,7 +193,7 @@ describe('buildRunner', () => {
       }
     }]])
     const runner = buildRunner(packageLoader(packages), stubDeps, stubHost)
-    await runner(FQT.parse('pkg:ci:b'))
+    await runner(FQT.parse('//pkg:ci:b'))
     assert.deepEqual(receivedArgs, [{ images: { a: 'pkg-ci-a' }, host: stubHost }])
   })
 
@@ -196,13 +208,13 @@ describe('buildRunner', () => {
       },
     }, stubHost)
 
-    await runner(FQT.parse('pkg:ci:b'))
+    await runner(FQT.parse('//pkg:ci:b'))
 
     assert.deepEqual(events, [
-      'start pkg:ci:a',
-      'done pkg:ci:a',
-      'start pkg:ci:b',
-      'done pkg:ci:b',
+      'start //pkg:ci:a',
+      'done //pkg:ci:a',
+      'start //pkg:ci:b',
+      'done //pkg:ci:b',
     ])
   })
 
@@ -217,13 +229,13 @@ describe('buildRunner', () => {
       },
     }, stubHost)
 
-    await assert.rejects(runner(FQT.parse('pkg:ci:a')), /docker exploded/)
-    assert.deepEqual(events, ['failed pkg:ci:a'])
+    await assert.rejects(runner(FQT.parse('//pkg:ci:a')), /docker exploded/)
+    assert.deepEqual(events, ['failed //pkg:ci:a'])
   })
 
   it('throws on unknown target', async () => {
     const runner = buildRunner(packageLoader(makePackage()), stubDeps, stubHost)
-    await assert.rejects(() => runner(FQT.parse('pkg:ci:missing')), /Unknown target/)
+    await assert.rejects(() => runner(FQT.parse('//pkg:ci:missing')), /Unknown target/)
   })
 
   it('detects circular dependencies', async () => {
@@ -234,6 +246,6 @@ describe('buildRunner', () => {
       }
     }]])
     const runner = buildRunner(packageLoader(circular), stubDeps, stubHost)
-    await assert.rejects(() => runner(FQT.parse('pkg:ci:a')), /Circular dependency/)
+    await assert.rejects(() => runner(FQT.parse('//pkg:ci:a')), /Circular dependency/)
   })
 })

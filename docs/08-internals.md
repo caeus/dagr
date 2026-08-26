@@ -142,7 +142,7 @@ A value class, not a string alias, so it is parsed once and passed around struct
 ```ts
 class FQT {
   constructor(readonly pkg: string, readonly facet: string, readonly target: string) {}
-  toString(): string          // `${pkg}:${facet}:${target}`
+  toString(): string          // `//${pkg}:${facet}:${target}`
   toJSON(): string            // === toString(), so it serializes as a plain string
   static parse(raw: string, context?: { pkg: string; facet?: string }): FQT
 }
@@ -183,12 +183,12 @@ const tag = fqt.toString()
 
 | FQT | Tag |
 | --- | --- |
-| `packages/ui:ci:build` | `packages_ui-ci-build` |
-| `packages/base:ci:node-pnpm` | `packages_base-ci-node-pnpm` |
-| `.:ci:deploy` | `ci-deploy` |
+| `//packages/ui:ci:build` | `packages_ui-ci-build` |
+| `//packages/base:ci:node-pnpm` | `packages_base-ci-node-pnpm` |
+| `//:ci:deploy` | `ci-deploy` |
 
-The leading-character strip exists for the root package: `.:ci:deploy` would otherwise become
-`.-ci-deploy`, and Docker rejects a tag starting with `.`.
+The leading-character strip removes the root marker: `//:ci:deploy` becomes `ci-deploy` rather
+than a tag beginning with underscores.
 
 Tags are **stable and unversioned**. Rebuilding a target overwrites the tag, and the previous
 image becomes a dangling layer. `docker image prune` is your friend on a long-lived machine.

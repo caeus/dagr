@@ -99,10 +99,10 @@ describe('RepositoryPackageLoader', () => {
   it('loads root-relative dagr JavaScript, JSON, YAML, and TOML imports', async () => {
     const root = await fixture(
       `
-        import { base } from '/config/dagr.base.js'
-        import json from '/config/dagr.values.json'
-        import yaml from '/config/dagr.values.yaml'
-        import toml from '/config/dagr.values.toml'
+        import { base } from '//config/dagr.base.js'
+        import json from '//config/dagr.values.json'
+        import yaml from '//config/dagr.values.yaml'
+        import toml from '//config/dagr.values.toml'
 
         export default {
           ci: {
@@ -149,7 +149,7 @@ describe('RepositoryPackageLoader', () => {
     }
     const root = await fixture(
       `
-        import { yaml, toml, exports } from '/lib/dagr.formats.js'
+        import { yaml, toml, exports } from '//lib/dagr.formats.js'
 
         export default {
           ci: {
@@ -278,7 +278,7 @@ describe('RepositoryPackageLoader', () => {
   it('changes the import root after every mount boundary', async () => {
     const root = await fixture('', {
       'a/dagr.index.js': `
-        import image from '/b//dagr.util.js'
+        import image from '//b//dagr.util.js'
         export default {
           ci: {
             build: {
@@ -295,7 +295,7 @@ describe('RepositoryPackageLoader', () => {
     const bRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-b-'))
     const cRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-c-'))
     await writeFile(join(bRoot, 'dagr.util.js'), `
-      import image from '/c//dagr.util2.js'
+      import image from '//c//dagr.util2.js'
       export default image
     `)
     await mkdir(join(bRoot, 'c'), { recursive: true })
@@ -332,10 +332,10 @@ describe('RepositoryPackageLoader', () => {
   })
 
   for (const [name, specifier, message] of [
-    ['relative specifier', './dagr.helper.js', 'must start with /'],
-    ['unprefixed filename', '/config/helper.js', 'must target dagr.*.js'],
-    ['unlisted extension', '/config/dagr.helper.yml', 'must target dagr.*.js'],
-    ['root escape', '/../dagr.helper.js', 'Invalid Dagr import'],
+    ['relative specifier', './dagr.helper.js', 'must start with //'],
+    ['unprefixed filename', '//config/helper.js', 'must target dagr.*.js'],
+    ['unlisted extension', '//config/dagr.helper.yml', 'must target dagr.*.js'],
+    ['root escape', '//../dagr.helper.js', 'Invalid Dagr import'],
   ] as const) {
     it(`rejects a ${name}`, async () => {
       const root = await fixture(
@@ -374,7 +374,7 @@ describe('RepositoryPackageLoader', () => {
       export const encoded = stringify({ mounted: true })
     `)
     await writeFile(join(mountedRoot, 'c', 'dagr.index.js'), `
-      import { encoded, image } from '/dagr.shared.js'
+      import { encoded, image } from '//dagr.shared.js'
       export default {
         ci: {
           pack: {

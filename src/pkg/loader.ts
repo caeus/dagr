@@ -4,6 +4,7 @@ import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
 import { BUILTIN_PREFIX, createBuiltinModules } from '#pkg/builtins.js'
+import { ROOT_MARKER } from '#pkg/namespace.js'
 import { createSandboxContext } from '#pkg/sandbox.js'
 import { IndexDef, type MountDef, type MountIndex, type PackageDef } from '#pkg/schema.js'
 
@@ -225,10 +226,10 @@ export class RepositoryPackageLoader implements PackageLoader {
   }
 
   private async resolveImport(specifier: string, ctx: LoadContext): Promise<ResolvedImport> {
-    if (!specifier.startsWith('/') || specifier.startsWith('//'))
-      throw new Error(`Dagr imports must start with /, got: ${specifier}`)
+    if (!specifier.startsWith(ROOT_MARKER))
+      throw new Error(`Dagr imports must start with ${ROOT_MARKER}, got: ${specifier}`)
 
-    const parts = specifier.slice(1).split('//')
+    const parts = specifier.slice(ROOT_MARKER.length).split(ROOT_MARKER)
     let sourceRoot = ctx.root
     let logicalRoot = ctx.logicalRoot
     let trace = ctx.trace

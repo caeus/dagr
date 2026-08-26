@@ -19,7 +19,7 @@ const runCommand = command('run', object({
   ),
   fqts: multiple(
     argument(string({ metavar: 'TARGET' }), {
-      description: message`A target as package:facet:target; the package, or package and facet, may be omitted and taken from the working directory.`,
+      description: message`A target as //package:facet:target; the package, or package and facet, may be omitted and taken from the working directory.`,
     }),
     { min: 1 },
   ),

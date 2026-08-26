@@ -49,11 +49,11 @@ The distinction matters when you're hunting a problem: a package missing from `d
 `dagr.index.js`-shape failure, while a target that fails the moment you run it is a `run()`-output
 failure.
 
-## `Dagr imports must start with /, got: <specifier>`
+## `Dagr imports must start with //, got: <specifier>`
 
-You used a bare or relative import. Every import in a `dagr.*.js` file must start with `/` and be
+You used a bare or relative import. Every import in a `dagr.*.js` file must start with `//` and be
 root-relative, including imports between files in the same directory.
-`import { x } from './dagr.sibling.js'` must be `import { x } from '/stacks/dagr.sibling.js'`.
+`import { x } from './dagr.sibling.js'` must be `import { x } from '//stacks/dagr.sibling.js'`.
 
 ## `Unknown target: <fqt>`
 
@@ -63,7 +63,7 @@ mismatch. Common cases:
 
 - You omitted the package segment but were not standing in that package's directory.
 - You are at the repo root, where no package is inferred at all — fully qualify the FQT, and
-  remember the root package is named `.` (`dagr run .:ci:deploy`).
+  remember the root package is named `.` (`dagr run //:ci:deploy`).
 - The facet is not `ci` (nothing forces it to be).
 
 ## `Facet required when only target is provided: <name>`
