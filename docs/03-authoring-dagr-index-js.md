@@ -204,6 +204,22 @@ export function writeJson(path, value) {
 }
 ```
 
+YAML and TOML encoding are Dagr built-ins, so repositories do not need hand-written serializers
+or access to arbitrary packages:
+
+```js
+import { stringify as stringifyYaml } from 'dagr:yaml'
+import { stringify as stringifyToml } from 'dagr:toml'
+
+export function writeYaml(path, value) {
+  return writeText(path, stringifyYaml(value))
+}
+
+export function writeToml(path, value) {
+  return writeText(path, stringifyToml(value))
+}
+```
+
 Base64 is not decoration. A naive `printf '%s' '<content>'` breaks the moment the content
 contains a newline, a quote, or a `$`. Base64-encoding on the host and decoding in the
 container sidesteps shell quoting entirely. `Buffer` is injected into the sandbox specifically

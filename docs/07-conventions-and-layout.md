@@ -18,9 +18,10 @@ which is which saves time.
   addressable. To make grouped packages discoverable, leave the
   intermediate directory without a build file — `packages/group/a/dagr.index.js` and
   `packages/group/b/dagr.index.js` both work and are named by their full relative path.
-- **Imports are source-root-relative and start with `/`.** Local modules use the host repository
-  root. Modules reached through `//` use the mounted root. Only files named `dagr.*.js`,
-  `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml` can be imported.
+- **File imports are source-root-relative and start with `/`.** Local modules use the host
+  repository root. Modules reached through `//` use the mounted root. Only files named
+  `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml` can be imported. The only bare
+  specifiers are the `dagr:yaml` and `dagr:toml` built-ins.
 - **The build context is the package's own directory** — always, with no option to widen or
   narrow it.
 

@@ -3,6 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
+import { parse as parseToml } from 'smol-toml'
+import { parse as parseYaml } from 'yaml'
 import { RepositoryPackageLoader, type MountMaterializer } from '#pkg/loader.js'
 
 async function fixture(
@@ -138,6 +140,141 @@ describe('RepositoryPackageLoader', () => {
     }
   })
 
+  it('exposes YAML and TOML stringifiers as Dagr built-in modules', async () => {
+    const value = {
+      name: 'dagr',
+      nested: { enabled: true },
+      items: ['plain', 'two\nlines'],
+      empty: {},
+    }
+    const root = await fixture(
+      `
+        import { yaml, toml, exports } from '/lib/dagr.formats.js'
+
+        export default {
+          ci: {
+            build: {
+              deps: [],
+              run: () => ({
+                FROM: 'alpine',
+                steps: [{ ENV: { YAML: yaml, TOML: toml, EXPORTS: exports } }],
+                IGNORE: []
+              })
+            }
+          }
+        }
+      `,
+      {
+        'lib/dagr.formats.js': `
+          import * as YAML from 'dagr:yaml'
+          import * as TOML from 'dagr:toml'
+
+          const value = ${JSON.stringify(value)}
+          export const yaml = YAML.stringify(value)
+          export const toml = TOML.stringify(value)
+          export const exports = [Object.keys(YAML), Object.keys(TOML)].flat().join(',')
+        `,
+      },
+    )
+
+    try {
+      const loaded = await new RepositoryPackageLoader(root).loadPackage('.')
+      const run = loaded?.definition['ci']?.['build']?.run({
+        images: {},
+        host: { os: 'linux', arch: 'x64' },
+      })
+      const step = run?.steps[0]
+      assert.ok(step && 'ENV' in step)
+      const env = step.ENV
+
+      assert.deepEqual(parseYaml(env?.['YAML'] ?? ''), value)
+      assert.deepEqual(parseToml(env?.['TOML'] ?? ''), value)
+      assert.equal(env?.['EXPORTS'], 'stringify,stringify')
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  for (const [name, source, message] of [
+    [
+      'unknown Dagr built-in',
+      `import 'dagr:json'; export default {}`,
+      'Unknown Dagr built-in module: dagr:json',
+    ],
+    [
+      'unexposed built-in export',
+      `import { parse } from 'dagr:yaml'; export default parse`,
+      "does not provide an export named 'parse'",
+    ],
+  ] as const) {
+    it(`rejects an ${name}`, async () => {
+      const root = await fixture(source)
+      try {
+        await assert.rejects(
+          new RepositoryPackageLoader(root).loadPackage('.'),
+          new RegExp(message),
+        )
+      } finally {
+        await rm(root, { recursive: true })
+      }
+    })
+  }
+
+  it('withholds ambient Node capabilities and disables dynamic code generation', async () => {
+    const root = await fixture(`
+      const checks = {
+        date: typeof Date,
+        random: typeof Math.random,
+        intl: typeof Intl,
+        console: typeof console,
+        timers: typeof setTimeout,
+        fetch: typeof fetch,
+        process: typeof process,
+        require: typeof require,
+        dynamicCode: (() => {
+          try { Function('return 1')(); return 'allowed' }
+          catch (error) { return error.name }
+        })(),
+        json: JSON.stringify({ value: true }),
+        base64: Buffer.from('dagr').toString('base64'),
+      }
+
+      export default {
+        ci: {
+          build: {
+            deps: [],
+            run: () => ({ FROM: 'alpine', steps: [{ ENV: checks }], IGNORE: [] })
+          }
+        }
+      }
+    `)
+
+    try {
+      const loaded = await new RepositoryPackageLoader(root).loadPackage('.')
+      const run = loaded?.definition['ci']?.['build']?.run({
+        images: {},
+        host: { os: 'linux', arch: 'x64' },
+      })
+      const step = run?.steps[0]
+      assert.ok(step && 'ENV' in step)
+      assert.deepEqual({ ...step.ENV }, {
+        date: 'function',
+        random: 'function',
+        intl: 'object',
+        console: 'object',
+        timers: 'undefined',
+        fetch: 'undefined',
+        process: 'undefined',
+        require: 'undefined',
+        dynamicCode: 'EvalError',
+        json: '{"value":true}',
+        base64: 'ZGFncg==',
+      })
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
   it('changes the import root after every mount boundary', async () => {
     const root = await fixture('', {
       'a/dagr.index.js': `
@@ -231,14 +368,18 @@ describe('RepositoryPackageLoader', () => {
     })
     const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
     await mkdir(join(mountedRoot, 'c'), { recursive: true })
-    await writeFile(join(mountedRoot, 'dagr.shared.js'), `export const image = 'alpine'`)
+    await writeFile(join(mountedRoot, 'dagr.shared.js'), `
+      import { stringify } from 'dagr:yaml'
+      export const image = 'alpine'
+      export const encoded = stringify({ mounted: true })
+    `)
     await writeFile(join(mountedRoot, 'c', 'dagr.index.js'), `
-      import { image } from '/dagr.shared.js'
+      import { encoded, image } from '/dagr.shared.js'
       export default {
         ci: {
           pack: {
             deps: [],
-            run: () => ({ FROM: image, steps: [], IGNORE: [] })
+            run: () => ({ FROM: image, steps: [{ ENV: { ENCODED: encoded } }], IGNORE: [] })
           }
         }
       }
@@ -260,6 +401,9 @@ describe('RepositoryPackageLoader', () => {
       })
 
       assert.equal(run?.FROM, 'alpine')
+      const step = run?.steps[0]
+      assert.ok(step && 'ENV' in step)
+      assert.deepEqual(parseYaml(step.ENV['ENCODED'] ?? ''), { mounted: true })
       assert.equal(loaded?.context, join(mountedRoot, 'c'))
       assert.equal(packages.has('packages/tools/c'), false)
       assert.equal(calls.length, 1)

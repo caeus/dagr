@@ -1,52 +1,68 @@
-# The sandbox and root-relative imports
+# The sandbox and imports
 
 `dagr.index.js` and imported `dagr.*.js` files are evaluated with `vm.SourceTextModule` in a
 single fresh V8 context created once per load session. JSON, YAML, and TOML imports are parsed
-and exposed as synthetic modules in the same context. This is why the dagr image's entrypoint
-passes `--experimental-vm-modules` to Node.
+and exposed as synthetic modules in the same context. Dagr's built-in modules are synthetic
+modules too. This is why the dagr image's entrypoint passes `--experimental-vm-modules` to Node.
 
 ## What is available
 
-The context is created as:
-
-```ts
-vm.createContext(Object.assign(Object.create(null), { Buffer }))
-```
+The context starts with code generation from strings and WebAssembly disabled. It has standard
+JavaScript globals and one explicitly injected Node API, `Buffer`.
 
 **Available:**
 
-- All ECMAScript intrinsics — `Object`, `Array`, `JSON`, `Math`, `String`, `Map`, `Set`,
-  `Promise`, `Date`, template literals, spread, destructuring, classes, everything the
-  language gives you. A fresh V8 context has its own copy of the standard library.
-- `Buffer`, explicitly injected. It exists so build files can base64-encode generated file
-  contents (see
+- Standard JavaScript globals such as `Object`, `Array`, `JSON`, `Math`, `Date`, `Intl`, `String`,
+  `Map`, `Set`, and `Promise`.
+- Node's `Buffer`. It is injected for encoding generated file contents (see
   [03 — Authoring `dagr.index.js`](03-authoring-dagr-index-js.md#generating-file-contents)).
 - ES module syntax: `import`, `export`, `export default`, named and default both directions.
+- The `dagr:yaml` and `dagr:toml` built-in modules described below.
 
 **Not available:**
 
-- `console` — you cannot `console.log` to debug a build file. Use `dagr list` to check that a
-  package parsed, and if you need to inspect a computed value, arrange for it to end up in a
-  `RUN` step and read it out of the Docker build output.
-- `process`, `process.env` — no environment access. Configuration must come from allowed imports
+- `process`, `process.env`: no environment access. Configuration must come from allowed imports
   or literals in `dagr.*.js` files.
 - `require`, `module`, `__dirname`, `__filename`.
 - `fs`, `path`, `child_process`, or any other Node builtin. A build file cannot read the
   repository it describes.
 - `fetch`, `setTimeout`, `setInterval`, and the other host-provided globals.
+- `eval`, function-constructor code generation, and WebAssembly compilation.
 
-This is a real sandbox, not a convention. A malicious or buggy `dagr.index.js` can waste CPU and
-throw, but it cannot read your SSH keys or phone home.
+This reduces ambient authority. It does not make hostile JavaScript safe: Node explicitly does not
+treat `node:vm` as a security mechanism. Repository code remains trusted input to dagr.
+
+The sandbox also does not enforce determinism. `Date`, `Math.random`, mutable module state, and
+other ordinary JavaScript behavior remain possible. Build definitions and their `run` functions
+are expected to be pure by contract. Dagr avoids a global blacklist or home-grown intrinsic
+lockdown because neither can prove referential transparency and both would track a moving
+JavaScript runtime surface.
+
+## Dagr built-in modules
+
+Two runtime-provided modules encode ordinary JavaScript data without making serializer packages
+available to the sandbox:
+
+```js
+import { stringify as stringifyYaml } from 'dagr:yaml'
+import { stringify as stringifyToml } from 'dagr:toml'
+
+const yaml = stringifyYaml({ packages: ['packages/*'] })
+const toml = stringifyToml({ package: { private: true } })
+```
+
+Each module exposes exactly one named export, `stringify`. Dagr owns that small interface and uses
+its pinned `yaml` and `smol-toml` dependencies underneath. Unknown `dagr:` modules are rejected;
+the underlying parser and serializer APIs are not exposed.
 
 ## Import rules
 
-Only one import specifier form is allowed. Anything else throws:
+Two import specifier forms are allowed:
 
-```
-Dagr imports must start with /, got: <specifier>
-```
+- `dagr:yaml` and `dagr:toml` select runtime-provided built-ins.
+- A specifier beginning with `/` selects a file from the importing module's source root.
 
-The rules:
+Root-relative file imports follow these rules:
 
 - **Specifiers start with `/`.** The slash means the physical source root containing the importing
   module. For local modules that is the host repository; after a mount boundary it is the mounted
@@ -65,6 +81,7 @@ import { writeJson, writeText } from '/lib/dagr.file_utils.js' // named exports
 import toolchain from '/config/dagr.toolchain.toml'             // parsed default export
 import { stack } from '/stacks/dagr.ts-lib.js'
 import mounted from '/tools//dagr.shared.js'
+import { stringify as stringifyYaml } from 'dagr:yaml'
 ```
 
 Imported `dagr.*.js` files are ordinary modules. They can import other allowed root-relative
@@ -82,6 +99,8 @@ the invocation reaches. Consequences worth knowing:
   JavaScript module-level state is therefore shared within that source.
 - All modules share one V8 context, so they share intrinsics. An object created in
   `lib/dagr.versions.js` is `instanceof Object` in `packages/ui/dagr.index.js`.
+- Each Dagr built-in module is instantiated once for the invocation and shared by every source
+  root, including mounted roots.
 
 ## Immutability
 
