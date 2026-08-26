@@ -113,9 +113,8 @@ container:
 { RUN: `echo "${Buffer.from(content).toString('base64')}" | base64 -d > ${path}` }
 ```
 
-Newlines, quotes, `$`, and backticks all break naive `printf`/`echo` approaches. The sandbox's
-narrow `Buffer` facade supports this exact UTF-8-to-base64 conversion; it is not Node's full
-`Buffer` API.
+Newlines, quotes, `$`, and backticks all break naive `printf`/`echo` approaches. This is what
+`Buffer` is injected into the sandbox for.
 
 ## `EXPORT` produced nothing
 

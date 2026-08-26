@@ -106,11 +106,12 @@ need to know whether a target is up to date, that question is answered by Docker
 ## Determinism and the sandbox
 
 `dagr.index.js` files are evaluated in a `node:vm` context with no filesystem, no network, and
-no `process`, clock, random source, or locale state. Dynamic code generation is disabled and the
-remaining intrinsic graph is frozen. A build file can only compute from its own literals, imported
-data and helpers, and Dagr's YAML and TOML stringifiers. That is a constraint, and it is the point:
-each local index should be a pure function of its source. Mounted indexes additionally come from
-the selected image, so pin `FROM` by digest when the discovered graph must be reproducible.
+no `process`. Dynamic code generation is disabled. A build file can compute from its own literals,
+imported data and helpers, and Dagr's YAML and TOML stringifiers. Standard JavaScript globals such
+as `Date`, `Math.random`, and `Intl` remain available, so purity is a contract rather than something
+the sandbox can prove. Each local index should be a pure function of its source. Mounted indexes
+additionally come from the selected image, so pin `FROM` by digest when the discovered graph must
+be reproducible.
 
 See [04 — The sandbox and imports](04-sandbox-and-imports.md) for exactly what is and
 is not available inside a build file.

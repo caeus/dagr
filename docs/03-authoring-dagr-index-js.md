@@ -222,8 +222,8 @@ export function writeToml(path, value) {
 
 Base64 is not decoration. A naive `printf '%s' '<content>'` breaks the moment the content
 contains a newline, a quote, or a `$`. Base64-encoding on the host and decoding in the
-container sidesteps shell quoting entirely. The sandbox's narrow `Buffer` facade supports this
-specific UTF-8-to-base64 pattern without exposing Node's full mutable `Buffer` API.
+container sidesteps shell quoting entirely. `Buffer` is injected into the sandbox specifically
+so this pattern works.
 
 The tradeoff: any change to the file's contents invalidates that layer and everything after
 it. That is correct behaviour, and it is why config writes belong early in the step list,

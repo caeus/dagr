@@ -220,35 +220,23 @@ describe('RepositoryPackageLoader', () => {
     })
   }
 
-  it('removes nondeterministic globals and freezes the remaining intrinsics', async () => {
+  it('withholds ambient Node capabilities and disables dynamic code generation', async () => {
     const root = await fixture(`
-      let mathMutation = 'allowed'
-      try { Math.max = () => 0 } catch { mathMutation = 'rejected' }
-
       const checks = {
         date: typeof Date,
         random: typeof Math.random,
         intl: typeof Intl,
-        weakRef: typeof WeakRef,
-        finalizationRegistry: typeof FinalizationRegistry,
-        sharedArrayBuffer: typeof SharedArrayBuffer,
-        atomics: typeof Atomics,
-        webAssembly: typeof WebAssembly,
         console: typeof console,
         timers: typeof setTimeout,
+        fetch: typeof fetch,
         process: typeof process,
         require: typeof require,
         dynamicCode: (() => {
           try { Function('return 1')(); return 'allowed' }
           catch (error) { return error.name }
         })(),
-        mathMutation,
-        math: String(Math.max(2, 3)),
         json: JSON.stringify({ value: true }),
         base64: Buffer.from('dagr').toString('base64'),
-        unsafeBuffer: typeof Buffer.allocUnsafe,
-        globalFrozen: String(Object.isFrozen(globalThis)),
-        objectPrototypeFrozen: String(Object.isFrozen(Object.prototype)),
       }
 
       export default {
@@ -270,26 +258,17 @@ describe('RepositoryPackageLoader', () => {
       const step = run?.steps[0]
       assert.ok(step && 'ENV' in step)
       assert.deepEqual({ ...step.ENV }, {
-        date: 'undefined',
-        random: 'undefined',
-        intl: 'undefined',
-        weakRef: 'undefined',
-        finalizationRegistry: 'undefined',
-        sharedArrayBuffer: 'undefined',
-        atomics: 'undefined',
-        webAssembly: 'undefined',
-        console: 'undefined',
+        date: 'function',
+        random: 'function',
+        intl: 'object',
+        console: 'object',
         timers: 'undefined',
+        fetch: 'undefined',
         process: 'undefined',
         require: 'undefined',
         dynamicCode: 'EvalError',
-        mathMutation: 'rejected',
-        math: '3',
         json: '{"value":true}',
         base64: 'ZGFncg==',
-        unsafeBuffer: 'undefined',
-        globalFrozen: 'true',
-        objectPrototypeFrozen: 'true',
       })
     } finally {
       await rm(root, { recursive: true })

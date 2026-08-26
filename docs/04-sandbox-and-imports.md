@@ -7,28 +7,20 @@ modules too. This is why the dagr image's entrypoint passes `--experimental-vm-m
 
 ## What is available
 
-The context starts with code generation from strings and WebAssembly disabled. Dagr then removes
-ambient or nondeterministic globals and freezes the remaining global object and intrinsic graph.
+The context starts with code generation from strings and WebAssembly disabled. It has standard
+JavaScript globals and one explicitly injected Node API, `Buffer`.
 
 **Available:**
 
-- Deterministic ES2022 intrinsics such as `Object`, `Array`, `JSON`, `Math`, `String`, `Map`,
-  `Set`, and `Promise`. Their objects and prototypes are frozen so one build module cannot alter
-  the language seen by another.
-- `Math`, except for `Math.random`.
-- A narrow `Buffer` compatibility facade supporting
-  `Buffer.from(utf8String).toString('base64')`. No allocation or unsafe-memory APIs are exposed.
-  It exists for generated file contents (see
+- Standard JavaScript globals such as `Object`, `Array`, `JSON`, `Math`, `Date`, `Intl`, `String`,
+  `Map`, `Set`, and `Promise`.
+- Node's `Buffer`. It is injected for encoding generated file contents (see
   [03 — Authoring `dagr.index.js`](03-authoring-dagr-index-js.md#generating-file-contents)).
 - ES module syntax: `import`, `export`, `export default`, named and default both directions.
 - The `dagr:yaml` and `dagr:toml` built-in modules described below.
 
 **Not available:**
 
-- Time, randomness, and host-locale state: `Date`, `Math.random`, and `Intl`.
-- `console`: you cannot `console.log` to debug a build file. Use `dagr list` to check that a
-  package parsed, and if you need to inspect a computed value, arrange for it to end up in a
-  `RUN` step and read it out of the Docker build output.
 - `process`, `process.env`: no environment access. Configuration must come from allowed imports
   or literals in `dagr.*.js` files.
 - `require`, `module`, `__dirname`, `__filename`.
@@ -36,12 +28,15 @@ ambient or nondeterministic globals and freezes the remaining global object and 
   repository it describes.
 - `fetch`, `setTimeout`, `setInterval`, and the other host-provided globals.
 - `eval`, function-constructor code generation, and WebAssembly compilation.
-- GC and shared-memory observation through `WeakRef`, `FinalizationRegistry`, `SharedArrayBuffer`,
-  or `Atomics`.
 
-This reduces ambient authority and makes accidental machine-dependent build definitions harder to
-write. It does not make hostile JavaScript safe: Node explicitly does not treat `node:vm` as a
-security mechanism. Repository code remains trusted input to dagr.
+This reduces ambient authority. It does not make hostile JavaScript safe: Node explicitly does not
+treat `node:vm` as a security mechanism. Repository code remains trusted input to dagr.
+
+The sandbox also does not enforce determinism. `Date`, `Math.random`, mutable module state, and
+other ordinary JavaScript behavior remain possible. Build definitions and their `run` functions
+are expected to be pure by contract. Dagr avoids a global blacklist or home-grown intrinsic
+lockdown because neither can prove referential transparency and both would track a moving
+JavaScript runtime surface.
 
 ## Dagr built-in modules
 
