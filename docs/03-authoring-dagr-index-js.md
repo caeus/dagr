@@ -208,15 +208,15 @@ YAML and TOML encoding are Dagr built-ins, so repositories do not need hand-writ
 or access to arbitrary packages:
 
 ```js
-import { stringify as stringifyYaml } from 'dagr:yaml'
-import { stringify as stringifyToml } from 'dagr:toml'
+import YAML from 'dagr:yaml'
+import TOML from 'dagr:toml'
 
 export function writeYaml(path, value) {
-  return writeText(path, stringifyYaml(value))
+  return writeText(path, YAML.stringify(value))
 }
 
 export function writeToml(path, value) {
-  return writeText(path, stringifyToml(value))
+  return writeText(path, TOML.stringify(value))
 }
 ```
 

@@ -18,11 +18,22 @@ export function createBuiltinModules(context: vm.Context): ReadonlyMap<string, v
     implementation: (value: unknown) => string,
   ): readonly [string, vm.Module] {
     const stringify = createSandboxStringifier(context, implementation)
+    const namespace = vm.compileFunction(
+      'return Object.freeze({ stringify })',
+      [],
+      {
+        parsingContext: context,
+        contextExtensions: [{ stringify }],
+      },
+    )()
     return [
       specifier,
       new vm.SyntheticModule(
-        ['stringify'],
-        function () { this.setExport('stringify', stringify) },
+        ['default', 'stringify'],
+        function () {
+          this.setExport('default', namespace)
+          this.setExport('stringify', stringify)
+        },
         { context, identifier: specifier },
       ),
     ]

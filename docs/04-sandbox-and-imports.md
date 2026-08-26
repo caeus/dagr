@@ -44,16 +44,17 @@ Two runtime-provided modules encode ordinary JavaScript data without making seri
 available to the sandbox:
 
 ```js
-import { stringify as stringifyYaml } from 'dagr:yaml'
-import { stringify as stringifyToml } from 'dagr:toml'
+import YAML from 'dagr:yaml'
+import TOML from 'dagr:toml'
 
-const yaml = stringifyYaml({ packages: ['packages/*'] })
-const toml = stringifyToml({ package: { private: true } })
+const yaml = YAML.stringify({ packages: ['packages/*'] })
+const toml = TOML.stringify({ package: { private: true } })
 ```
 
-Each module exposes exactly one named export, `stringify`. Dagr owns that small interface and uses
-its pinned `yaml` and `smol-toml` dependencies underneath. Unknown `dagr:` modules are rejected;
-the underlying parser and serializer APIs are not exposed.
+Each module's default export is a namespace containing `stringify`. The same function is also
+available as a named export for `import { stringify } from 'dagr:yaml'`. Dagr owns that small
+interface and uses its pinned `yaml` and `smol-toml` dependencies underneath. Unknown `dagr:`
+modules are rejected; the underlying parser and serializer APIs are not exposed.
 
 ## Import rules
 
@@ -81,7 +82,7 @@ import { writeJson, writeText } from '/lib/dagr.file_utils.js' // named exports
 import toolchain from '/config/dagr.toolchain.toml'             // parsed default export
 import { stack } from '/stacks/dagr.ts-lib.js'
 import mounted from '/tools//dagr.shared.js'
-import { stringify as stringifyYaml } from 'dagr:yaml'
+import YAML from 'dagr:yaml'
 ```
 
 Imported `dagr.*.js` files are ordinary modules. They can import other allowed root-relative
