@@ -20,7 +20,7 @@ without being able to touch the filesystem, the network, or the host process.
 | [01 — Getting started](01-getting-started.md) | Install the `dagr` launcher, prerequisites, first run |
 | [02 — Concepts](02-concepts.md) | Packages, facets, targets, FQTs, images-as-artifacts |
 | [03 — Authoring `dagr.index.js`](03-authoring-dagr-index-js.md) | The full schema and every `Step` kind |
-| [04 — The sandbox and `/` imports](04-sandbox-and-imports.md) | What your build files can and cannot do |
+| [04 — The sandbox and imports](04-sandbox-and-imports.md) | Globals, Dagr built-ins, and root-relative files |
 | [05 — Dependencies and `EXPORT`](05-deps-and-exports.md) | Dep shorthands, the `deps` map, getting files onto the host |
 | [06 — CLI reference](06-cli.md) | `dagr run`, `dagr list`, environment variables |
 | [07 — Conventions and layout](07-conventions-and-layout.md) | What dagr hardwires; recommended repo shape |

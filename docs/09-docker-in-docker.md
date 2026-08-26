@@ -72,9 +72,9 @@ docker images | grep packages_
 
 **The socket is root-equivalent.** Anything that can reach `/var/run/docker.sock` can start a
 privileged container and own the host. dagr therefore never lets `dagr.index.js` files reach
-that socket — build files are sandboxed with no `child_process` and no `fs`, and the only thing
-they can influence is the text of a Dockerfile. That sandbox is load-bearing for security, not
-just for determinism.
+that socket: build files receive no `child_process`, `fs`, process, network, or timer capability.
+The reduced VM context prevents accidental ambient access, but `node:vm` is not a security
+boundary and repository code remains trusted input.
 
 **Build contexts must live under the mounted repo.** Since only `$REPO_ROOT` is mounted at
 `/repo`, a target cannot reference anything outside the repository. Combined with the

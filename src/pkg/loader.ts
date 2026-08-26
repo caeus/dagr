@@ -3,6 +3,8 @@ import { readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
+import { BUILTIN_PREFIX, createBuiltinModules } from '#pkg/builtins.js'
+import { createSandboxContext } from '#pkg/sandbox.js'
 import { IndexDef, type MountDef, type MountIndex, type PackageDef } from '#pkg/schema.js'
 
 const PACKAGE_FILE = 'dagr.index.js'
@@ -45,6 +47,7 @@ interface LoadContext {
   readonly logicalRoot: string
   readonly trace: readonly MountTrace[]
   readonly vmContext: vm.Context
+  readonly builtins: ReadonlyMap<string, vm.Module>
   readonly cache: Map<string, vm.Module>
   readonly resolveImport: (specifier: string, context: LoadContext) => Promise<ResolvedImport>
 }
@@ -73,6 +76,11 @@ function parseData(path: string, source: string): unknown {
 }
 
 async function link(specifier: string, ctx: LoadContext): Promise<vm.Module> {
+  const builtin = ctx.builtins.get(specifier)
+  if (builtin) return builtin
+  if (specifier.startsWith(BUILTIN_PREFIX))
+    throw new Error(`Unknown Dagr built-in module: ${specifier}`)
+
   const resolved = await ctx.resolveImport(specifier, ctx)
   const { path } = resolved
   const key = `${resolved.context.logicalRoot}\0${path}`
@@ -120,7 +128,8 @@ function isMountIndex(index: IndexDef): index is MountIndex {
 
 export class RepositoryPackageLoader implements PackageLoader {
   private readonly canonicalRoot: Promise<string>
-  private readonly vmContext = vm.createContext(Object.assign(Object.create(null), { Buffer }))
+  private readonly vmContext = createSandboxContext()
+  private readonly builtins = createBuiltinModules(this.vmContext)
   private readonly moduleCache = new Map<string, vm.Module>()
   private readonly indexCache = new Map<string, Promise<IndexDef | null>>()
   private readonly packageCache = new Map<string, Promise<LoadedPackage | undefined>>()
@@ -159,6 +168,7 @@ export class RepositoryPackageLoader implements PackageLoader {
       logicalRoot,
       trace,
       vmContext: this.vmContext,
+      builtins: this.builtins,
       cache: this.moduleCache,
       resolveImport: (specifier, context) => this.resolveImport(specifier, context),
     }

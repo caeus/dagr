@@ -189,7 +189,9 @@ intermediate artifacts across the working tree.
 
 Build definitions are evaluated in a `node:vm` sandbox. They can use JavaScript, loops, templates,
 and imported `dagr.*.js` modules, but cannot read the filesystem, access the network, or inspect the
-host process. The graph is calculated from committed source rather than ambient machine state.
+host process. Time, randomness, locale state, and dynamic code generation are unavailable, while
+native `dagr:yaml` and `dagr:toml` modules encode structured values. The graph is calculated from
+committed source rather than ambient machine state.
 
 `dagr run` loads only packages reached by the requested targets and their dependencies. Docker
 output stays quiet unless a build fails; pass `--verbose` to stream it. `dagr list` loads the

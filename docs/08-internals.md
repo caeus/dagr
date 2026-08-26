@@ -124,7 +124,10 @@ resolved inside the mounted tree. Each module carries its destination `LoadConte
 imports never fall back to the original host root.
 
 Indexes and JavaScript imports are `vm.SourceTextModule`s. JSON, YAML, and TOML imports become
-`vm.SyntheticModule`s with deep-frozen default exports. An index's default export is parsed with
+`vm.SyntheticModule`s with deep-frozen default exports. `dagr:yaml` and `dagr:toml` are synthetic
+modules exposing context-native wrappers around the runner's pinned serializers. The shared VM
+context removes nondeterministic globals, disables dynamic code generation, and freezes its
+remaining intrinsic graph before repository code runs. An index's default export is parsed with
 `IndexDef.safeParse`; on schema failure the package is silently skipped. Mount identities are
 `<image digest>:<final workdir>` and are threaded through package and import resolution to detect
 cycles.
