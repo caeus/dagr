@@ -16,7 +16,8 @@ package             a directory containing a dagr.index.js
   `[A-Za-z0-9][A-Za-z0-9._-]*`.
 - **Target** — a `{ deps, run }` pair. One target produces one image.
 - **FQT** (fully-qualified target) — the address of a target, written
-  `package:facet:target`, e.g. `packages/ui:ci:build`.
+  `//package:facet:target`, e.g. `//packages/ui:ci:build`. The leading `//` anchors the
+  address at the repository namespace root, just as it does for build-file imports.
 
 ## Images are the artifacts
 
@@ -64,7 +65,7 @@ If that image's final `WORKDIR` contains `c/dagr.index.js`, `//` marks the image
 package address:
 
 ```text
-packages/tools//c:ci:pack
+//packages/tools//c:ci:pack
 ```
 
 `/` is an alternate index kind, not a special facet. It cannot coexist with facets, has no
@@ -73,15 +74,15 @@ crosses its `//` boundary. Nested mounts work; cycles by resulting image identit
 
 The boundary marker is part of the package identity. `packages/tools/c` never crosses a mount,
 while `packages/tools//c` crosses the mount declared at `packages/tools`. A package at the mounted
-WORKDIR root is `packages/tools//:facet:target`; nested mounts add another `//`.
+WORKDIR root is `//packages/tools//:facet:target`; nested mounts add another `//`.
 
 Mounted targets can be depended on and produce images normally. Running one directly with an
 `EXPORT` is rejected: a host filesystem collapses `//` to `/`, so there is no safe, unambiguous
 package directory to receive the files.
 
 Mounted trees are private temporary inputs. They do not modify the repository and disappear when
-the dagr invocation exits. Absolute `/dagr.*` imports resolve from the source root containing the
-importing module. An import may cross a mount explicitly, such as `/tools//dagr.shared.js`; nested
+the dagr invocation exits. Absolute `//dagr.*` imports resolve from the source root containing the
+importing module. An import may cross a mount explicitly, such as `//tools//dagr.shared.js`; nested
 imports then resolve from the mounted tree, not from the host repository.
 
 ## Caching

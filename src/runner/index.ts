@@ -1,4 +1,5 @@
 import type { PackageLoader } from '#pkg/loader.js'
+import { ROOT_MARKER } from '#pkg/namespace.js'
 import { Name, type HostPlatform } from '#pkg/schema.js'
 import { runTarget, type TargetRunnerDeps } from '#runner/target-runner.js'
 
@@ -10,7 +11,8 @@ export class FQT {
   ) {}
 
   toString(): string {
-    return `${this.pkg}:${this.facet}:${this.target}`
+    const pkg = this.pkg === '.' ? '' : this.pkg
+    return `${ROOT_MARKER}${pkg}:${this.facet}:${this.target}`
   }
 
   toJSON(): string {
@@ -19,8 +21,16 @@ export class FQT {
 
   static parse(raw: string, context?: { pkg: string; facet?: string }): FQT {
     const parts = raw.split(':')
-    if (parts.length === 3)
-      return new FQT(required(parts[0], raw), name(parts[1], raw), name(parts[2], raw))
+    if (parts.length === 3) {
+      const pkg = parts[0]
+      if (!pkg?.startsWith(ROOT_MARKER))
+        throw new Error(`Fully qualified targets must start with ${ROOT_MARKER}: ${raw}`)
+      return new FQT(
+        pkg === ROOT_MARKER ? '.' : required(pkg.slice(ROOT_MARKER.length), raw),
+        name(parts[1], raw),
+        name(parts[2], raw),
+      )
+    }
     if (parts.length === 2) {
       if (!context?.pkg) throw new Error(`Package required when only facet:target is provided: ${raw}`)
       return new FQT(context.pkg, name(parts[0], raw), name(parts[1], raw))

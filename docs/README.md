@@ -53,7 +53,7 @@ export default {
 ```
 
 ```sh
-dagr run packages/greeter:ci:build
+dagr run //packages/greeter:ci:build
 ```
 
 That builds an image tagged `packages_greeter-ci-build` and copies the image's `/out`

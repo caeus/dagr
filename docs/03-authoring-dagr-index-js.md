@@ -80,13 +80,13 @@ filesystem is not a package namespace. Dagr creates a stopped container, copies 
 entrypoint nor its command runs. The mounted files never get written into the repository.
 
 For example, a mount at `packages/tools` whose final workdir contains `c/dagr.index.js` exposes
-`packages/tools//c:facet:target`. The `//` is a canonical image-boundary marker, not a filesystem
+`//packages/tools//c:facet:target`. The `//` is a canonical image-boundary marker, not a filesystem
 path normalization accident. A `dagr.index.js` at the workdir root exposes
-`packages/tools//:facet:target`. Nested mounts add one `//` at every boundary.
+`//packages/tools//:facet:target`. Nested mounts add one `//` at every boundary.
 
 The same boundary syntax works in root-relative build-file imports. For example,
-`/packages/tools//dagr.shared.js` materializes the mount at `packages/tools` and imports the file
-from its final `WORKDIR`. Imports made by that module use the mounted tree as their `/` root.
+`//packages/tools//dagr.shared.js` materializes the mount at `packages/tools` and imports the file
+from its final `WORKDIR`. Imports made by that module use the mounted tree as their `//` root.
 
 Targets discovered inside the mounted tree remain ordinary targets, including their `deps` and
 image recipes. They may be used as dependencies. If such a target declares `EXPORT` and is run
@@ -159,7 +159,7 @@ export const RECOMMENDED_IGNORE = ['node_modules', '.git']
 ```
 
 ```js
-import { RECOMMENDED_IGNORE } from '/lib/dagr.dockerignore.js'
+import { RECOMMENDED_IGNORE } from '//lib/dagr.dockerignore.js'
 
 run: () => ({ FROM: '…', steps: [ … ], IGNORE: RECOMMENDED_IGNORE })
 ```
@@ -172,7 +172,7 @@ With `from`, `src` is an absolute path inside the referenced image and the conte
 involved:
 
 ```js
-{ COPY: { from: images['packages/common:ci:pack'], src: '/out/pkg.tgz', dest: '/repo/pkg.tgz' } }
+{ COPY: { from: images['//packages/common:ci:pack'], src: '/out/pkg.tgz', dest: '/repo/pkg.tgz' } }
 ```
 
 ## Ordering gotcha: `WORKDIR` creates directories
@@ -232,9 +232,9 @@ before the expensive install.
 ## A worked example
 
 ```js
-import { PNPM_VERSION } from '/lib/dagr.versions.js'
-import { writeJson, writeText } from '/lib/dagr.file_utils.js'
-import { RECOMMENDED_IGNORE } from '/lib/dagr.dockerignore.js'
+import { PNPM_VERSION } from '//lib/dagr.versions.js'
+import { writeJson, writeText } from '//lib/dagr.file_utils.js'
+import { RECOMMENDED_IGNORE } from '//lib/dagr.dockerignore.js'
 
 const TSCONFIG = {
   extends: '@tsconfig/strictest/tsconfig.json',

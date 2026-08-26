@@ -9,19 +9,19 @@ import { ListCommandRunner, parseCmd, RunCommandRunner } from '#commands/index.j
 describe('parseCmd', () => {
   it('accepts multiple run targets', () => {
     assert.deepEqual(
-      parseCmd(['run', 'packages/a:ci:test', 'packages/b:ci:test']),
+      parseCmd(['run', '//packages/a:ci:test', '//packages/b:ci:test']),
       {
         command: 'run',
         verbose: false,
-        fqts: ['packages/a:ci:test', 'packages/b:ci:test']
+        fqts: ['//packages/a:ci:test', '//packages/b:ci:test']
       }
     )
   })
 
   it('accepts --verbose', () => {
     assert.deepEqual(
-      parseCmd(['run', '--verbose', 'packages/a:ci:test']),
-      { command: 'run', verbose: true, fqts: ['packages/a:ci:test'] }
+      parseCmd(['run', '--verbose', '//packages/a:ci:test']),
+      { command: 'run', verbose: true, fqts: ['//packages/a:ci:test'] }
     )
   })
 })
@@ -48,7 +48,7 @@ describe('RunCommandRunner', () => {
       'packages/ui',
     ).execute({ command: 'run', verbose: false, fqts: ['ci:lint', 'ci:test'] })
 
-    assert.deepEqual(ran, ['packages/ui:ci:lint', 'packages/ui:ci:test'])
+    assert.deepEqual(ran, ['//packages/ui:ci:lint', '//packages/ui:ci:test'])
   })
 
   it('extracts exports to the package directory', async () => {
@@ -70,14 +70,14 @@ describe('RunCommandRunner', () => {
       extractor,
       '/repo',
       '',
-    ).execute({ command: 'run', verbose: false, fqts: ['pkg:ci:build'] })
+    ).execute({ command: 'run', verbose: false, fqts: ['//pkg:ci:build'] })
 
     assert.deepEqual(extracted, [{ imageTag: 'pkg-ci-build', destDir: '/repo/pkg' }])
   })
 
   it('refuses to collapse a mounted package boundary for EXPORT', async () => {
     const result = {
-      fqt: FQT.parse('packages/tools//c:ci:pack'),
+      fqt: FQT.parse('//packages/tools//c:ci:pack'),
       imageTag: 'mounted-pack',
       imageDigest: 'sha256:mounted-pack',
       export: { '/out': 'dist' },
@@ -122,6 +122,6 @@ describe('ListCommandRunner', () => {
     await command.execute()
 
     assert.equal(scans, 1)
-    assert.deepEqual(lines, ['packages/ui:ci:build[]'])
+    assert.deepEqual(lines, ['//packages/ui:ci:build[]'])
   })
 })
