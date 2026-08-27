@@ -76,6 +76,14 @@ function parseData(path: string, source: string): unknown {
   }
 }
 
+function packageLocation(logicalPath: string): string {
+  const boundary = logicalPath.lastIndexOf(ROOT_MARKER)
+  const path = boundary === -1
+    ? logicalPath
+    : logicalPath.slice(boundary + ROOT_MARKER.length)
+  return path === '' || path === '.' ? ROOT_MARKER : `${ROOT_MARKER}${path}`
+}
+
 async function link(specifier: string, ctx: LoadContext): Promise<vm.Module> {
   const builtin = ctx.builtins.get(specifier)
   if (builtin) return builtin
@@ -109,13 +117,29 @@ async function link(specifier: string, ctx: LoadContext): Promise<vm.Module> {
   return mod
 }
 
-async function loadIndex(filePath: string, ctx: LoadContext): Promise<IndexDef | null> {
+async function loadIndex(
+  filePath: string,
+  logicalPath: string,
+  ctx: LoadContext,
+): Promise<IndexDef | null> {
   const path = await realpath(filePath)
   if (isOutside(ctx.root, path))
     throw new Error(`Dagr index must stay inside its source root, got: ${filePath}`)
 
   const code = await readFile(path, 'utf-8')
-  const mod = new vm.SourceTextModule(code, { context: ctx.vmContext, identifier: path })
+  const dagr = Object.freeze(Object.assign(Object.create(null), {
+    location: packageLocation(logicalPath),
+  }))
+  const mod = new vm.SourceTextModule(code, {
+    context: ctx.vmContext,
+    identifier: path,
+    initializeImportMeta(meta) {
+      Object.defineProperty(meta, 'dagr', {
+        value: dagr,
+        enumerable: true,
+      })
+    },
+  })
   await mod.link((specifier) => link(specifier, ctx))
   await mod.evaluate()
   const defaultExport = (mod.namespace as Record<string, unknown>)['default']
@@ -177,15 +201,20 @@ export class RepositoryPackageLoader implements PackageLoader {
 
   private async indexAt(
     dir: string,
+    packageLogicalPath: string,
     sourceRoot: string,
     logicalRoot: string,
     trace: readonly MountTrace[],
   ): Promise<IndexDef | null> {
     const file = resolve(dir, PACKAGE_FILE)
-    const key = `${logicalRoot}\0${sourceRoot}\0${file}`
+    const key = `${packageLogicalPath}\0${logicalRoot}\0${sourceRoot}\0${file}`
     let index = this.indexCache.get(key)
     if (!index) {
-      index = loadIndex(file, this.context(sourceRoot, logicalRoot, trace)).catch((error: NodeJS.ErrnoException) => {
+      index = loadIndex(
+      file,
+      packageLogicalPath,
+      this.context(sourceRoot, logicalRoot, trace),
+    ).catch((error: NodeJS.ErrnoException) => {
         if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return null
         throw error
       })
@@ -209,7 +238,7 @@ export class RepositoryPackageLoader implements PackageLoader {
       const dir = relativePath === '.' || relativePath === ''
         ? sourceRoot
         : resolve(sourceRoot, relativePath)
-      const index = await this.indexAt(dir, sourceRoot, logicalRoot, trace)
+      const index = await this.indexAt(dir, declarationPath, sourceRoot, logicalRoot, trace)
 
       if (i === parts.length - 1) {
         if (!index || isMountIndex(index)) return undefined
@@ -240,7 +269,13 @@ export class RepositoryPackageLoader implements PackageLoader {
         ? sourceRoot
         : resolve(sourceRoot, mountPath)
       const declarationPath = joinSourceLogical(logicalRoot, mountPath)
-      const index = await this.indexAt(declarationDir, sourceRoot, logicalRoot, trace)
+      const index = await this.indexAt(
+        declarationDir,
+        declarationPath,
+        sourceRoot,
+        logicalRoot,
+        trace,
+      )
       if (!index || !isMountIndex(index))
         throw new Error(`Dagr import crosses a non-mount path: ${specifier}`)
 
@@ -305,7 +340,7 @@ export class RepositoryPackageLoader implements PackageLoader {
     acc: Map<string, LoadedPackage>,
     trace: readonly MountTrace[],
   ): Promise<void> {
-    const index = await this.indexAt(root, sourceRoot, sourceLogicalRoot, trace)
+    const index = await this.indexAt(root, logicalRoot, sourceRoot, sourceLogicalRoot, trace)
     if (index && isMountIndex(index)) {
       const mounted = await this.materialize(index['/'], logicalRoot, trace)
       const mountedRoot = await realpath(mounted.root)
@@ -343,7 +378,7 @@ export class RepositoryPackageLoader implements PackageLoader {
     acc: Map<string, LoadedPackage>,
     trace: readonly MountTrace[],
   ): Promise<void> {
-    const index = await this.indexAt(dir, sourceRoot, sourceLogicalRoot, trace)
+    const index = await this.indexAt(dir, logicalPath, sourceRoot, sourceLogicalRoot, trace)
     if (index && isMountIndex(index)) {
       const mounted = await this.materialize(index['/'], logicalPath, trace)
       const mountedRoot = await realpath(mounted.root)
