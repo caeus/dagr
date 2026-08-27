@@ -50,6 +50,19 @@ Notes on validation:
   see [`IGNORE`](#ignore) below.
 - Every `Step` object is `.strict()`: an unknown or misspelled key makes validation fail.
 
+## Package location
+
+Each `dagr.index.js` can read its canonical logical package location from
+`import.meta.dagr.location`:
+
+```js
+const location = import.meta.dagr.location // `//packages/ui`
+```
+
+The repository-root package receives `//`. Packages inside mounted trees retain every boundary,
+for example `//packages/tools//c`. The value is read-only and never contains a physical checkout
+or temporary mount path, so the same repository state observes the same locations on every host.
+
 ## `/`
 
 A mount replaces the directory containing its `dagr.index.js` with the resulting image's final
