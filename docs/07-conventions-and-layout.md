@@ -10,7 +10,7 @@ which is which saves time.
   `dagr run apps/web:ci:build` still loads `apps/web/dagr.index.js` directly; it simply will not
   appear in `dagr list` unless the scan convention is extended.
 - **`packages/` may be absent.** It is treated as an empty list source.
-- **The root `dagr.index.js` gets the package name `.`** — so its FQTs look like `.:ci:deploy`.
+- **The root `dagr.index.js` gets the package name `.`** — so its FQTs look like `//:ci:deploy`.
 - **List discovery stops at the first `dagr.index.js`.** The walker descends `packages/` recursively,
   but as soon as a directory contains a `dagr.index.js` it records that package and does **not**
   look inside it. Nested packages (`packages/group/sub/dagr.index.js` where
@@ -18,7 +18,7 @@ which is which saves time.
   addressable. To make grouped packages discoverable, leave the
   intermediate directory without a build file — `packages/group/a/dagr.index.js` and
   `packages/group/b/dagr.index.js` both work and are named by their full relative path.
-- **File imports are source-root-relative and start with `/`.** Local modules use the host
+- **File imports are source-root-relative and start with `//`.** Local modules use the host
   repository root. Modules reached through `//` use the mounted root. Only files named
   `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml` can be imported. The only bare
   specifiers are the `dagr:yaml` and `dagr:toml` built-ins.
@@ -102,16 +102,16 @@ export const RECOMMENDED_IGNORE = ['node_modules', '.git']
 
 ```js
 // stacks/dagr.ts-lib.js
-import versions from '/lib/dagr.versions.js'
-import { writeJson } from '/lib/dagr.file_utils.js'
-import { RECOMMENDED_IGNORE } from '/lib/dagr.dockerignore.js'
+import versions from '//lib/dagr.versions.js'
+import { writeJson } from '//lib/dagr.file_utils.js'
+import { RECOMMENDED_IGNORE } from '//lib/dagr.dockerignore.js'
 
-const BASE = 'packages/base:ci:node-pnpm'
+const BASE = '//packages/base:ci:node-pnpm'
 const IGNORE = RECOMMENDED_IGNORE
 
 export function stack({ name, scope, version, deps = [] }) {
   const localDeps = deps.filter(d => 'local' in d)
-  const packTargets = localDeps.map(d => `packages/${d.local}:ci:pack`)
+  const packTargets = localDeps.map(d => `//packages/${d.local}:ci:pack`)
 
   return {
     config: {
@@ -146,7 +146,7 @@ Each package then declares only what makes it different:
 
 ```js
 // packages/common/dagr.index.js
-import { stack } from '/stacks/dagr.ts-lib.js'
+import { stack } from '//stacks/dagr.ts-lib.js'
 
 export default stack({
   name: 'common',
@@ -184,7 +184,7 @@ prepare pnpm@...` in ten targets means ten copies of that layer. Instead, make i
 
 ```js
 // packages/base/dagr.index.js
-import { PNPM_VERSION } from '/lib/dagr.versions.js'
+import { PNPM_VERSION } from '//lib/dagr.versions.js'
 
 export default {
   ci: {
@@ -199,7 +199,7 @@ export default {
 }
 ```
 
-Then every install target uses `FROM: images['packages/base:ci:node-pnpm']`. One image, built
+Then every install target uses `FROM: images['//packages/base:ci:node-pnpm']`. One image, built
 once, shared by the whole repo — and bumping the pnpm version invalidates exactly one layer.
 
 ## Depending on the local package manager inside a container

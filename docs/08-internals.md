@@ -127,7 +127,10 @@ Indexes and JavaScript imports are `vm.SourceTextModule`s. JSON, YAML, and TOML 
 `vm.SyntheticModule`s with deep-frozen default exports. `dagr:yaml` and `dagr:toml` are synthetic
 modules exposing context-native wrappers around the runner's pinned serializers. The shared VM
 context exposes no ambient Node capabilities and disables dynamic code generation. It does not
-attempt to remove standard JavaScript globals or enforce purity. An index's default export is parsed with
+attempt to remove standard JavaScript globals or enforce purity. Each index receives a frozen,
+null-prototype `import.meta.dagr` whose `location` is its canonical logical package location;
+the location is relative to the current source root, so mount ancestry and physical source paths
+are never exposed. An index's default export is parsed with
 `IndexDef.safeParse`; on schema failure the package is silently skipped. Mount identities are
 `<image digest>:<final workdir>` and are threaded through package and import resolution to detect
 cycles.
@@ -142,7 +145,7 @@ A value class, not a string alias, so it is parsed once and passed around struct
 ```ts
 class FQT {
   constructor(readonly pkg: string, readonly facet: string, readonly target: string) {}
-  toString(): string          // `${pkg}:${facet}:${target}`
+  toString(): string          // `//${pkg}:${facet}:${target}`
   toJSON(): string            // === toString(), so it serializes as a plain string
   static parse(raw: string, context?: { pkg: string; facet?: string }): FQT
 }
@@ -183,12 +186,12 @@ const tag = fqt.toString()
 
 | FQT | Tag |
 | --- | --- |
-| `packages/ui:ci:build` | `packages_ui-ci-build` |
-| `packages/base:ci:node-pnpm` | `packages_base-ci-node-pnpm` |
-| `.:ci:deploy` | `ci-deploy` |
+| `//packages/ui:ci:build` | `packages_ui-ci-build` |
+| `//packages/base:ci:node-pnpm` | `packages_base-ci-node-pnpm` |
+| `//:ci:deploy` | `ci-deploy` |
 
-The leading-character strip exists for the root package: `.:ci:deploy` would otherwise become
-`.-ci-deploy`, and Docker rejects a tag starting with `.`.
+The leading-character strip removes the root marker: `//:ci:deploy` becomes `ci-deploy` rather
+than a tag beginning with underscores.
 
 Tags are **stable and unversioned**. Rebuilding a target overwrites the tag, and the previous
 image becomes a dangling layer. `docker image prune` is your friend on a long-lived machine.

@@ -7,7 +7,7 @@ segments are filled from context (`FQT.parse` in `src/runner/index.ts`):
 
 | Written | Segments | Resolves to |
 | --- | --- | --- |
-| `packages/ui:ci:build` | 3 | Exactly that. Always unambiguous. |
+| `//packages/ui:ci:build` | 3 | Exactly that. Always unambiguous. |
 | `ci:build` | 2 | `<current package>:ci:build` |
 | `build` | 1 | `<current package>:<current facet>:build` |
 
@@ -20,7 +20,7 @@ export default {
     install: { deps: [], run: ... },
     build:   { deps: ['install'], run: ... },                      // same package, same facet
     docs:    { deps: ['release:bundle'], run: ... },               // same package, other facet
-    deploy:  { deps: ['packages/ui:ci:build'], run: ... },         // another package
+    deploy:  { deps: ['//packages/ui:ci:build'], run: ... },         // another package
   },
 }
 ```
@@ -30,7 +30,7 @@ facet, so a bare target name always fails:
 
 ```sh
 cd packages/ui
-dagr run packages/ui:ci:build   # ✓
+dagr run //packages/ui:ci:build   # ✓
 dagr run ci:build               # ✓ package inferred from cwd
 dagr run build                  # ✗ Error: Facet required when only target is provided: build
 ```
@@ -42,7 +42,7 @@ qualified — including targets of the root package itself, whose package name i
 
 ```sh
 cd <repo root>
-dagr run .:ci:deploy            # ✓
+dagr run //:ci:deploy            # ✓
 dagr run ci:deploy              # ✗ Error: Package required when only facet:target is provided
 ```
 
@@ -53,16 +53,16 @@ by their expanded FQTs. This trips people up constantly:
 
 ```js
 {
-  deps: ['install', 'packages/common:ci:pack'],
+  deps: ['install', '//packages/common:ci:pack'],
   run: ({ images }) => ({
     FROM: images['install'],                          // ✓ the literal string from deps
-    steps: [{ COPY: { from: images['packages/common:ci:pack'], src: '/out/x.tgz', dest: '/x.tgz' } }],
+    steps: [{ COPY: { from: images['//packages/common:ci:pack'], src: '/out/x.tgz', dest: '/x.tgz' } }],
   })
 }
 ```
 
 ```js
-images['packages/ui:ci:install'] // ✗ undefined, even though that's what 'install' resolved to
+images['//packages/ui:ci:install'] // ✗ undefined, even though that's what 'install' resolved to
 ```
 
 The values are image tags (see [08 — Internals](08-internals.md#image-tag-derivation) for how
@@ -73,7 +73,7 @@ Two practical habits follow. If you build dep strings programmatically, keep the
 expression for both the `deps` entry and the lookup:
 
 ```js
-const BASE = 'packages/base:ci:node-pnpm'
+const BASE = '//packages/base:ci:node-pnpm'
 
 return {
   install: {
@@ -86,13 +86,13 @@ return {
 And if you generate a list of deps, generate the lookups the same way:
 
 ```js
-const packTargets = localDeps.map(d => `packages/${d.local}:ci:pack`)
+const packTargets = localDeps.map(d => `//packages/${d.local}:ci:pack`)
 // ...
 deps: [...packTargets, BASE],
 run: ({ images }) => ({
   FROM: images[BASE],
   steps: localDeps.map(d => ({
-    COPY: { from: images[`packages/${d.local}:ci:pack`], src: `/out/${d.local}.tgz`, dest: `/repo/${d.local}.tgz` },
+    COPY: { from: images[`//packages/${d.local}:ci:pack`], src: `/out/${d.local}.tgz`, dest: `/repo/${d.local}.tgz` },
   })),
 }),
 ```
@@ -102,7 +102,7 @@ run: ({ images }) => ({
 Cycles are detected while walking the graph and reported with the full path:
 
 ```
-Circular dependency: pkg:ci:a -> pkg:ci:b -> pkg:ci:a
+Circular dependency: //pkg:ci:a -> //pkg:ci:b -> //pkg:ci:a
 ```
 
 The check happens at run time, not load time, so `dagr list` will happily print a cyclic graph
@@ -182,16 +182,16 @@ EXPORT: { '/repo/dist': './' } // replaces just <pkg>/dist — safe, the root is
 
 This is the most important rule about `EXPORT` and it is deliberate.
 
-When you run `dagr run packages/ui:ci:build`, dagr builds every transitive dependency, but
-it only materializes the `EXPORT` map of `packages/ui:ci:build` itself. If
-`packages/ui:ci:install` also declares an `EXPORT`, nothing is written for it.
+When you run `dagr run //packages/ui:ci:build`, dagr builds every transitive dependency, but
+it only materializes the `EXPORT` map of `//packages/ui:ci:build` itself. If
+`//packages/ui:ci:install` also declares an `EXPORT`, nothing is written for it.
 
 So `EXPORT` on an intermediate target is not a side effect that fires whenever the target gets
 built — it is a declaration of "here is what this target is worth extracting, *if* you ask for
 it directly". To get `install`'s `node_modules` onto your host, run it directly:
 
 ```sh
-dagr run packages/ui:ci:install
+dagr run //packages/ui:ci:install
 ```
 
 Without this rule, building anything would spray files across your working tree.

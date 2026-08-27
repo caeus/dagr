@@ -18,9 +18,9 @@ own `EXPORT` map if it has one. Requested targets run concurrently and share one
 cache, so a common dependency builds only once.
 
 ```sh
-dagr run packages/ui:ci:build
+dagr run //packages/ui:ci:build
 dagr run ci:build          # package inferred from cwd
-dagr run packages/common:ci:test packages/ui:ci:test
+dagr run //packages/common:ci:test //packages/ui:ci:test
 ```
 
 The FQT may omit the package segment, which is then taken from your working directory. The
@@ -42,12 +42,12 @@ What happens, in order:
 Each target reports itself as it goes, transitive dependencies included:
 
 ```
-  ▶ packages/base:ci:node-pnpm
-  ✓ packages/base:ci:node-pnpm  4.1s
-  ▶ packages/ui:ci:install
-  ✓ packages/ui:ci:install  12.7s
-  ▶ packages/ui:ci:build
-  ✗ packages/ui:ci:build  3.2s
+  ▶ //packages/base:ci:node-pnpm
+  ✓ //packages/base:ci:node-pnpm  4.1s
+  ▶ //packages/ui:ci:install
+  ✓ //packages/ui:ci:install  12.7s
+  ▶ //packages/ui:ci:build
+  ✗ //packages/ui:ci:build  3.2s
 ```
 
 Exit code is non-zero if any dependency's Docker build fails; the error propagates and no
@@ -69,7 +69,7 @@ most recent 100 lines of each. Those lines are normally invisible; they surface 
 compiler output you actually wanted:
 
 ```
-  ✗ packages/ui:ci:build  3.2s
+  ✗ //packages/ui:ci:build  3.2s
 error: docker exited with code 1
   #8 3.001 src/app.ts(12,3): error TS2322: Type 'string' is not assignable to type 'number'.
   #8 ERROR: process "pnpm build" did not complete successfully
@@ -93,16 +93,16 @@ order (dependencies before dependents). It does not build targets. Because mount
 part of the graph, it does build and extract mount images during loading.
 
 ```
-packages/base:ci:node-pnpm[]
-packages/common:ci:install[packages/base:ci:node-pnpm]
-packages/common:ci:build[packages/common:ci:install]
-packages/common:ci:pack[packages/common:ci:build]
-packages/ui:ci:install[packages/common:ci:pack, packages/base:ci:node-pnpm]
-packages/ui:ci:build[packages/ui:ci:install]
-.:ci:deploy[packages/ui:ci:build]
+//packages/base:ci:node-pnpm[]
+//packages/common:ci:install[//packages/base:ci:node-pnpm]
+//packages/common:ci:build[//packages/common:ci:install]
+//packages/common:ci:pack[//packages/common:ci:build]
+//packages/ui:ci:install[//packages/common:ci:pack, //packages/base:ci:node-pnpm]
+//packages/ui:ci:build[//packages/ui:ci:install]
+//:ci:deploy[//packages/ui:ci:build]
 ```
 
-Format is `package:facet:target[dep, dep, ...]`. Dependencies are printed **fully expanded**,
+Format is `//package:facet:target[dep, dep, ...]`. Dependencies are printed **fully expanded**,
 so this is the way to confirm that a shorthand like `'install'` resolved to the package you
 expected.
 

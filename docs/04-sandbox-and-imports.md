@@ -61,14 +61,14 @@ modules are rejected; the underlying parser and serializer APIs are not exposed.
 Two import specifier forms are allowed:
 
 - `dagr:yaml` and `dagr:toml` select runtime-provided built-ins.
-- A specifier beginning with `/` selects a file from the importing module's source root.
+- A specifier beginning with `//` selects a file from the importing module's source root.
 
 Root-relative file imports follow these rules:
 
-- **Specifiers start with `/`.** The slash means the physical source root containing the importing
+- **Specifiers start with `//`.** The marker means the physical source root containing the importing
   module. For local modules that is the host repository; after a mount boundary it is the mounted
   image's final `WORKDIR`. Bare specifiers, relative paths, URLs, and escapes are rejected.
-- **`//` crosses a mount.** `/tools//dagr.shared.js` loads the `/` declared at `tools` in the
+- **A later `//` crosses a mount.** `//tools//dagr.shared.js` loads the `/` declared at `tools` in the
   current source root, then imports `dagr.shared.js` from the mounted root. Every additional `//`
   crosses another mount.
 - **Filenames match `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml`.** The full
@@ -77,18 +77,18 @@ Root-relative file imports follow these rules:
   their parsed value as a deep-frozen default export.
 
 ```js
-import versions from '/lib/dagr.versions.js'                   // default export
-import { writeJson, writeText } from '/lib/dagr.file_utils.js' // named exports
-import toolchain from '/config/dagr.toolchain.toml'             // parsed default export
-import { stack } from '/stacks/dagr.ts-lib.js'
-import mounted from '/tools//dagr.shared.js'
+import versions from '//lib/dagr.versions.js'                   // default export
+import { writeJson, writeText } from '//lib/dagr.file_utils.js' // named exports
+import toolchain from '//config/dagr.toolchain.toml'             // parsed default export
+import { stack } from '//stacks/dagr.ts-lib.js'
+import mounted from '//tools//dagr.shared.js'
 import YAML from 'dagr:yaml'
 ```
 
 Imported `dagr.*.js` files are ordinary modules. They can import other allowed root-relative
 modules and export constants, helper functions, or whole facet factories. The source root belongs
 to the imported module, not its original importer. Thus an import made by
-`/tools//dagr.shared.js` resolves `/c/dagr.util.js` inside the mounted `tools` tree.
+`//tools//dagr.shared.js` resolves `//c/dagr.util.js` inside the mounted `tools` tree.
 
 ## Caching and sharing
 
@@ -119,7 +119,7 @@ avoid repetition is a directory of helpers that export facet factories:
 
 ```js
 // packages/common/dagr.index.js
-import { stack } from '/stacks/dagr.ts-lib.js'
+import { stack } from '//stacks/dagr.ts-lib.js'
 
 export default stack({
   name: 'common',

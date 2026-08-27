@@ -82,13 +82,13 @@ dagr list
 Expected output:
 
 ```
-packages/base:ci:node-pnpm[]
+//packages/base:ci:node-pnpm[]
 ```
 
 Then:
 
 ```sh
-dagr run packages/base:ci:node-pnpm
+dagr run //packages/base:ci:node-pnpm
 ```
 
 If that produces an image, dagr is working: the loader found your package, the sandbox

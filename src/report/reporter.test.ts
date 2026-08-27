@@ -30,26 +30,26 @@ describe('ConsoleReporter', () => {
   it('marks a target as started and completed', () => {
     const { lines, reporter: r } = reporter()
 
-    r.targetStarted('pkg:ci:build')
-    r.targetCompleted('pkg:ci:build', 4100)
+    r.targetStarted('//pkg:ci:build')
+    r.targetCompleted('//pkg:ci:build', 4100)
 
-    assert.deepEqual(lines, ['  ▶ pkg:ci:build', '  ✓ pkg:ci:build  4.1s'])
+    assert.deepEqual(lines, ['  ▶ //pkg:ci:build', '  ✓ //pkg:ci:build  4.1s'])
   })
 
   it('marks a target as failed', () => {
     const { lines, reporter: r } = reporter()
 
-    r.targetFailed('pkg:ci:build', 3200)
+    r.targetFailed('//pkg:ci:build', 3200)
 
-    assert.deepEqual(lines, ['  ✗ pkg:ci:build  3.2s'])
+    assert.deepEqual(lines, ['  ✗ //pkg:ci:build  3.2s'])
   })
 
   it('renders sub-second durations in milliseconds', () => {
     const { lines, reporter: r } = reporter()
 
-    r.targetCompleted('pkg:ci:build', 840)
+    r.targetCompleted('//pkg:ci:build', 840)
 
-    assert.equal(lines[0], '  ✓ pkg:ci:build  840ms')
+    assert.equal(lines[0], '  ✓ //pkg:ci:build  840ms')
   })
 
   it('stays silent about process output unless verbose', () => {
