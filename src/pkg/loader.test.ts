@@ -202,7 +202,7 @@ describe('RepositoryPackageLoader', () => {
     }
     const root = await fixture(
       `
-        import { yaml, toml, exports } from '//lib/dagr.formats.js'
+        import { yaml, toml, exports, same } from '//lib/dagr.formats.js'
 
         export default {
           ci: {
@@ -210,7 +210,7 @@ describe('RepositoryPackageLoader', () => {
               deps: [],
               run: () => ({
                 FROM: 'alpine',
-                steps: [{ ENV: { YAML: yaml, TOML: toml, EXPORTS: exports } }],
+                steps: [{ ENV: { YAML: yaml, TOML: toml, EXPORTS: exports, SAME: same } }],
                 IGNORE: []
               })
             }
@@ -219,13 +219,18 @@ describe('RepositoryPackageLoader', () => {
       `,
       {
         'lib/dagr.formats.js': `
-          import * as YAML from 'dagr:yaml'
-          import * as TOML from 'dagr:toml'
+          import YAML, { stringify as stringifyYaml } from 'dagr:yaml'
+          import TOML, { stringify as stringifyToml } from 'dagr:toml'
+          import * as YAMLModule from 'dagr:yaml'
+          import * as TOMLModule from 'dagr:toml'
 
           const value = ${JSON.stringify(value)}
           export const yaml = YAML.stringify(value)
           export const toml = TOML.stringify(value)
-          export const exports = [Object.keys(YAML), Object.keys(TOML)].flat().join(',')
+          export const exports = [Object.keys(YAMLModule), Object.keys(TOMLModule)].flat().join(',')
+          export const same = String(
+            YAML.stringify === stringifyYaml && TOML.stringify === stringifyToml
+          )
         `,
       },
     )
@@ -242,7 +247,8 @@ describe('RepositoryPackageLoader', () => {
 
       assert.deepEqual(parseYaml(env?.['YAML'] ?? ''), value)
       assert.deepEqual(parseToml(env?.['TOML'] ?? ''), value)
-      assert.equal(env?.['EXPORTS'], 'stringify,stringify')
+      assert.equal(env?.['EXPORTS'], 'default,stringify,default,stringify')
+      assert.equal(env?.['SAME'], 'true')
     } finally {
       await rm(root, { recursive: true })
     }
