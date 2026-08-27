@@ -76,6 +76,14 @@ function parseData(path: string, source: string): unknown {
   }
 }
 
+function packageLocation(logicalPath: string): string {
+  const boundary = logicalPath.lastIndexOf(ROOT_MARKER)
+  const path = boundary === -1
+    ? logicalPath
+    : logicalPath.slice(boundary + ROOT_MARKER.length)
+  return path === '' || path === '.' ? ROOT_MARKER : `${ROOT_MARKER}${path}`
+}
+
 async function link(specifier: string, ctx: LoadContext): Promise<vm.Module> {
   const builtin = ctx.builtins.get(specifier)
   if (builtin) return builtin
@@ -120,7 +128,7 @@ async function loadIndex(
 
   const code = await readFile(path, 'utf-8')
   const dagr = Object.freeze(Object.assign(Object.create(null), {
-    location: logicalPath === '.' ? ROOT_MARKER : `${ROOT_MARKER}${logicalPath}`,
+    location: packageLocation(logicalPath),
   }))
   const mod = new vm.SourceTextModule(code, {
     context: ctx.vmContext,

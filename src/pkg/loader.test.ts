@@ -505,7 +505,54 @@ describe('RepositoryPackageLoader', () => {
       assert.equal(loaded?.definition['ci']?.['pack']?.run({
         images: {},
         host: { os: 'linux', arch: 'x64' },
-      }).FROM, '//packages/tools//')
+      }).FROM, '//')
+    } finally {
+      await Promise.all([
+        rm(root, { recursive: true }),
+        rm(mountedRoot, { recursive: true }),
+      ])
+    }
+  })
+
+  it('does not expose the mounter through a mounted package location', async () => {
+    const mount = `export default { '/': { FROM: 'tools', steps: [], IGNORE: [] } }`
+    const root = await fixture('', {
+      'packages/left/dagr.index.js': mount,
+      'packages/right/dagr.index.js': mount,
+    })
+    const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
+    await mkdir(join(mountedRoot, 'c'), { recursive: true })
+    await writeFile(join(mountedRoot, 'c', 'dagr.index.js'), `
+      const location = import.meta.dagr.location
+      export default {
+        ci: {
+          inspect: {
+            deps: [],
+            run: () => ({ FROM: location, steps: [], IGNORE: [] })
+          }
+        }
+      }
+    `)
+    const materializer: MountMaterializer = {
+      materialize: async (_mount, logicalPath) => ({
+        root: mountedRoot,
+        identity: `sha256:${logicalPath}:/work`,
+      }),
+    }
+
+    try {
+      const loader = new RepositoryPackageLoader(root, materializer)
+      const [left, right] = await Promise.all([
+        loader.loadPackage('packages/left//c'),
+        loader.loadPackage('packages/right//c'),
+      ])
+      const location = (loaded: typeof left) => loaded?.definition['ci']?.['inspect']?.run({
+        images: {},
+        host: { os: 'linux', arch: 'x64' },
+      }).FROM
+
+      assert.equal(location(left), '//c')
+      assert.equal(location(right), '//c')
     } finally {
       await Promise.all([
         rm(root, { recursive: true }),

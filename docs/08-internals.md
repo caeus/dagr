@@ -129,7 +129,8 @@ modules exposing context-native wrappers around the runner's pinned serializers.
 context exposes no ambient Node capabilities and disables dynamic code generation. It does not
 attempt to remove standard JavaScript globals or enforce purity. Each index receives a frozen,
 null-prototype `import.meta.dagr` whose `location` is its canonical logical package location;
-physical source paths are never exposed. An index's default export is parsed with
+the location is relative to the current source root, so mount ancestry and physical source paths
+are never exposed. An index's default export is parsed with
 `IndexDef.safeParse`; on schema failure the package is silently skipped. Mount identities are
 `<image digest>:<final workdir>` and are threaded through package and import resolution to detect
 cycles.

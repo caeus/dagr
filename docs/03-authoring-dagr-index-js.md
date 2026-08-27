@@ -59,9 +59,12 @@ Each `dagr.index.js` can read its canonical logical package location from
 const location = import.meta.dagr.location // `//packages/ui`
 ```
 
-The repository-root package receives `//`. Packages inside mounted trees retain every boundary,
-for example `//packages/tools//c`. The value is read-only and never contains a physical checkout
-or temporary mount path, so the same repository state observes the same locations on every host.
+The repository root and the root of every mounted source tree receive `//`. A package `c` inside a
+mounted tree receives `//c`, regardless of whether that tree was mounted at `//tools`,
+`//vendor/tools`, or anywhere else. A mountee cannot observe its mounter through this API.
+
+The value is read-only and never contains a physical checkout or temporary mount path, so the same
+source tree observes the same locations on every host and under every mounter.
 
 ## `/`
 
