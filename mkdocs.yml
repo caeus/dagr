@@ -1,0 +1,38 @@
+site_name: dagr
+site_description: A monorepo task runner where every target is a Docker image.
+site_url: https://caeus.github.io/dagr/
+repo_url: https://github.com/caeus/dagr
+repo_name: caeus/dagr
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Getting started: 01-getting-started.md
+  - Concepts: 02-concepts.md
+  - Authoring dagr.index.js: 03-authoring-dagr-index-js.md
+  - Sandbox and imports: 04-sandbox-and-imports.md
+  - Dependencies and EXPORT: 05-deps-and-exports.md
+  - CLI reference: 06-cli.md
+  - Conventions and layout: 07-conventions-and-layout.md
+  - Internals: 08-internals.md
+  - Docker-in-Docker: 09-docker-in-docker.md
+  - Adopting in a new monorepo: 10-adopting-in-a-new-monorepo.md
+  - Troubleshooting: 11-troubleshooting.md
