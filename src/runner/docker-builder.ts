@@ -14,6 +14,7 @@ export interface DockerImageBuilder {
     tag: string,
     context: string,
     ignore: readonly string[],
+    buildContexts?: Readonly<Record<string, string>>,
   ): Promise<BuildResult>
 }
 
@@ -23,6 +24,7 @@ export async function buildDockerImage(
   contextPath: string,
   ignore: readonly string[],
   processRunner: ProcessRunner,
+  buildContexts: Readonly<Record<string, string>> = {},
 ): Promise<BuildResult> {
   const base = join(tmpdir(), `dagr-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   const dockerfilePath = `${base}.Dockerfile`
@@ -38,6 +40,9 @@ export async function buildDockerImage(
       'docker',
       [
         'buildx', 'build', '--progress=plain', '--load', '-t', tag,
+        ...Object.entries(buildContexts).flatMap(([name, path]) => [
+          '--build-context', `${name}=${path}`,
+        ]),
         '--iidfile', iidfilePath, '-f', dockerfilePath, contextPath,
       ],
       `image.build ${tag}`,
