@@ -93,7 +93,15 @@ export function buildRunner(
           nextTrace,
         ))
       )
-      return runTarget(fqt, target, depResults, loaded.context, deps, host)
+      return runTarget(
+        fqt,
+        target,
+        depResults,
+        loaded.context,
+        deps,
+        host,
+        source => packageLoader.resolveCopySource(fqt.pkg, source),
+      )
     })()
 
     memo.set(raw, promise)
