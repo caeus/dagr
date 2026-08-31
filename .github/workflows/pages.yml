@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'README.md'
       - 'docs/**'
       - 'mkdocs.yml'
       - '.github/workflows/pages.yml'
@@ -34,6 +35,15 @@ jobs:
 
       - name: Build docs
         run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          readme = Path('README.md').read_text()
+          readme = readme.replace('(docs/', '(')
+          readme = readme.replace('](LICENSE)', '](https://github.com/caeus/dagr/blob/main/LICENSE)')
+          Path('docs/index.md').write_text(readme)
+          PY
+
           python -m pip install 'mkdocs-material==9.7.7'
           mkdocs build
           test -f site/index.html
