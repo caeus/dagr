@@ -1,4 +1,4 @@
-import type { PackageLoader } from '#pkg/loader.js'
+import type { PackageLoader, ResolvedCopySource } from '#pkg/loader.js'
 import { ROOT_MARKER } from '#pkg/namespace.js'
 import { Name, type HostPlatform } from '#pkg/schema.js'
 import { runTarget, type TargetRunnerDeps } from '#runner/target-runner.js'
@@ -100,7 +100,7 @@ export function buildRunner(
         loaded.context,
         deps,
         host,
-        source => packageLoader.resolveCopySource(fqt.pkg, source),
+        source => resolveCopySource(packageLoader, fqt.pkg, source),
       )
     })()
 
@@ -109,4 +109,17 @@ export function buildRunner(
   }
 
   return (fqt: FQT) => run(fqt.toString())
+}
+
+function resolveCopySource(
+  loader: PackageLoader,
+  packageLogicalPath: string,
+  source: string,
+): Promise<ResolvedCopySource> {
+  const resolver = (loader as PackageLoader & Partial<{
+    resolveCopySource(packageLogicalPath: string, source: string): Promise<ResolvedCopySource>
+  }>).resolveCopySource
+  if (!resolver)
+    return Promise.reject(new Error(`Package loader cannot resolve mounted COPY source: ${source}`))
+  return resolver.call(loader, packageLogicalPath, source)
 }
