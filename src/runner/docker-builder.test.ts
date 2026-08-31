@@ -5,7 +5,7 @@ import type { ProcessRunner } from '#sys/process-runner.js'
 import { buildDockerImage } from '#runner/docker-builder.js'
 
 describe('buildDockerImage', () => {
-  it('uses plain progress and labels the build for reporting', async () => {
+  it('uses plain progress, named contexts, and labels the build for reporting', async () => {
     const calls: Parameters<ProcessRunner['run']>[] = []
     const runner: ProcessRunner = {
       run: async (...args) => {
@@ -32,10 +32,14 @@ describe('buildDockerImage', () => {
       '/repo/pkg',
       [],
       runner,
+      { dagr_mount_0: '/mounts/tools' },
     )
 
     assert.equal(result.digest, 'sha256:test')
-    assert(calls[0]?.[1].includes('--progress=plain'))
+    const args = calls[0]?.[1] ?? []
+    assert(args.includes('--progress=plain'))
+    const contextIndex = args.indexOf('--build-context')
+    assert.equal(args[contextIndex + 1], 'dagr_mount_0=/mounts/tools')
     assert.equal(calls[0]?.[2], 'image.build pkg-ci-build')
   })
 })

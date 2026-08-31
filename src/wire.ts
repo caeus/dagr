@@ -78,8 +78,8 @@ export function defaultModule(
     dockerImageBuilder: toFactory(
       ['processRunner'],
       (runner: ProcessRunner): DockerImageBuilder => ({
-        buildDockerImage: (content, tag, context, ignore) =>
-          buildDockerImage(content, tag, context, ignore, runner)
+        buildDockerImage: (content, tag, context, ignore, buildContexts) =>
+          buildDockerImage(content, tag, context, ignore, runner, buildContexts)
       })
     ),
     dockerImageExtractor: toFactory(
@@ -139,8 +139,8 @@ export function defaultModule(
           packageLoader,
           {
             renderDockerfile: (run) => renderer.renderDockerfile(run),
-            buildDockerImage: (content, tag, context, ignore) =>
-              builder.buildDockerImage(content, tag, context, ignore),
+            buildDockerImage: (content, tag, context, ignore, buildContexts) =>
+              builder.buildDockerImage(content, tag, context, ignore, buildContexts),
             reporter
           },
           host
