@@ -14,7 +14,7 @@ const IMPORT_FILE = /^dagr\..+\.(?:js|json|yaml|toml)$/
 export interface PackageLoader {
   loadPackage(logicalPath: string): Promise<LoadedPackage | undefined>
   loadAllPackages(): Promise<ReadonlyMap<string, LoadedPackage>>
-  resolveCopySource(packageLogicalPath: string, source: string): Promise<ResolvedCopySource>
+  resolveCopySource?(packageLogicalPath: string, source: string): Promise<ResolvedCopySource>
 }
 
 export interface LoadedPackage {
