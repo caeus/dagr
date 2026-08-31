@@ -14,11 +14,17 @@ const IMPORT_FILE = /^dagr\..+\.(?:js|json|yaml|toml)$/
 export interface PackageLoader {
   loadPackage(logicalPath: string): Promise<LoadedPackage | undefined>
   loadAllPackages(): Promise<ReadonlyMap<string, LoadedPackage>>
+  resolveCopySource(packageLogicalPath: string, source: string): Promise<ResolvedCopySource>
 }
 
 export interface LoadedPackage {
   readonly definition: PackageDef
   readonly context: string
+}
+
+export interface ResolvedCopySource {
+  readonly context: string
+  readonly src: string
 }
 
 export interface MaterializedMount {
@@ -183,6 +189,78 @@ export class RepositoryPackageLoader implements PackageLoader {
     return this.allPackages
   }
 
+  async resolveCopySource(
+    packageLogicalPath: string,
+    source: string,
+  ): Promise<ResolvedCopySource> {
+    validateLogicalPath(packageLogicalPath)
+    if (!source.includes(ROOT_MARKER))
+      throw new Error(`Mounted COPY source must contain ${ROOT_MARKER}: ${source}`)
+
+    let sourceRoot = await this.canonicalRoot
+    let logicalRoot = '.'
+    let trace: readonly MountTrace[] = []
+    const packageParts = packageLogicalPath === '.' ? ['.'] : packageLogicalPath.split(ROOT_MARKER)
+    let declarationPath = ''
+    let packageDir = sourceRoot
+
+    for (let i = 0; i < packageParts.length; i++) {
+      const relativePath = packageParts[i]!
+      declarationPath = i === 0
+        ? relativePath
+        : `${declarationPath}${ROOT_MARKER}${relativePath}`
+      packageDir = relativePath === '.' || relativePath === ''
+        ? sourceRoot
+        : resolve(sourceRoot, relativePath)
+      const index = await this.indexAt(packageDir, declarationPath, sourceRoot, logicalRoot, trace)
+
+      if (i === packageParts.length - 1) {
+        if (!index || isMountIndex(index))
+          throw new Error(`Unknown package: ${packageLogicalPath}`)
+        break
+      }
+      if (!index || !isMountIndex(index))
+        throw new Error(`Unknown package: ${packageLogicalPath}`)
+
+      const mounted = await this.materialize(index['/'], declarationPath, trace)
+      sourceRoot = await realpath(mounted.root)
+      logicalRoot = mountBoundary(declarationPath)
+      trace = mounted.trace
+    }
+
+    const parts = source.split(ROOT_MARKER)
+    let baseDir = packageDir
+    let logicalBase = packageLogicalPath
+
+    for (const mountPath of parts.slice(0, -1)) {
+      validateCopyMountPath(mountPath, source)
+      const mountDir = resolve(baseDir, mountPath)
+      const mountLogicalPath = logicalBase === '.'
+        ? mountPath
+        : joinSourceLogical(logicalBase, mountPath)
+      const index = await this.indexAt(
+        mountDir,
+        mountLogicalPath,
+        sourceRoot,
+        logicalRoot,
+        trace,
+      )
+      if (!index || !isMountIndex(index))
+        throw new Error(`COPY source crosses a non-mount path: ${source}`)
+
+      const mounted = await this.materialize(index['/'], mountLogicalPath, trace)
+      sourceRoot = await realpath(mounted.root)
+      baseDir = sourceRoot
+      logicalRoot = mountBoundary(mountLogicalPath)
+      logicalBase = logicalRoot
+      trace = mounted.trace
+    }
+
+    const src = parts.at(-1)!
+    validateCopyRemainder(src, source)
+    return { context: sourceRoot, src: src || '.' }
+  }
+
   private context(
     root: string,
     logicalRoot: string,
@@ -211,10 +289,10 @@ export class RepositoryPackageLoader implements PackageLoader {
     let index = this.indexCache.get(key)
     if (!index) {
       index = loadIndex(
-      file,
-      packageLogicalPath,
-      this.context(sourceRoot, logicalRoot, trace),
-    ).catch((error: NodeJS.ErrnoException) => {
+        file,
+        packageLogicalPath,
+        this.context(sourceRoot, logicalRoot, trace),
+      ).catch((error: NodeJS.ErrnoException) => {
         if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return null
         throw error
       })
@@ -443,6 +521,23 @@ function validateRelativeImportPath(path: string, specifier: string): void {
     throw new Error(`Invalid Dagr import: ${specifier}`)
   if (path && path.split('/').some(segment => !segment || segment === '.' || segment === '..'))
     throw new Error(`Invalid Dagr import: ${specifier}`)
+}
+
+function validateCopyMountPath(path: string, source: string): void {
+  if (
+    !path ||
+    path.includes('\\') ||
+    isAbsolute(path) ||
+    path.split('/').some(segment => !segment || segment === '.' || segment === '..')
+  ) throw new Error(`Invalid mounted COPY source: ${source}`)
+}
+
+function validateCopyRemainder(path: string, source: string): void {
+  if (
+    path.includes('\\') ||
+    isAbsolute(path) ||
+    path.split('/').some(segment => segment === '..')
+  ) throw new Error(`Invalid mounted COPY source: ${source}`)
 }
 
 function joinSourceLogical(root: string, path: string): string {
