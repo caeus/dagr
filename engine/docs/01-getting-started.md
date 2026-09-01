@@ -7,8 +7,8 @@
 - Access to the Docker socket at `/var/run/docker.sock`. dagr itself runs in a container
   and drives your host daemon through that socket.
 
-You do **not** need Node, pnpm, or TypeScript on the host. dagr ships as a Docker image
-that it builds from its own `Dockerfile` on first use.
+You do **not** need Node, pnpm, or TypeScript on the host. dagr runs from a published,
+commit-pinned Docker image.
 
 ## Install the launcher
 
@@ -37,21 +37,19 @@ directory, it fails with:
 error: not inside a monorepo (no .dagr/ directory found in any parent)
 ```
 
-`cli.sh` then builds the dagr image and runs it:
+`cli.sh` then runs the pinned dagr image:
 
 ```sh
-docker build -t dagr "$DAGR_DIR"
-docker run --rm \
+docker run --rm --pull=missing \
   -v "$REPO_ROOT:/repo" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e HOST_REPO_ROOT="$REPO_ROOT" \
   -e WORKING_DIR="${WORKING_DIR:-$REPO_ROOT}" \
-  dagr "$@"
+  "ghcr.io/caeus/dagr:<commit-sha>" "$@"
 ```
 
-The `docker build` runs on every invocation. After the first time it is fully layer-cached,
-so it costs well under a second — but it does mean edits to the pinned dagr commit take effect on
-the next `dagr` call with no separate build step.
+Docker downloads the image once and reuses it locally. Upgrading Dagr is an explicit change to the
+image SHA in `.dagr/cli.sh`.
 
 ## First run
 
@@ -87,11 +85,8 @@ resolution rules.
 
 ## Running dagr's own checks
 
-These run in a checkout of the dagr repository itself, not in a repo that consumes it, and they
-run outside Docker:
+These run in a checkout of the Dagr repository itself through its pinned bootstrap image:
 
 ```sh
-pnpm install
-make typecheck
-make test        # compiles to dist/, then runs the tests against it
+dagr run //engine:ci:typecheck //engine:ci:test
 ```

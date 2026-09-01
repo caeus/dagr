@@ -41,7 +41,7 @@ jobs:
 
           readme = Path('README.md').read_text()
           readme = readme.replace('(docs/', '(')
-          readme = readme.replace('](LICENSE)', '](https://github.com/caeus/dagr/blob/main/LICENSE)')
+          readme = readme.replace('](../LICENSE)', '](https://github.com/caeus/dagr/blob/main/LICENSE)')
           Path('docs/index.md').write_text(readme)
           PY
 

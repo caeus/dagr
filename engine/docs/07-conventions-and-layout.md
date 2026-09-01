@@ -43,13 +43,10 @@ which is which saves time.
 ```
 <repo root>/
 ├── dagr.index.js           # root package '.', for repo-wide targets (deploy, docs)
-├── .dagr/                  # four launcher files; the dagr launcher finds the repo by this
+├── .dagr/                  # three launcher files; the dagr launcher finds the repo by this
 │   ├── cli.sh
 │   ├── dagr
-│   ├── install.sh
-│   ├── Dockerfile
-│   ├── src/
-│   └── docs/
+│   └── install.sh
 ├── lib/                    # low-level Dagr helpers (file writing, version pins)
 │   ├── dagr.versions.js
 │   ├── dagr.file_utils.js
