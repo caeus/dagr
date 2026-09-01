@@ -112,12 +112,12 @@ missing from the output, its `dagr.index.js` failed schema validation — see
 
 ## Environment variables
 
-Set by `cli.sh` and the dagr `Dockerfile`; you rarely touch them directly, but they explain
+Set by `cli.sh` and the published runtime image; you rarely touch them directly, but they explain
 the behaviour.
 
 | Variable | Set by | Meaning |
 | --- | --- | --- |
-| `REPO_ROOT` | `Dockerfile` (`/repo`) | Repo root **as seen inside the dagr container**. Used for loading `dagr.index.js` files and as the base for Docker build contexts. Falls back to dagr's own parent directory when unset. |
+| `REPO_ROOT` | runtime image (`/repo`) | Repo root **as seen inside the dagr container**. Used for loading `dagr.index.js` files and as the base for Docker build contexts. Falls back to dagr's own parent directory when unset. |
 | `HOST_REPO_ROOT` | `cli.sh` | Repo root **on the host**. Used with `WORKING_DIR` to infer the current package. Falls back to `REPO_ROOT`. |
 | `MOUNT_ROOT` | `cli.sh` (`/tmp/dagr-mounts`) | Temporary mount storage inside the dagr container. |
 | `CLEAN_MOUNT_ROOT` | `cli.sh` (`1`) | Tells dagr to remove extracted contents before it exits. |
@@ -139,4 +139,4 @@ export async function main(
 
 `src/index.ts` calls it with the default. Tests and alternative front-ends can pass their own
 factory to swap in a fake Docker builder, a fixture package map, or a different loader without
-touching the command layer. See [08 — Internals](08-internals.md#the-di-container).
+touching the command layer.

@@ -16,6 +16,9 @@ theme:
 plugins:
   - search
 
+exclude_docs: |
+  08-internals.md
+
 markdown_extensions:
   - admonition
   - tables
@@ -32,7 +35,6 @@ nav:
   - Dependencies and EXPORT: 05-deps-and-exports.md
   - CLI reference: 06-cli.md
   - Conventions and layout: 07-conventions-and-layout.md
-  - Internals: 08-internals.md
   - Docker-in-Docker: 09-docker-in-docker.md
   - Adopting in a new monorepo: 10-adopting-in-a-new-monorepo.md
   - Troubleshooting: 11-troubleshooting.md

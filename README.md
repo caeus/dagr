@@ -7,3 +7,7 @@ The Dagr monorepo contains two product areas:
 
 The repository builds and tests both areas with Dagr itself. A pinned published Dagr image
 bootstraps the checkout; that image builds the next engine and the stack images.
+
+- [Engine overview](engine/README.md)
+- [Engine documentation](engine/docs/README.md)
+- [Reusable stacks](stacks/README.md)
