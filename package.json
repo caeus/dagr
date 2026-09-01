@@ -4,11 +4,14 @@
   "private": true,
   "type": "module",
   "imports": {
-    "#*": "./dist/*"
+    "#*": "./build/*"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "29.0.3",
+    "@rollup/plugin-node-resolve": "16.0.3",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "26.2.0",
+    "rollup": "4.63.1",
     "tsx": "4.23.7",
     "typescript": "6.0.3"
   },

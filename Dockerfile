@@ -16,9 +16,9 @@ RUN pnpm exec tsc -p tsconfig.build.json
 # which is too late if it happens on a user's first invocation. Fail the image build instead.
 RUN mkdir -p /tmp/smoke/packages && \
     HOST_OS=linux HOST_ARCH=x64 HOST_LIBC=musl REPO_ROOT=/tmp/smoke \
-    node --experimental-vm-modules dist/index.js list > /dev/null && \
+    node --experimental-vm-modules build/index.js list > /dev/null && \
     rm -rf /tmp/smoke
 
 ENV REPO_ROOT=/repo
 
-ENTRYPOINT ["node", "--experimental-vm-modules", "dist/index.js"]
+ENTRYPOINT ["node", "--experimental-vm-modules", "build/index.js"]
