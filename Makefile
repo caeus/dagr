@@ -5,7 +5,9 @@ all: test
 build:
 	pnpm exec tsc -p tsconfig.build.json
 	mkdir -p dist
-	pnpm exec esbuild build/index.js --bundle --platform=node --format=esm --target=node22 --outfile=dist/dagr.js
+	pnpm exec esbuild build/index.js --bundle --platform=node --format=esm --target=node22 \
+		--banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" \
+		--outfile=dist/dagr.js
 
 bundlecheck: build
 	mkdir -p /tmp/dagr-smoke/packages
