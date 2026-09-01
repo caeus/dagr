@@ -34,8 +34,9 @@ buildx and access to the Docker socket.
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-**4. Create `packages/`.** This is the default tree scanned by `dagr list`. It may be absent, but
-packages elsewhere are only loaded when addressed by `dagr run` or a dependency.
+**4. Choose domain directories.** Dagr recursively discovers packages from the repository root, so
+directory names are yours. `apps/`, `services/`, `engine/`, and `packages/` have no built-in
+meaning.
 
 **5. Add a base-image package.** Almost every target wants the same starting image; make it a
 target so it is built once and shared:
@@ -136,7 +137,7 @@ are each one small edit away from being different. The most likely ones:
 | Want | Change |
 | --- | --- |
 | A different build-file name | `PACKAGE_FILE` in `src/pkg/loader.ts` |
-| Scan `apps/` as well as `packages/` | `scanAllPackages` in `src/pkg/loader.ts` |
+| Change discovery exclusions or traversal | `scanAllPackages` in `src/pkg/loader.ts` |
 | Different `.dockerignore` entries | per-target `IGNORE`; no dagr change needed |
 | A new step kind | the `Step` union in `src/pkg/schema.ts` **and** the switch in `src/runner/dockerfile-renderer.ts` |
 | A new command | a parser in `src/commands/index.ts`, a runner class, one branch in `CompositeCommandRunner` |

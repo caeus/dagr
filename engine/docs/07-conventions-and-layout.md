@@ -6,18 +6,17 @@ which is which saves time.
 ## Hardwired (you cannot change without editing dagr)
 
 - **The build file is named `dagr.index.js`.** `PACKAGE_FILE` in `src/pkg/loader.ts`.
-- **`dagr list` scans two places**: the repository root and everything under `packages/`.
-  `dagr run apps/web:ci:build` still loads `apps/web/dagr.index.js` directly; it simply will not
-  appear in `dagr list` unless the scan convention is extended.
-- **`packages/` may be absent.** It is treated as an empty list source.
+- **`dagr list` scans recursively from the repository root.** Directory names carry no Dagr
+  semantics. `engine/`, `stacks/`, `apps/web/`, and `packages/ui/` are treated alike.
+- **`.git` and `node_modules` are excluded from discovery.** They are implementation and
+  dependency trees, not repository-owned packages.
 - **The root `dagr.index.js` gets the package name `.`** — so its FQTs look like `//:ci:deploy`.
-- **List discovery stops at the first `dagr.index.js`.** The walker descends `packages/` recursively,
+- **List discovery stops at the first `dagr.index.js`.** The walker descends recursively,
   but as soon as a directory contains a `dagr.index.js` it records that package and does **not**
   look inside it. Nested packages (`packages/group/sub/dagr.index.js` where
   `packages/group/dagr.index.js` also exists) do not appear in `dagr list`. They remain directly
-  addressable. To make grouped packages discoverable, leave the
-  intermediate directory without a build file — `packages/group/a/dagr.index.js` and
-  `packages/group/b/dagr.index.js` both work and are named by their full relative path.
+  addressable. To make grouped packages discoverable, leave the intermediate directory without a
+  build file. `group/a/dagr.index.js` and `group/b/dagr.index.js` then appear under their full paths.
 - **File imports are source-root-relative and start with `//`.** Local modules use the host
   repository root. Modules reached through `//` use the mounted root. Only files named
   `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml` can be imported. The only bare
@@ -42,7 +41,6 @@ which is which saves time.
 
 ```
 <repo root>/
-├── dagr.index.js           # root package '.', for repo-wide targets (deploy, docs)
 ├── .dagr/                  # three launcher files; the dagr launcher finds the repo by this
 │   ├── cli.sh
 │   ├── dagr
@@ -55,11 +53,16 @@ which is which saves time.
 │   ├── dagr.ts-lib.js
 │   ├── dagr.ts-ui.js
 │   └── dagr.ts-executable.js
-└── packages/
-    ├── base/dagr.index.js     # shared base images
-    ├── common/dagr.index.js
-    └── ui/dagr.index.js
+├── foundations/
+│   └── base/dagr.index.js  # shared base images
+├── apps/
+│   └── web/dagr.index.js
+└── services/
+    └── api/dagr.index.js
 ```
+
+A root `dagr.index.js` makes the repository root one package, so discovery stops there. Put
+repo-wide automation in an ordinary domain directory when the repository also has child packages.
 
 ## The `lib/`+`stacks/` pattern
 
