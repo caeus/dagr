@@ -7,10 +7,10 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "rootDir": "src",
-    "outDir": "dist",
+    "outDir": "build",
     "types": ["node"],
     "sourceMap": true,
     "incremental": true,
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "build/tsconfig.tsbuildinfo"
   }
 }
