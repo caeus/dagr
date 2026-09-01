@@ -141,6 +141,8 @@ are each one small edit away from being different. The most likely ones:
 | A new step kind | the `Step` union in `src/pkg/schema.ts` **and** the switch in `src/runner/dockerfile-renderer.ts` |
 | A new command | a parser in `src/commands/index.ts`, a runner class, one branch in `CompositeCommandRunner` |
 
-These live in dagr itself, so changing them means working in a checkout of this repository and
-pinning your own commit (or fork) in `.dagr/Dockerfile`. Run `make typecheck && make test` after
-any of them. The renderer and runner both have unit tests that do not require Docker.
+These live in the engine, so changing them means working in a checkout of this repository and
+publishing the resulting runtime image from your fork. Pin that image SHA in `.dagr/cli.sh`. Run
+`dagr run //engine:ci:typecheck //engine:ci:test` after any change. The renderer and runner both
+have unit tests that do not require a Docker daemon themselves, though Dagr executes the suite in
+its containerized build graph.

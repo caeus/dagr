@@ -65,9 +65,8 @@ by their expanded FQTs. This trips people up constantly:
 images['//packages/ui:ci:install'] // ✗ undefined, even though that's what 'install' resolved to
 ```
 
-The values are image tags (see [08 — Internals](08-internals.md#image-tag-derivation) for how
-tags are derived). A dep you declare but never read is still built — declaring it is what
-schedules it.
+The values are Dagr-generated image tags. A dep you declare but never read is still built;
+declaring it is what schedules it.
 
 Two practical habits follow. If you build dep strings programmatically, keep the same
 expression for both the `deps` entry and the lookup:
