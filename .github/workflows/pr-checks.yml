@@ -23,6 +23,10 @@ jobs:
           docker run --rm \
             -v "$PWD:/repo" \
             -v /var/run/docker.sock:/var/run/docker.sock \
+            -e HOST_REPO_ROOT="$PWD" \
+            -e MOUNT_ROOT=/tmp/dagr-mounts \
+            -e CLEAN_MOUNT_ROOT=1 \
+            -e WORKING_DIR="$PWD" \
             -e HOST_OS=linux \
             -e HOST_ARCH=x64 \
             -e HOST_LIBC=glibc \
