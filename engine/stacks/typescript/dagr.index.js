@@ -19,7 +19,12 @@ export default {
       {
         RUN: [
           'rm -f /stack/di/dagr.index.js',
-          `find /stack -type f -name '*.js' -exec sed -i 's#//di//#//di/#g' {} \\;`,
+          'cp /stack/di/dagr.di.js /stack/di/dagr.di.features.js',
+          'cp /stack/di/dagr.di.js /stack/di/dagr.di.module.js',
+          'cp /stack/di/dagr.di.js /stack/di/dagr.di.stack.js',
+          `sed -i 's#//di//dagr.di.js#//di/dagr.di.features.js#' /stack/dagr.features.js`,
+          `sed -i 's#//di//dagr.di.js#//di/dagr.di.module.js#' /stack/dagr.module.js`,
+          `sed -i 's#//di//dagr.di.js#//di/dagr.di.stack.js#' /stack/dagr.stack.js`,
         ].join(' && '),
       },
       { WORKDIR: '/stack' },
