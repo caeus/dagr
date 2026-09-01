@@ -120,7 +120,6 @@ async function link(specifier: string, ctx: LoadContext): Promise<vm.Module> {
     identifier: path,
   })
   ctx.cache.set(key, mod)
-  await mod.link((nestedSpecifier) => link(nestedSpecifier, resolved.context))
   return mod
 }
 

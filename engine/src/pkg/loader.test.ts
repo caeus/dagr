@@ -23,6 +23,42 @@ async function fixture(
 }
 
 describe('RepositoryPackageLoader', () => {
+  it('lets the VM linker resolve shared transitive imports once', async () => {
+    const root = await fixture(`
+      import { left } from '//lib/dagr.left.js'
+      import { right } from '//lib/dagr.right.js'
+
+      export default {
+        ci: {
+          inspect: {
+            deps: [],
+            run: () => ({ FROM: left + right, steps: [], IGNORE: [] })
+          }
+        }
+      }
+    `, {
+      'lib/dagr.left.js': `
+        import { shared } from '//lib/dagr.shared.js'
+        export const left = shared
+      `,
+      'lib/dagr.right.js': `
+        import { shared } from '//lib/dagr.shared.js'
+        export const right = shared
+      `,
+      'lib/dagr.shared.js': `export const shared = 'a'`,
+    })
+
+    try {
+      const loaded = await new RepositoryPackageLoader(root).loadPackage('.')
+      assert.equal(loaded?.definition['ci']?.['inspect']?.run({
+        images: {},
+        host: { os: 'linux', arch: 'x64' },
+      }).FROM, 'aa')
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
   it('discovers packages recursively without privileging a directory name', async () => {
     const declaration = `
       export default {
