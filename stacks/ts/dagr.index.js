@@ -16,6 +16,7 @@ export default {
           'git checkout --detach FETCH_HEAD',
           'rm -f /src/typescript/di/dagr.index.js',
           'cp /src/di/dagr.di.js /src/typescript/di/dagr.di.js',
+          `find /src/typescript -type f -name '*.js' -exec sed -i 's#//di//#//di/#g' {} \\;`,
         ].join(' && '),
       },
       { WORKDIR: '/src/typescript' },
