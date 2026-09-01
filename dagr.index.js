@@ -53,13 +53,13 @@ const dagr = di.module({
     }),
   }), [ciFacet.targets]),
 
-  sourceAlias: di.toFun(
-    ['sourceDirectory'],
-    directory => ({ specifier: '#*', sourcePath: `./${directory}/*` }),
-  ),
-  'packageJson.imports': di.toFun(
-    ['outputDirectory'],
-    directory => ({ '#*': `./${directory}/*` }),
+  importAlias: di.toFun(
+    ['sourceDirectory', 'outputDirectory'],
+    (source, output) => ({
+      specifier: '#*',
+      sourcePath: `./${source}/*`,
+      runtimePath: `./${output}/*`,
+    }),
   ),
   'tsconfig.compilerOptions.declaration': di.toValue(false),
 
