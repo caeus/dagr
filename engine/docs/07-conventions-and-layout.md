@@ -11,9 +11,9 @@ The repository layout belongs to the repository. `engine/`, `stacks/`, `apps/`, 
 - `dagr.index.js` is the package entry point.
 - `dagr list` walks recursively from the repository root.
 - `.git` and `node_modules` are not searched.
-- Discovery stops below a directory containing `dagr.index.js`. That directory is one package; a
-  second package nested inside it is not listed.
-- A root `dagr.index.js` is package `.` and therefore prevents discovery of packages below it.
+- Discovery continues below directories containing `dagr.index.js`, so nested source packages are
+  listed independently.
+- A root `dagr.index.js` is package `.` and does not hide packages below it.
 - A package path is relative to the repository root. For example, `apps/web/dagr.index.js` defines
   package `apps/web` and target `//apps/web:ci:build`.
 - Direct target loading uses the same package paths as discovery. There is no separate `packages/`
@@ -48,8 +48,8 @@ dagr/
 Consequently, `dagr list` discovers `engine` and `stacks`. It does not require either directory to
 be renamed or placed below `packages/`.
 
-The root intentionally has no `dagr.index.js`. Adding one would make the entire repository a single
-root package for discovery purposes.
+The root currently has no `dagr.index.js`. Adding one would create package `.` without changing
+discovery below it.
 
 ## Choosing a layout
 
@@ -73,8 +73,8 @@ This produces:
 //services/api:ci:build
 ```
 
-An intermediate grouping directory should not contain `dagr.index.js` if its children must also
-appear in `dagr list`.
+`dagr list` currently stays within source directories and does not materialize mount declarations.
+Mount contents remain addressable when a command explicitly loads a target through that boundary.
 
 ## Shared stacks and helpers
 

@@ -428,23 +428,8 @@ export class RepositoryPackageLoader implements PackageLoader {
     trace: readonly MountTrace[],
   ): Promise<void> {
     const index = await this.indexAt(root, logicalRoot, sourceRoot, sourceLogicalRoot, trace)
-    if (index && isMountIndex(index)) {
-      const mounted = await this.materialize(index['/'], logicalRoot, trace)
-      const mountedRoot = await realpath(mounted.root)
-      await this.scanRepository(
-        mountedRoot,
-        mountBoundary(logicalRoot),
-        mountedRoot,
-        mountBoundary(logicalRoot),
-        acc,
-        mounted.trace,
-      )
-      return
-    }
-    if (index) {
-      this.remember(logicalRoot, index, root, acc)
-      return
-    }
+    if (index && isMountIndex(index)) return
+    if (index) this.remember(logicalRoot, index, root, acc)
 
     const entries = await readDirectories(root)
     await Promise.all(entries.map(entry => this.walk(
@@ -468,23 +453,8 @@ export class RepositoryPackageLoader implements PackageLoader {
     trace: readonly MountTrace[],
   ): Promise<void> {
     const index = await this.indexAt(dir, logicalPath, sourceRoot, sourceLogicalRoot, trace)
-    if (index && isMountIndex(index)) {
-      const mounted = await this.materialize(index['/'], logicalPath, trace)
-      const mountedRoot = await realpath(mounted.root)
-      await this.walk(
-        mountedRoot,
-        mountBoundary(logicalPath),
-        mountedRoot,
-        mountBoundary(logicalPath),
-        acc,
-        mounted.trace,
-      )
-      return
-    }
-    if (index) {
-      this.remember(logicalPath, index, dir, acc)
-      return
-    }
+    if (index && isMountIndex(index)) return
+    if (index) this.remember(logicalPath, index, dir, acc)
 
     const entries = await readDirectories(dir)
     await Promise.all(entries.map(entry => this.walk(
