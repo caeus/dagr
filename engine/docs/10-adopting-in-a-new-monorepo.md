@@ -1,48 +1,31 @@
 # Adopting dagr in a new monorepo
 
-dagr has no published package. You adopt it by copying four small files into a `.dagr/`
-directory at your repo root and pinning a dagr commit. You do **not** copy dagr's source: the
-image builds itself by cloning this repository at the SHA you pin, so upgrading is a one-line
-change and your build system is versioned as precisely as any other dependency.
+dagr runs from a published container image. You adopt it by copying three small launcher files
+into a `.dagr/` directory at your repo root and pinning an image commit in `cli.sh`. You do **not**
+copy dagr's source or install its Node dependencies.
 
 ## Checklist
 
-**1. Create `.dagr/` and copy the launcher files.** Three of them are copied verbatim:
+**1. Create `.dagr/` and copy the launcher files.** They live under `engine/` in the Dagr
+repository:
 
 ```sh
 mkdir <your-repo>/.dagr
-cp <source>/{cli.sh,dagr,install.sh} <your-repo>/.dagr/
+cp <dagr-source>/engine/{cli.sh,dagr,install.sh} <your-repo>/.dagr/
 ```
 
 The directory must be named `.dagr` and sit at the repo root — the `dagr` launcher finds your
 repository by walking up until it sees a directory with that name. Nothing inside these three
-files needs editing; `cli.sh` derives its own location.
+files needs structural editing; `cli.sh` derives its own location.
 
-**2. Write `.dagr/Dockerfile`.** This is the one file you author, because it carries the pin:
+**2. Pin the runtime image.** In `.dagr/cli.sh`, set `IMAGE` to an immutable Dagr commit tag:
 
-```dockerfile
-FROM node:22-alpine
-
-RUN apk add --no-cache docker-cli docker-cli-buildx git \
- && corepack enable && corepack prepare pnpm@latest --activate
-
-WORKDIR /dagr
-
-# The pinned SHA is part of this layer's cache key, so bumping it here is what rebuilds dagr.
-# A moving ref like `main` would cache forever and silently keep running a stale build.
-RUN git clone https://github.com/caeus/dagr.git . \
- && git checkout <dagr-commit-sha>
-
-RUN pnpm install --frozen-lockfile && pnpm exec tsc -p tsconfig.build.json
-
-ENV REPO_ROOT=/repo
-
-ENTRYPOINT ["node", "--experimental-vm-modules", "dist/index.js"]
+```sh
+IMAGE="ghcr.io/caeus/dagr:<dagr-commit-sha>"
 ```
 
-Note `git` in the `apk add` line — the clone needs it, and dagr's own Dockerfile does not
-install it because that one compiles from a local checkout instead. To upgrade dagr later, change
-the SHA; nothing else moves.
+To upgrade Dagr later, change that SHA; nothing else moves. The host only needs Docker with
+buildx and access to the Docker socket.
 
 **3. Install the launcher.** Once per machine, not once per repo:
 

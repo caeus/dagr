@@ -1,4 +1,4 @@
-import typescript, { ciFacet, di, library, target } from '//stacks/ts//dagr.stack.js'
+import typescript, { ciFacet, di, library, target } from '//stacks/typescript/dagr.stack.js'
 
 const ROLLUP_CONFIG = `import commonjs from '@rollup/plugin-commonjs'
 import { nodeResolve } from '@rollup/plugin-node-resolve'
@@ -135,7 +135,7 @@ const dagr = di.module({
 })
 
 const stack = typescript({
-  base: '//:ci:node-pnpm',
+  base: '//engine:ci:node-pnpm',
   scope: 'internal',
   versions,
   conventions: { outputDirectory: 'build' },

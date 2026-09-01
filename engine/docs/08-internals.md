@@ -320,27 +320,13 @@ parser, a runner class, and one branch in the composite.
 
 ## The dagr image
 
-```dockerfile
-FROM node:22-alpine
-RUN apk add --no-cache docker-cli docker-cli-buildx && corepack enable && corepack prepare pnpm@latest --activate
-WORKDIR /dagr
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
-COPY src/ ./src/
-COPY tsconfig.json tsconfig.build.json ./
-RUN pnpm exec tsc -p tsconfig.build.json
-RUN <smoke-run of `dagr list` against an empty fixture>
-ENV REPO_ROOT=/repo
-ENTRYPOINT ["node", "--experimental-vm-modules", "dist/index.js"]
-```
-
-This is the Dockerfile in *this* repository, which compiles from a local checkout. A repo that
-consumes dagr writes a different one that clones this repository at a pinned SHA — see
+The repository's `//engine:ci:image` target builds the runtime from the bundled engine artifact.
+Dagr N-1 builds and tests Dagr N, then the main-branch workflow publishes that image under Dagr
+N's commit SHA. Consumers pin the published SHA as described in
 [10 — Adopting in a new monorepo](10-adopting-in-a-new-monorepo.md).
 
-The image carries the Docker CLI and buildx plugin but no daemon — `cli.sh` mounts the host
-socket. Dependencies are installed before `src/` is copied, so editing dagr's source only
-invalidates the `tsc` layer.
+The image carries the Docker CLI and buildx plugin but no daemon; `cli.sh` mounts the host
+socket. Build-time Node and pnpm details remain inside the self-hosted target graph.
 
 `--experimental-vm-modules` is what enables `vm.SourceTextModule`. Without it, the loader
 throws immediately.

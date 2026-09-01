@@ -31,8 +31,8 @@ jobs:
           IMAGE: ghcr.io/${{ github.repository }}
         run: |
           for arch in amd64 arm64; do
-            DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run //:ci:image
-            docker tag ci-image "$IMAGE:${GITHUB_SHA}-$arch"
+            DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run //engine:ci:image
+            docker tag engine-ci-image "$IMAGE:${GITHUB_SHA}-$arch"
             docker push "$IMAGE:${GITHUB_SHA}-$arch"
           done
 

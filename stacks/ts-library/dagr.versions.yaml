@@ -1,0 +1,38 @@
+# Keys and values are quoted deliberately. Most keys begin with '@', which YAML reserves as an
+# indicator character, and an unquoted two-component version like 5.3 would parse as a float
+# rather than a string.
+pnpm: '11.20.0'
+
+deps:
+  '@cloudflare/workers-types': '4.20250620.0'
+  '@caeus/wyr': '0.0.0-rc1'
+  '@orpc/client': '1.14.14'
+  '@orpc/contract': '1.14.14'
+  '@orpc/server': '1.14.14'
+  '@orpc/zod': '1.14.14'
+  '@rushstack/eslint-patch': '1.8.0'
+  '@tailwindcss/vite': '4.3.3'
+  '@tsconfig/strictest': '2.0.8'
+  '@typescript-eslint/eslint-plugin': '8.66.0'
+  '@typescript-eslint/parser': '8.66.0'
+  '@types/node': '26.2.0'
+  '@types/react': '19.2.18'
+  '@types/react-dom': '19.2.4'
+  '@vitejs/plugin-react': '4.7.0'
+  'class-variance-authority': '0.7.1'
+  'clsx': '2.1.1'
+  'eslint': '8.57.0'
+  'jsdom': '30.0.1'
+  'prettier': '3.2.5'
+  'react': '19.2.8'
+  'react-markdown': '10.1.0'
+  'react-dom': '19.2.8'
+  'react-router-dom': '7.18.2'
+  'tailwind-merge': '3.6.0'
+  'tailwindcss': '4.3.3'
+  'typescript': '6.0.3'
+  'vite': '5.3.1'
+  # vitest 4 requires vite >=6; 3.x is the newest line that accepts vite 5.
+  'vitest': '3.2.7'
+  'wrangler': '4.0.0'
+  'zod': '4.4.3'

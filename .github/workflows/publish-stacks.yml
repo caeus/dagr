@@ -1,0 +1,77 @@
+name: Publish stack images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        stack: [di, typescript]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          STACK: ${{ matrix.stack }}
+        run: |
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            changed=true
+          elif git diff --quiet "$BEFORE" "$GITHUB_SHA" -- "stacks/$STACK"; then
+            changed=false
+          else
+            changed=true
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+        if: steps.changes.outputs.changed == 'true'
+
+      - uses: docker/login-action@v3
+        if: steps.changes.outputs.changed == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: stack
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          STACK: ${{ matrix.stack }}
+        run: echo "tree_sha=$(git rev-parse HEAD:stacks/$STACK)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push platform images with dagr
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/dagr-stacks-${{ matrix.stack }}
+          STACK: ${{ matrix.stack }}
+          TREE_SHA: ${{ steps.stack.outputs.tree_sha }}
+        run: |
+          for arch in amd64 arm64; do
+            DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run "//stacks:ci:image-$STACK"
+            docker tag "stacks-ci-image-$STACK" "$IMAGE:$TREE_SHA-$arch"
+            docker push "$IMAGE:$TREE_SHA-$arch"
+          done
+
+      - name: Publish multi-platform manifest
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/dagr-stacks-${{ matrix.stack }}
+          TREE_SHA: ${{ steps.stack.outputs.tree_sha }}
+        run: |
+          docker buildx imagetools create \
+            --tag "$IMAGE:$TREE_SHA" \
+            --tag "$IMAGE:latest" \
+            "$IMAGE:$TREE_SHA-amd64" \
+            "$IMAGE:$TREE_SHA-arm64"
