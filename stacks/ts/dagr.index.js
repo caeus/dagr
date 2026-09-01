@@ -18,6 +18,8 @@ export default {
           `git fetch --depth=1 --filter=blob:none origin ${DI_COMMIT}`,
           'rm -f /src/typescript/di/dagr.index.js',
           `git show ${DI_COMMIT}:di/dagr.di.js > /src/typescript/di/dagr.di.js`,
+          // The bootstrap Dagr predates nested mount imports. Flatten the stack's pinned DI mount
+          // into the TypeScript mount until this repo publishes the self-hosted Dagr image.
           `find /src/typescript -type f -name '*.js' -exec sed -i 's#//di//#//di/#g' {} \\;`,
         ].join(' && '),
       },
