@@ -6,7 +6,7 @@ import { builtinModules } from 'node:module'
 
 const builtins = new Set([
   ...builtinModules,
-  ...builtinModules.map((name) => \`node:\${name}\`)
+  ...builtinModules.map((name) => `node:${name}`)
 ])
 
 export default {
@@ -72,8 +72,8 @@ const dagr = di.module({
   dagrAllowBuilds: di.toValue(['esbuild'], ['allowBuilds']),
 
   testTarget: di.toFun(
-    ['libraryBuildTarget', '#dagrRuntime'],
-    (_build, runtime) => target('test', {
+    ['#dagrRuntime'],
+    runtime => target('test', {
       deps: ['ci:build'],
       run: ({ images }) => ({
         FROM: images['ci:build'],
@@ -87,8 +87,8 @@ const dagr = di.module({
   ),
 
   bundleTarget: di.toFun(
-    ['libraryBuildTarget', '#dagrRuntime'],
-    (_build, runtime) => target('bundle', {
+    ['#dagrRuntime'],
+    runtime => target('bundle', {
       deps: ['ci:build'],
       run: ({ images }) => ({
         FROM: images['ci:build'],
@@ -118,24 +118,20 @@ const dagr = di.module({
     [ciFacet.targets],
   ),
 
-  imageTarget: di.toFun(
-    [],
-    () => target('image', {
-      deps: ['ci:bundlecheck'],
-      run: ({ images }) => ({
-        FROM: 'node:22-alpine',
-        steps: [
-          { RUN: 'apk add --no-cache docker-cli docker-cli-buildx' },
-          { WORKDIR: '/dagr' },
-          { COPY: { from: images['ci:bundlecheck'], src: '/repo/dist/dagr.js', dest: '/dagr/dagr.js' } },
-          { ENV: { REPO_ROOT: '/repo' } },
-          { ENTRYPOINT: ['node', '--experimental-vm-modules', '/dagr/dagr.js'] },
-        ],
-        IGNORE: [],
-      }),
+  imageTarget: di.toValue(target('image', {
+    deps: ['ci:bundlecheck'],
+    run: ({ images }) => ({
+      FROM: 'node:22-alpine',
+      steps: [
+        { RUN: 'apk add --no-cache docker-cli docker-cli-buildx' },
+        { WORKDIR: '/dagr' },
+        { COPY: { from: images['ci:bundlecheck'], src: '/repo/dist/dagr.js', dest: '/dagr/dagr.js' } },
+        { ENV: { REPO_ROOT: '/repo' } },
+        { ENTRYPOINT: ['node', '--experimental-vm-modules', '/dagr/dagr.js'] },
+      ],
+      IGNORE: [],
     }),
-    [ciFacet.targets],
-  ),
+  }), [ciFacet.targets]),
 })
 
 const stack = typescript({
