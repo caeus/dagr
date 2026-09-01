@@ -642,8 +642,8 @@ describe('RepositoryPackageLoader', () => {
 
     try {
       await assert.rejects(
-        new RepositoryPackageLoader(root, materializer).loadPackage('packages/loop//'),
-        /Circular mount: packages\/loop -> packages\/loop/,
+        new RepositoryPackageLoader(root, materializer).loadPackage('packages/loop////'),
+        /Circular mount: packages\/loop -> packages\/loop\/\//,
       )
     } finally {
       await Promise.all([
