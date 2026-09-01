@@ -1,4 +1,4 @@
-const STACKS_COMMIT = 'a2dc4a147afe56ca006e49f405e55cd55bdf5d15'
+const STACKS_COMMIT = '032db18ad8e5852294c17f7c81ae8b48deeda84f'
 const DI_COMMIT = 'a8782212bc94065dff632749f884ff84022d314e'
 
 export default {
