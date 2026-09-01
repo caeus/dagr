@@ -15,22 +15,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - name: Run dagr checks
+        run: sh .dagr/cli.sh run //:ci:build //:ci:typecheck //:ci:test //:ci:bundlecheck //:ci:image
 
-      - name: Set up pnpm
-        run: corepack enable && corepack prepare pnpm@latest --activate
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Typecheck
-        run: make typecheck
-
-      - name: Test
-        run: make test
-
-      - name: Smoke-test image
-        run: make imagecheck
+      - name: Smoke-test self-built image
+        run: |
+          docker run --rm \
+            -v "$PWD:/repo" \
+            -e HOST_OS=linux \
+            -e HOST_ARCH=x64 \
+            -e HOST_LIBC=glibc \
+            ci-image list > /dev/null
