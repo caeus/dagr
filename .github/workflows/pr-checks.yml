@@ -32,5 +32,5 @@ jobs:
       - name: Test
         run: make test
 
-      - name: Smoke-test bundle
-        run: make bundlecheck
+      - name: Smoke-test image
+        run: make imagecheck

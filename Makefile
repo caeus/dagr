@@ -1,4 +1,4 @@
-.PHONY: all build bundlecheck test typecheck clean
+.PHONY: all build bundlecheck imagecheck test typecheck clean
 
 all: test
 
@@ -12,6 +12,15 @@ bundlecheck: build
 	HOST_OS=linux HOST_ARCH=x64 HOST_LIBC=glibc REPO_ROOT=/tmp/dagr-smoke \
 		node --experimental-vm-modules dist/dagr.js list > /dev/null
 	rm -rf /tmp/dagr-smoke
+
+imagecheck: bundlecheck
+	docker build --tag dagr:check .
+	mkdir -p /tmp/dagr-image-smoke/packages
+	docker run --rm \
+		-e HOST_OS=linux -e HOST_ARCH=x64 -e HOST_LIBC=musl \
+		-v /tmp/dagr-image-smoke:/repo \
+		dagr:check list > /dev/null
+	rm -rf /tmp/dagr-image-smoke
 
 # Tests stay TypeScript and are never compiled, but #* resolves to ./build/*, so they exercise the
 # same compiled modules dagr runs from source before bundling. A wrong import map fails here.
