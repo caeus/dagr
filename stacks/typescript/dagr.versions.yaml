@@ -1,0 +1,7 @@
+# Core TypeScript fallbacks. Optional features contribute their own defaults.
+# Repository versions override both catalogs.
+pnpm: '11.20.0'
+
+deps:
+  '@tsconfig/strictest': '2.0.8'
+  'typescript': '6.0.3'

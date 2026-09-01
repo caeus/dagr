@@ -16,7 +16,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run dagr checks
-        run: sh .dagr/cli.sh run //:ci:build //:ci:typecheck //:ci:test //:ci:bundlecheck //:ci:image
+        run: |
+          sh .dagr/cli.sh run \
+            //engine:ci:build \
+            //engine:ci:typecheck \
+            //engine:ci:test \
+            //engine:ci:bundlecheck \
+            //engine:ci:image \
+            //stacks:ci:test \
+            //stacks:ci:image-di \
+            //stacks:ci:image-typescript
 
       - name: Smoke-test self-built image
         run: |
@@ -30,4 +39,4 @@ jobs:
             -e HOST_OS=linux \
             -e HOST_ARCH=x64 \
             -e HOST_LIBC=glibc \
-            ci-image list > /dev/null
+            engine-ci-image list > /dev/null

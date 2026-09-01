@@ -25,7 +25,7 @@ describe('extractFromImage', () => {
     try {
       await extractFromImage('pkg-ci-build', { '/out/': 'dist/' }, root, dockerRunner(calls))
       assert.deepEqual(calls, [
-        ['create', 'pkg-ci-build'],
+        ['create', 'pkg-ci-build', 'true'],
         ['cp', 'container-id:/out/.', join(root, 'dist')],
         ['rm', 'container-id'],
       ])
