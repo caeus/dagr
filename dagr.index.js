@@ -139,7 +139,7 @@ const dagr = di.module({
 
 const stack = typescript({
   base: '//:ci:node-pnpm',
-  scope: 'caeus',
+  scope: 'internal',
   versions,
   conventions: { outputDirectory: 'build' },
   ignore: ['.git', '.dagr', 'node_modules', 'build', 'dist', 'docs', 'coverage'],
