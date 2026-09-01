@@ -31,7 +31,7 @@ describe('copyFromImage', () => {
     try {
       await copyFromImage('tools:latest', [{ src: '/dagr/.', dest }], runner)
       assert.deepEqual(calls, [
-        { args: ['create', 'tools:latest'], label: 'container.create tools:latest' },
+        { args: ['create', 'tools:latest', 'true'], label: 'container.create tools:latest' },
         { args: ['cp', 'container-id:/dagr/.', dest], label: 'container.copy tools:latest' },
         { args: ['rm', 'container-id'], label: 'container.remove tools:latest' },
       ])

@@ -17,7 +17,9 @@ export async function copyFromImage(
   if (copies.length === 0) return
   const created = await processRunner.run(
     'docker',
-    ['create', imageTag],
+    // Extraction only needs a container filesystem. Supplying a command lets Docker create one
+    // from commandless images such as FROM scratch; the container is never started.
+    ['create', imageTag, 'true'],
     `container.create ${imageTag}`,
   )
   const containerId = created.stdoutTail.at(-1)?.trim()
