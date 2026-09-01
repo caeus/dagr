@@ -6,7 +6,7 @@ import { builtinModules } from 'node:module'
 
 const builtins = new Set([
   ...builtinModules,
-  ...builtinModules.map((name) => `node:${name}`)
+  ...builtinModules.map((name) => \`node:\${name}\`)
 ])
 
 export default {
