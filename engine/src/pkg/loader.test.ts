@@ -23,6 +23,57 @@ async function fixture(
 }
 
 describe('RepositoryPackageLoader', () => {
+  it('discovers packages recursively without privileging a directory name', async () => {
+    const declaration = `
+      export default {
+        ci: {
+          build: {
+            deps: [],
+            run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
+          }
+        }
+      }
+    `
+    const root = await fixture('', {
+      'engine/dagr.index.js': declaration,
+      'stacks/dagr.index.js': declaration,
+      'apps/web/dagr.index.js': declaration,
+    })
+
+    try {
+      const packages = await new RepositoryPackageLoader(root).loadAllPackages()
+      assert.deepEqual([...packages.keys()].sort(), ['apps/web', 'engine', 'stacks'])
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('stops discovery at packages and ignores dependency and VCS trees', async () => {
+    const declaration = `
+      export default {
+        ci: {
+          build: {
+            deps: [],
+            run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
+          }
+        }
+      }
+    `
+    const root = await fixture('', {
+      'apps/dagr.index.js': declaration,
+      'apps/nested/dagr.index.js': declaration,
+      'node_modules/dependency/dagr.index.js': declaration,
+      '.git/objects/dagr.index.js': declaration,
+    })
+
+    try {
+      const packages = await new RepositoryPackageLoader(root).loadAllPackages()
+      assert.deepEqual([...packages.keys()], ['apps'])
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
   it('exposes the canonical package location through import.meta.dagr', async () => {
     const declaration = `
       const metadata = {

@@ -59,9 +59,10 @@ From anywhere inside the monorepo:
 dagr list
 ```
 
-This scans the root package and `packages/`, then prints the discovered target graph in
-topological order. It does not build targets, though it materializes any mounts needed for
-discovery. Use it to confirm your setup and check that a build file actually parsed.
+This scans the repository recursively, then prints the discovered target graph in topological
+order. Discovery stops below each `dagr.index.js` and skips `.git` and `node_modules`. It does not
+build targets, though it materializes any mounts needed for discovery. Use it to confirm your
+setup and check that a build file actually parsed.
 
 Then build something:
 

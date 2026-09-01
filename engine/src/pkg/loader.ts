@@ -10,6 +10,7 @@ import { IndexDef, type MountDef, type MountIndex, type PackageDef } from '#pkg/
 
 const PACKAGE_FILE = 'dagr.index.js'
 const IMPORT_FILE = /^dagr\..+\.(?:js|json|yaml|toml)$/
+const DISCOVERY_EXCLUDED_DIRECTORIES = new Set(['.git', 'node_modules'])
 
 export interface PackageLoader {
   loadPackage(logicalPath: string): Promise<LoadedPackage | undefined>
@@ -432,15 +433,17 @@ export class RepositoryPackageLoader implements PackageLoader {
       )
       return
     }
-    if (index) this.remember(logicalRoot, index, root, acc)
+    if (index) {
+      this.remember(logicalRoot, index, root, acc)
+      return
+    }
 
-    const packages = resolve(root, 'packages')
-    const entries = await readDirectories(packages)
+    const entries = await readDirectories(root)
     await Promise.all(entries.map(entry => this.walk(
-      resolve(packages, entry),
+      resolve(root, entry),
       logicalRoot === '.'
-        ? joinLogical('packages', entry)
-        : joinLogical(logicalRoot, 'packages', entry),
+        ? entry
+        : joinLogical(logicalRoot, entry),
       sourceRoot,
       sourceLogicalRoot,
       acc,
@@ -503,7 +506,9 @@ async function readDirectories(root: string): Promise<readonly string[]> {
     if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return []
     throw error
   })
-  return entries.filter(entry => entry.isDirectory()).map(entry => entry.name)
+  return entries
+    .filter(entry => entry.isDirectory() && !DISCOVERY_EXCLUDED_DIRECTORIES.has(entry.name))
+    .map(entry => entry.name)
 }
 
 function validateLogicalPath(logicalPath: string): void {
