@@ -1,4 +1,4 @@
-import typescript, { ciFacet, di, library, target } from '//stacks/typescript/dagr.stack.js'
+import typescript, { ciFacet, di, library, target } from '//engine/stacks/typescript//dagr.stack.js'
 
 const ROLLUP_CONFIG = `import commonjs from '@rollup/plugin-commonjs'
 import { nodeResolve } from '@rollup/plugin-node-resolve'
