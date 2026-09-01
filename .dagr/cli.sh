@@ -4,6 +4,8 @@ set -e
 DAGR_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$DAGR_DIR/.." && pwd)"
 IMAGE="ghcr.io/caeus/dagr:1f16025d16e0579dab7454a5acd7e33db360dc57"
+TARGET_PLATFORM="${DOCKER_DEFAULT_PLATFORM:-}"
+unset DOCKER_DEFAULT_PLATFORM
 
 HOST_OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 case "$(uname -m)" in
@@ -17,6 +19,9 @@ if [ "$HOST_OS" = linux ]; then
   if ldd --version 2>&1 | grep -qi musl; then LIBC_ENV="-e HOST_LIBC=musl"; else LIBC_ENV="-e HOST_LIBC=glibc"; fi
 fi
 
+PLATFORM_ENV=""
+if [ -n "$TARGET_PLATFORM" ]; then PLATFORM_ENV="-e DOCKER_DEFAULT_PLATFORM=$TARGET_PLATFORM"; fi
+
 docker run --rm --pull=missing \
   -v "$REPO_ROOT:/repo" \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -27,4 +32,5 @@ docker run --rm --pull=missing \
   -e HOST_OS="$HOST_OS" \
   -e HOST_ARCH="$HOST_ARCH" \
   $LIBC_ENV \
+  $PLATFORM_ENV \
   "$IMAGE" "$@"
