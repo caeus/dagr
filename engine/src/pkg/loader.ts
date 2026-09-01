@@ -57,6 +57,7 @@ interface LoadContext {
   readonly vmContext: vm.Context
   readonly builtins: ReadonlyMap<string, vm.Module>
   readonly cache: Map<string, vm.Module>
+  readonly moduleContexts: WeakMap<vm.Module, LoadContext>
   readonly resolveImport: (specifier: string, context: LoadContext) => Promise<ResolvedImport>
 }
 
@@ -111,6 +112,7 @@ async function link(specifier: string, ctx: LoadContext): Promise<vm.Module> {
       { context: resolved.context.vmContext, identifier: path }
     )
     ctx.cache.set(key, mod)
+    ctx.moduleContexts.set(mod, resolved.context)
     return mod
   }
 
@@ -120,6 +122,7 @@ async function link(specifier: string, ctx: LoadContext): Promise<vm.Module> {
     identifier: path,
   })
   ctx.cache.set(key, mod)
+  ctx.moduleContexts.set(mod, resolved.context)
   return mod
 }
 
@@ -146,7 +149,11 @@ async function loadIndex(
       })
     },
   })
-  await mod.link((specifier) => link(specifier, ctx))
+  ctx.moduleContexts.set(mod, ctx)
+  await mod.link((specifier, referencingModule) => link(
+    specifier,
+    ctx.moduleContexts.get(referencingModule) ?? ctx,
+  ))
   await mod.evaluate()
   const defaultExport = (mod.namespace as Record<string, unknown>)['default']
   const result = IndexDef.safeParse(defaultExport)
@@ -162,6 +169,7 @@ export class RepositoryPackageLoader implements PackageLoader {
   private readonly vmContext = createSandboxContext()
   private readonly builtins = createBuiltinModules(this.vmContext)
   private readonly moduleCache = new Map<string, vm.Module>()
+  private readonly moduleContexts = new WeakMap<vm.Module, LoadContext>()
   private readonly indexCache = new Map<string, Promise<IndexDef | null>>()
   private readonly packageCache = new Map<string, Promise<LoadedPackage | undefined>>()
   private readonly mountCache = new Map<string, Promise<MaterializedMount>>()
@@ -273,6 +281,7 @@ export class RepositoryPackageLoader implements PackageLoader {
       vmContext: this.vmContext,
       builtins: this.builtins,
       cache: this.moduleCache,
+      moduleContexts: this.moduleContexts,
       resolveImport: (specifier, context) => this.resolveImport(specifier, context),
     }
   }
