@@ -55,7 +55,7 @@ const dagr = di.module({
 
   sourceAlias: di.toFun(
     ['sourceDirectory'],
-    directory => ({ specifier: '#*', sourcePath: `./${directory}/*`, viteName: '#' }),
+    directory => ({ specifier: '#*', sourcePath: `./${directory}/*` }),
   ),
   'packageJson.imports': di.toFun(
     ['outputDirectory'],
