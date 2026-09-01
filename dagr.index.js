@@ -61,6 +61,7 @@ const dagr = di.module({
     ['outputDirectory'],
     directory => ({ '#*': `./${directory}/*` }),
   ),
+  'tsconfig.compilerOptions.declaration': di.toValue(false),
 
   dagrToolPackages: di.toValue([
     '@rollup/plugin-commonjs',
