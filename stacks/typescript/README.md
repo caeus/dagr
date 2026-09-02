@@ -207,8 +207,8 @@ That internal contribution value is exactly:
 }
 ```
 
-Facet assembly consumes `name` as the target's map key and emits Dagr's public
-`{ deps, run }` target shape. There is no target specification or target-kind interpreter. The `ci` facet collects every value
+Facet assembly uses `name` as the target's map key and retains it as target metadata. There is no
+target specification or target-kind interpreter. The `ci` facet collects every value
 tagged with `ciFacet.targets`; the root facet tag then collects `ci`:
 
 ```text
