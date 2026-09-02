@@ -90,6 +90,7 @@ export const TargetDef = z
     deps: z.array(z.string()).readonly(),
     run: z.custom<RunFn>((v) => typeof v === "function"),
   })
+  .strict()
   .readonly();
 export interface TargetDef extends z.infer<typeof TargetDef> {}
 

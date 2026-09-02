@@ -40,6 +40,13 @@ describe('PackageDef names', () => {
   it('applies Name to target keys', () => {
     assert.equal(PackageDef.safeParse({ ci: { 'build/run': target } }).success, false)
   })
+
+  it('rejects unknown target fields', () => {
+    assert.equal(
+      PackageDef.safeParse({ ci: { build: { ...target, depps: [] } } }).success,
+      false,
+    )
+  })
 })
 
 describe('IndexDef', () => {
