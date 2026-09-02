@@ -41,10 +41,11 @@ describe('PackageDef names', () => {
     assert.equal(PackageDef.safeParse({ ci: { 'build/run': target } }).success, false)
   })
 
-  it('rejects unknown target fields', () => {
-    assert.equal(
-      PackageDef.safeParse({ ci: { build: { ...target, depps: [] } } }).success,
-      false,
+  it('preserves additional target fields', () => {
+    const definition = { ...target, name: 'build' }
+    assert.deepEqual(
+      PackageDef.parse({ ci: { build: definition } }),
+      { ci: { build: definition } },
     )
   })
 })
