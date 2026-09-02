@@ -25,7 +25,6 @@ export default {
           `sed -i 's#//di//dagr.di.js#//di/dagr.di.features.js#' /stack/dagr.features.js`,
           `sed -i 's#//di//dagr.di.js#//di/dagr.di.module.js#' /stack/dagr.module.js`,
           `sed -i 's#//di//dagr.di.js#//di/dagr.di.stack.js#' /stack/dagr.stack.js`,
-          `sed -i 's#valueOf = contribution => contribution#valueOf = ({ name, ...value }) => value#' /stack/dagr.stack.js`,
         ].join(' && '),
       },
       { WORKDIR: '/stack' },
