@@ -45,7 +45,7 @@ supported.
 A second `//` crosses a mount declared by `dagr.index.js`:
 
 ```js
-import typescript from '//stacks/ts//dagr.stack.js'
+import toolchain from '//stacks/toolchain//dagr.stack.js'
 ```
 
 Imports made inside that mounted tree resolve their own leading `//` from the mounted root. Nested
@@ -60,12 +60,12 @@ Shared build logic is ordinary Dagr JavaScript:
 
 ```js
 // build/dagr.node.js
-export function nodePackage({ image = 'node:22-alpine' } = {}) {
+export function component({ image = 'alpine:3.22' } = {}) {
   return {
     ci: {
       build: {
         deps: [],
-        run: () => ({ FROM: image, steps: [], IGNORE: ['node_modules'] }),
+        run: () => ({ FROM: image, steps: [], IGNORE: ['out'] }),
       },
     },
   }
@@ -73,10 +73,10 @@ export function nodePackage({ image = 'node:22-alpine' } = {}) {
 ```
 
 ```js
-// apps/web/dagr.index.js
-import { nodePackage } from '//build/dagr.node.js'
+// services/api/dagr.index.js
+import { component } from '//build/dagr.component.js'
 
-export default nodePackage()
+export default component()
 ```
 
 The directory name `build` is only a repository convention.

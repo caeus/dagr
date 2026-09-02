@@ -1,7 +1,7 @@
 # Conventions and layout
 
-Dagr recognizes packages, not JavaScript-style workspaces. A package is any directory containing a
-`dagr.index.js`. The directory path becomes the package address.
+A package is any directory containing a `dagr.index.js`. Its root-relative path, prefixed with
+`//`, becomes the package name.
 
 The repository layout belongs to the repository. `engine/`, `stacks/`, `apps/`, `services/`, and
 `packages/` have no built-in meaning.
@@ -10,13 +10,13 @@ The repository layout belongs to the repository. `engine/`, `stacks/`, `apps/`, 
 
 - `dagr.index.js` is the package entry point.
 - `dagr list` walks recursively from the repository root.
-- `.git` and `node_modules` are not searched.
+- `.git` is not searched.
 - Discovery continues below directories containing `dagr.index.js`, so nested source packages are
   listed independently.
 - A root `dagr.index.js` defines targets such as `//:ci:build` and does not hide packages below it.
-- A package path is relative to the repository root. For example, `apps/web/dagr.index.js` defines
-  package `apps/web` and target `//apps/web:ci:build`.
-- Direct target loading uses the same package paths as discovery. There is no separate `packages/`
+- A package name is rooted with `//`. For example, `services/api/dagr.index.js` defines package
+  `//services/api` and target `//services/api:ci:build`. A root `dagr.index.js` defines package `//`.
+- Direct target loading uses the same package names as discovery. There is no separate `packages/`
   lookup convention.
 - A package's Docker build context is its own directory.
 - Dagr modules use root-relative `//` imports. Importable files must match `dagr.*.js`,
@@ -60,7 +60,7 @@ those directories by domain when that makes the repository easier to understand:
 <repo>/
 ├── engine/dagr.index.js
 ├── stacks/dagr.index.js
-├── apps/web/dagr.index.js
+├── services/api/dagr.index.js
 └── services/api/dagr.index.js
 ```
 
@@ -69,7 +69,7 @@ This produces:
 ```text
 //engine:ci:build
 //stacks:ci:test
-//apps/web:ci:build
+//services/api:ci:build
 //services/api:ci:build
 ```
 
@@ -82,39 +82,29 @@ Shared code is ordinary importable Dagr code. Its directory name is a convention
 feature. For example:
 
 ```js
-import typescript, { library } from '//stacks/ts//dagr.stack.js'
+import { service } from '//build/dagr.service.js'
 
-const stack = typescript({
-  base: '//foundation:ci:node-pnpm',
-  scope: 'example',
-})
-  .with(library({ runtime: 'node' }))
-
-export default stack({
-  location: import.meta.dagr.location,
-  version: '0.1.0',
-  deps: [],
-})
+export default service({ image: 'alpine:3.22' })
 ```
 
-Here `stacks/ts` is a project-chosen alias for a mounted stack image. The second `//` marks the
-mount boundary. Source helpers can also live directly in the repository and be imported with a
-single root marker, such as `//build/dagr.helpers.js`.
+The `build` directory is a repository convention. A mounted stack could instead be imported through
+a project-chosen alias such as `//stacks/toolchain//dagr.stack.js`; the second `//` marks the mount
+boundary.
 
 See [Build-file environment and imports](04-sandbox-and-imports.md) for module rules and
 [Authoring `dagr.index.js`](03-authoring-dagr-index-js.md) for mounts and target definitions.
 
 ## Build-context ignores
 
-Discovery exclusions and Docker build-context ignores are different things. Dagr itself skips
-`.git` and `node_modules` while discovering packages. A target controls its Docker context with
+Discovery exclusions and Docker build-context ignores are different things. Dagr skips `.git`
+while discovering packages. A target controls its Docker context with
 `IGNORE`:
 
 ```js
 run: () => ({
-  FROM: 'node:22-alpine',
+  FROM: 'alpine:3.22',
   steps: [],
-  IGNORE: ['.git', 'node_modules', 'build', 'dist'],
+  IGNORE: ['.git', 'out'],
 })
 ```
 

@@ -44,10 +44,10 @@ Each `dagr.index.js` can read its canonical logical package location from
 `import.meta.dagr.location`:
 
 ```js
-const location = import.meta.dagr.location // `//apps/web`
+const location = import.meta.dagr.location // `//services/api`
 ```
 
-The repository root and the root of every mounted source tree receive `//`. A package `c` inside a
+The repository root and the root of every mounted source tree receive `//`. A package `//c` inside a
 mounted tree receives `//c`, regardless of whether that tree was mounted at `//tools`,
 `//vendor/tools`, or anywhere else. A mountee cannot observe its mounter through this API.
 
@@ -121,8 +121,8 @@ never a shell string.
 ### `COPY` and the build context
 
 `src` in a `COPY` without `from` is resolved against the **build context**, which is the
-package's own directory. For `apps/web`, `{ COPY: { src: 'src', dest: '/repo/src' } }`
-copies `apps/web/src`. You cannot `COPY` a path outside your package — that is Docker's
+package's own directory. For `services/api`, `{ COPY: { src: 'src', dest: '/repo/src' } }`
+copies `services/api/src`. You cannot `COPY` a path outside your package — that is Docker's
 rule, not dagr's.
 
 What the context excludes is controlled by `IGNORE`, described next.
@@ -133,7 +133,7 @@ What the context excludes is controlled by `IGNORE`, described next.
 patterns of its own.
 
 ```js
-IGNORE: ['node_modules', '.git']
+IGNORE: ['.git', 'out']
 ```
 
 It is **required**, deliberately. Nothing is excluded unless a target says so, which means the
@@ -145,7 +145,7 @@ place and import it, rather than repeating literals:
 
 ```js
 // lib/dagr.dockerignore.js
-export const RECOMMENDED_IGNORE = ['node_modules', '.git']
+export const RECOMMENDED_IGNORE = ['.git', 'out']
 ```
 
 ```js
@@ -153,10 +153,6 @@ import { RECOMMENDED_IGNORE } from '//lib/dagr.dockerignore.js'
 
 run: () => ({ FROM: '…', steps: [ … ], IGNORE: RECOMMENDED_IGNORE })
 ```
-
-Excluding `node_modules` matters more than it looks. A package whose `install` target exports
-`node_modules` back to the host will otherwise upload that entire tree as build context on
-every subsequent build.
 
 With `from`, `src` is an absolute path inside the referenced image and the context is not
 involved:
@@ -173,8 +169,8 @@ a bare `RUN ... > /repo/file` does not. So put `WORKDIR` before any file-writing
 ```js
 steps: [
   { WORKDIR: '/repo' },              // creates /repo
-  writeJson('/repo/package.json', pkg),
-  { RUN: 'pnpm install' },
+  writeText('/repo/config', config),
+  { RUN: './install-dependencies' },
 ]
 ```
 
@@ -215,58 +211,3 @@ Base64 encoding avoids shell quoting failures when content contains newlines, qu
 The tradeoff: any change to the file's contents invalidates that layer and everything after
 it. That is correct behaviour, and it is why config writes belong early in the step list,
 before the expensive install.
-
-## A worked example
-
-```js
-import { PNPM_VERSION } from '//lib/dagr.versions.js'
-import { writeJson, writeText } from '//lib/dagr.file_utils.js'
-import { RECOMMENDED_IGNORE } from '//lib/dagr.dockerignore.js'
-
-const TSCONFIG = {
-  extends: '@tsconfig/strictest/tsconfig.json',
-  include: ['src/**/*'],
-  compilerOptions: { noEmit: true, module: 'ESNext', moduleResolution: 'Bundler' },
-}
-
-const PACKAGE_JSON = {
-  name: '@scope/thing',
-  type: 'module',
-  devDependencies: { typescript: '6.0.3', '@tsconfig/strictest': '2.0.8' },
-}
-
-export default {
-  ci: {
-    install: {
-      deps: [],
-      run: () => ({
-        FROM: 'node:22-alpine',
-        steps: [
-          { RUN: `corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate` },
-          { WORKDIR: '/repo' },
-          writeJson('/repo/package.json', PACKAGE_JSON),
-          writeJson('/repo/tsconfig.json', TSCONFIG),
-          { RUN: 'pnpm install --prod=false' },
-        ],
-        IGNORE: RECOMMENDED_IGNORE,
-      }),
-    },
-    typecheck: {
-      deps: ['install'],
-      run: ({ images }) => ({
-        FROM: images['install'],
-        steps: [
-          { COPY: { src: 'src', dest: '/repo/src' } },
-          { WORKDIR: '/repo' },
-          { RUN: 'pnpm exec tsc --noEmit' },
-        ],
-        IGNORE: RECOMMENDED_IGNORE,
-      }),
-    },
-  },
-}
-```
-
-Note the split: `install` writes config and installs dependencies but never touches `src/`,
-so editing a source file leaves the `install` image fully cached and only `typecheck` rebuilds.
-Getting this boundary right is most of what makes a dagr repo feel fast.

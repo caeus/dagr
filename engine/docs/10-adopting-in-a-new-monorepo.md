@@ -32,19 +32,19 @@ The host needs Docker with Buildx and permission to reach the Docker daemon.
 Choose a domain directory. No directory name is privileged:
 
 ```js
-// apps/web/dagr.index.js
+// services/api/dagr.index.js
 export default {
   ci: {
     build: {
       deps: [],
       run: () => ({
-        FROM: 'node:22-alpine',
+        FROM: 'alpine:3.22',
         steps: [
           { WORKDIR: '/repo' },
           { COPY: { src: '.', dest: '/repo' } },
-          { RUN: 'npm test' },
+          { RUN: './test.sh' },
         ],
-        IGNORE: ['node_modules', '.git'],
+        IGNORE: ['.git', 'out'],
       }),
     },
   },
@@ -55,7 +55,7 @@ Verify discovery, then run it:
 
 ```sh
 dagr list
-dagr run //apps/web:ci:build
+dagr run //services/api:ci:build
 ```
 
 `dagr list` recursively finds source packages but leaves mounts opaque. Direct runs load the named
@@ -80,9 +80,9 @@ build: {
     FROM: images.install,
     steps: [
       { COPY: { src: 'src', dest: '/repo/src' } },
-      { RUN: 'npm run build' },
+      { RUN: './build.sh' },
     ],
-    IGNORE: ['node_modules', 'dist'],
+    IGNORE: ['out'],
   }),
 }
 ```
@@ -95,9 +95,9 @@ as `ci`, `dev`, `build`, or `release`.
 Helpers can live anywhere under supported `dagr.*` filenames:
 
 ```js
-import { nodePackage } from '//build/dagr.node.js'
+import { component } from '//build/dagr.component.js'
 
-export default nodePackage({ image: 'node:22-alpine' })
+export default component({ image: 'alpine:3.22' })
 ```
 
 For independently versioned build logic, mount a pinned stack image and import through its boundary.

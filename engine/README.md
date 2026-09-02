@@ -23,17 +23,17 @@ The name compresses **DAG runner** into `dagr`.
 Run a target from the repository root:
 
 ```sh
-dagr run //apps/web:ci:build
+dagr run //services/api:ci:build
 ```
 
-This asks for the `build` target in the `ci` facet of `apps/web`. dagr loads that target and its
+This asks for the `build` target in the `ci` facet of `//services/api`. dagr loads that target and its
 transitive dependencies, builds them in dependency order, and materializes any requested output.
 It does not run unrelated parts of the repository.
 
 Run several targets together:
 
 ```sh
-dagr run //apps/web:ci:lint //apps/web:ci:typecheck //apps/web:ci:test
+dagr run //services/api:ci:validate //services/api:ci:package //services/api:ci:test
 ```
 
 Their shared dependencies are built once and independent branches are launched concurrently.
@@ -50,34 +50,33 @@ A `dagr.index.js` file exports the targets for one package. Because it is ordina
 repeated structures do not need to become repeated configuration:
 
 ```js
-const IGNORE = ['node_modules', '.git']
+const IGNORE = ['.git', 'out']
 
-const install = {
+const prepare = {
   deps: [],
   run: () => ({
-    FROM: 'node:22-alpine',
+    FROM: 'alpine:3.22',
     steps: [
       { WORKDIR: '/repo' },
-      { COPY: { src: 'package*.json', dest: '/repo/' } },
-      { RUN: 'npm ci' },
+      { COPY: { src: 'tools', dest: '/repo/tools' } },
+      { RUN: './tools/prepare' },
     ],
     IGNORE,
   }),
 }
 
 const commands = {
-  lint: 'npm run lint',
-  typecheck: 'npm run typecheck',
-  test: 'npm test',
+  format: './tools/check-format',
+  test: './tools/test',
 }
 
 const checks = Object.fromEntries(
   Object.entries(commands).map(([name, command]) => [
     name,
     {
-      deps: ['install'],
+      deps: ['prepare'],
       run: ({ images }) => ({
-        FROM: images['install'],
+        FROM: images['prepare'],
         steps: [
           { COPY: { src: 'src', dest: '/repo/src' } },
           { RUN: command },
@@ -90,18 +89,17 @@ const checks = Object.fromEntries(
 
 export default {
   ci: {
-    install,
+    prepare,
     ...checks,
   },
 }
 ```
 
-That example calculates three targets from one model. A repository can go further and move the
-pattern into a shared `nodePackage()` helper, generate targets from richer models, or compose
-reusable helpers for every kind of package it owns.
+That example calculates targets from one model. A repository can move the pattern into shared
+helpers or generate targets from richer domain models.
 
-dagr does not need to know what a Node package, Rust crate, UI application, or deployment is. The
-repository defines those ideas in JavaScript and uses them to produce a concrete task graph.
+Dagr does not prescribe languages, frameworks, package managers, or repository shapes. The
+repository defines its own concepts in JavaScript and uses them to produce a concrete task graph.
 
 ## Familiar on purpose
 
@@ -134,11 +132,6 @@ rules, and ecosystem. dagr chooses fewer guarantees and far fewer new concepts.
 Like EarthBuild, dagr runs work in containers and expresses recipes with familiar Dockerfile
 semantics. EarthBuild develops that model into a broad CI/CD framework and its own Earthfile
 language. dagr stays focused on being a small, JavaScript-defined build system for a monorepo.
-
-[Turborepo](https://turborepo.com/) and [moon](https://moonrepo.dev/) are useful comparisons for
-the day-to-day job: they also orchestrate tasks across a monorepo, cache work, and run independent
-tasks concurrently. Their task graphs are primarily assembled from declared scripts and
-configuration. In dagr, the task graph itself is calculated by a program.
 
 ## Philosophy
 
@@ -192,8 +185,7 @@ trees, caching, and addressing live in the [documentation](docs/README.md).
 
 ## Adopt
 
-You need Docker with buildx and access to the Docker socket. You do **not** need Node, pnpm, or
-TypeScript on the host.
+You need Docker with Buildx and access to the Docker socket.
 
 Create the repository's `.dagr/` bootstrap and pin a dagr commit by following
 [Adopting dagr in a new monorepo](docs/10-adopting-in-a-new-monorepo.md). Then install the launcher:

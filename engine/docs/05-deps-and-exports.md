@@ -7,7 +7,7 @@ segments are filled from the target's context:
 
 | Written | Segments | Resolves to |
 | --- | --- | --- |
-| `//apps/web:ci:build` | 3 | Exactly that. Always unambiguous. |
+| `//services/api:ci:build` | 3 | Exactly that. Always unambiguous. |
 | `ci:build` | 2 | `<current package>:ci:build` |
 | `build` | 1 | `<current package>:<current facet>:build` |
 
@@ -20,7 +20,7 @@ export default {
     install: { deps: [], run: ... },
     build:   { deps: ['install'], run: ... },                      // same package, same facet
     docs:    { deps: ['release:bundle'], run: ... },               // same package, other facet
-    deploy:  { deps: ['//apps/web:ci:build'], run: ... },           // another package
+    deploy:  { deps: ['//services/api:ci:build'], run: ... },       // another package
   },
 }
 ```
@@ -29,7 +29,7 @@ On the command line, `facet:target` may be used from that package's directory. A
 is not accepted:
 
 ```sh
-cd apps/web
+cd services/api
 dagr run ci:build
 ```
 
@@ -56,7 +56,7 @@ by their expanded FQTs. This trips people up constantly:
 ```
 
 ```js
-images['//apps/web:ci:install'] // undefined: the dependency was declared as 'install'
+images['//services/api:ci:install'] // undefined: the dependency was declared as 'install'
 ```
 
 The values are Dagr-generated image tags. A dep you declare but never read is still built;
@@ -66,7 +66,7 @@ Two practical habits follow. If you build dep strings programmatically, keep the
 expression for both the `deps` entry and the lookup:
 
 ```js
-const BASE = '//foundation:ci:node-pnpm'
+const BASE = '//foundation:ci:toolchain'
 
 return {
   install: {
@@ -110,9 +110,9 @@ map, and the direction of each half is the thing to remember:
 > directory on the host.**
 
 ```js
-// in apps/web/dagr.index.js
+// in services/api/dagr.index.js
 EXPORT: {
-  '/repo/dist': 'dist',              // image /repo/dist → apps/web/dist
+  '/repo/dist': 'dist',              // image /repo/dist → services/api/dist
 }
 ```
 
@@ -147,10 +147,6 @@ Two consequences worth internalising:
   files the build no longer produces disappear. This is what stops a hash-named bundle directory
   from accumulating every past build. Use the slash form when you want additive behaviour.
 
-Since a replace deletes, `EXPORT`-ing `node_modules` will remove whatever the host had there —
-including a platform-correct install you did by hand. Good reason not to export `node_modules`
-from a target you run casually.
-
 ### The package directory cannot be replaced
 
 `'.'` is rejected, because it is the replace form aimed at the package directory itself:
@@ -173,27 +169,15 @@ EXPORT: { '/repo/dist': './' } // replaces just <pkg>/dist — safe, the root is
 
 This is the most important rule about `EXPORT` and it is deliberate.
 
-When you run `dagr run //apps/web:ci:build`, Dagr builds every transitive dependency, but
-it only materializes the `EXPORT` map of `//apps/web:ci:build` itself. If
-`//apps/web:ci:install` also declares an `EXPORT`, nothing is written for it.
+When you run `dagr run //services/api:ci:build`, Dagr builds every transitive dependency, but
+it only materializes the `EXPORT` map of `//services/api:ci:build` itself. If
+`//services/api:ci:install` also declares an `EXPORT`, nothing is written for it.
 
 So `EXPORT` on an intermediate target is not a side effect that fires whenever the target gets
-built — it is a declaration of "here is what this target is worth extracting, *if* you ask for
-it directly". To get `install`'s `node_modules` onto your host, run it directly:
+built. To receive an intermediate target's declared files, run it directly:
 
 ```sh
-dagr run //apps/web:ci:install
+dagr run //services/api:ci:install
 ```
 
 Without this rule, building anything would spray files across your working tree.
-
-### Exported `node_modules` are Linux binaries
-
-`EXPORT`-ing `node_modules` gives you the tree that was installed inside a Linux container.
-Any dependency with native or platform-gated binaries (esbuild, rollup, swc, sharp) will have
-resolved to Linux artifacts. On a macOS or Windows host, tools run against that tree fail with
-missing optional-dependency errors.
-
-Exporting `node_modules` is useful for editor IntelliSense and for feeding a subsequent
-container step. It is not a substitute for a local install when you want to run a dev server
-on the host.

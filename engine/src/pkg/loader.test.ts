@@ -84,7 +84,7 @@ describe('RepositoryPackageLoader', () => {
     }
   })
 
-  it('continues discovery below packages and ignores dependency and VCS trees', async () => {
+  it('continues discovery below packages and ignores repository metadata', async () => {
     const declaration = `
       export default {
         ci: {
@@ -104,7 +104,11 @@ describe('RepositoryPackageLoader', () => {
 
     try {
       const packages = await new RepositoryPackageLoader(root).loadAllPackages()
-      assert.deepEqual([...packages.keys()].sort(), ['apps', 'apps/nested'])
+      assert.deepEqual([...packages.keys()].sort(), [
+        'apps',
+        'apps/nested',
+        'node_modules/dependency',
+      ])
     } finally {
       await rm(root, { recursive: true })
     }

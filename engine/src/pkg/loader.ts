@@ -10,7 +10,7 @@ import { IndexDef, type MountDef, type MountIndex, type PackageDef } from '#pkg/
 
 const PACKAGE_FILE = 'dagr.index.js'
 const IMPORT_FILE = /^dagr\..+\.(?:js|json|yaml|toml)$/
-const DISCOVERY_EXCLUDED_DIRECTORIES = new Set(['.git', 'node_modules'])
+const DISCOVERY_EXCLUDED_DIRECTORIES = new Set(['.git'])
 
 export interface PackageLoader {
   loadPackage(logicalPath: string): Promise<LoadedPackage | undefined>

@@ -10,21 +10,21 @@ import type { LoadedPackage, PackageLoader } from '#pkg/loader.js'
 describe('FQT.parse', () => {
   it('parses fully qualified //package:facet:target', () => {
     const fqt = FQT.parse('//a:b:c')
-    assert.equal(fqt.pkg, 'a')
+    assert.equal(fqt.pkg, '//a')
     assert.equal(fqt.facet, 'b')
     assert.equal(fqt.target, 'c')
   })
 
   it('parses the repository root package as //', () => {
     const fqt = FQT.parse('//:ci:deploy')
-    assert.equal(fqt.pkg, '.')
+    assert.equal(fqt.pkg, '//')
     assert.equal(fqt.facet, 'ci')
     assert.equal(fqt.target, 'deploy')
   })
 
   it('parses facet:target using context package', () => {
-    const fqt = FQT.parse('b:c', { pkg: 'mod' })
-    assert.equal(fqt.pkg, 'mod')
+    const fqt = FQT.parse('b:c', { pkg: '//mod' })
+    assert.equal(fqt.pkg, '//mod')
     assert.equal(fqt.facet, 'b')
     assert.equal(fqt.target, 'c')
   })
@@ -34,7 +34,7 @@ describe('FQT.parse', () => {
   })
 
   it('throws without facet context for bare target', () => {
-    assert.throws(() => FQT.parse('c', { pkg: 'mod' }), /Facet required/)
+    assert.throws(() => FQT.parse('c', { pkg: '//mod' }), /Facet required/)
   })
 
   it('requires the repository-root marker on fully qualified targets', () => {
@@ -43,16 +43,16 @@ describe('FQT.parse', () => {
 
   it('rejects the old hash separator', () => {
     assert.throws(() => FQT.parse('a#b#c'), /Package required/)
-    assert.throws(() => FQT.parse('b#c', { pkg: 'mod', facet: 'ci' }), /Invalid FQT/)
+    assert.throws(() => FQT.parse('b#c', { pkg: '//mod', facet: 'ci' }), /Invalid FQT/)
   })
 
   it('toString returns //package:facet:target', () => {
-    assert.equal(new FQT('a', 'b', 'c').toString(), '//a:b:c')
-    assert.equal(new FQT('.', 'b', 'c').toString(), '//:b:c')
+    assert.equal(new FQT('//a', 'b', 'c').toString(), '//a:b:c')
+    assert.equal(new FQT('//', 'b', 'c').toString(), '//:b:c')
   })
 
   it('toJSON equals toString', () => {
-    const fqt = new FQT('a', 'b', 'c')
+    const fqt = new FQT('//a', 'b', 'c')
     assert.equal(fqt.toJSON(), fqt.toString())
   })
 })

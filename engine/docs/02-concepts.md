@@ -16,15 +16,16 @@ package             a directory containing a dagr.index.js
         └── target  a unit of work
 ```
 
-- **Package** - a directory with a `dagr.index.js` file. Its name is its path relative to the repository root, such as `apps/web` or `libraries/common`. The repository root can itself define targets addressed as `//:facet:target`.
+- **Package** - a directory with a `dagr.index.js` file. Its name starts at the repository root,
+  such as `//services/api` or `//libraries/common`. The root package is `//`.
 - **Facet** - a named group of targets. dagr assigns no meaning to facet names. `ci` is a convention, not a keyword. Facet and target names use portable filename characters: `[A-Za-z0-9][A-Za-z0-9._-]*`.
 - **Target** - a `{ deps, run }` pair. It declares which other targets it needs and how to perform one unit of work.
-- **FQT** (fully-qualified target) - the address of a target, written `//package:facet:target`, for example `//apps/web:ci:build`. The leading `//` anchors the address at the repository namespace root.
+- **FQT** (fully-qualified target) - the address of a target, written `//package:facet:target`, for example `//services/api:ci:build`. The leading `//` anchors the address at the repository namespace root.
 
 For example:
 
 ```sh
-dagr run //apps/web:ci:build
+dagr run //services/api:ci:build
 ```
 
 asks dagr for exactly one result. dagr follows that target's dependencies and ignores unrelated work elsewhere in the repository.
@@ -37,23 +38,23 @@ Because it is JavaScript, the graph does not need to be written out literally. T
 
 ```js
 const commands = {
-  lint: 'pnpm lint',
-  typecheck: 'pnpm exec tsc --noEmit',
-  test: 'pnpm test',
+  format: './tools/check-format',
+  test: './tools/test',
 }
 
 const checks = Object.fromEntries(
   Object.entries(commands).map(([name, command]) => [
     name,
     {
-      deps: ['install'],
-      run: ({ images }) => ({
-        FROM: images.install,
+      deps: [],
+      run: () => ({
+        FROM: 'alpine:3.22',
         steps: [
-          { COPY: { src: 'src', dest: '/repo/src' } },
+          { WORKDIR: '/repo' },
+          { COPY: { src: '.', dest: '/repo' } },
           { RUN: command },
         ],
-        IGNORE: ['node_modules', '.git'],
+        IGNORE: ['.git', 'out'],
       }),
     },
   ]),
@@ -61,26 +62,16 @@ const checks = Object.fromEntries(
 
 export default {
   ci: {
-    install: {
-      deps: [],
-      run: () => ({
-        FROM: 'node:22-alpine',
-        steps: [
-          { WORKDIR: '/repo' },
-          { COPY: { src: 'package.json', dest: '/repo/package.json' } },
-          { RUN: 'pnpm install' },
-        ],
-        IGNORE: ['node_modules', '.git'],
-      }),
-    },
     ...checks,
   },
 }
 ```
 
-Here three targets are calculated from one small model. A repository can go further and define helpers such as `nodePackage()`, `library()`, or `service()` that expand its own concepts into concrete dagr targets.
+Here two targets are calculated from one small model. A repository can define helpers that expand
+its own concepts into concrete Dagr targets.
 
-dagr does not need built-in knowledge of Node packages, Rust crates, applications, deployment bundles, or any other repository shape. The repository owns that model.
+Dagr does not prescribe languages, frameworks, package managers, or repository shapes. The
+repository owns that model.
 
 ## Dependencies define both order and composition
 
@@ -93,7 +84,7 @@ A dependency can therefore be used only for ordering, or it can become an input 
 ```js
 run: ({ images }) => ({
   FROM: images.a,
-  steps: [{ RUN: 'pnpm build' }],
+  steps: [{ RUN: './build.sh' }],
 })
 ```
 
@@ -101,13 +92,13 @@ or files can be copied from it into another environment:
 
 ```js
 run: ({ images }) => ({
-  FROM: 'node:22-alpine',
+  FROM: 'alpine:3.22',
   steps: [
     {
       COPY: {
         from: images.a,
-        src: '/out/thing.tgz',
-        dest: '/thing.tgz',
+        src: '/out/artifact',
+        dest: '/artifact',
       },
     },
   ],
@@ -129,9 +120,7 @@ A target's `run` function returns a short Dockerfile-like recipe:
 }
 ```
 
-dagr renders that recipe, builds it, and internally represents the completed target as a Docker image.
-
-That image is not the user-facing abstraction. It is the execution result dagr uses to:
+The completed target is a Docker image. Dagr uses it to:
 
 - continue one target from another;
 - copy files between targets;
@@ -142,12 +131,12 @@ If files need to appear on the host, the directly requested target can declare `
 
 ```js
 run: () => ({
-  FROM: 'node:22-alpine',
+  FROM: 'alpine:3.22',
   steps: [
     { COPY: { src: '.', dest: '/repo' } },
-    { RUN: 'cd /repo && pnpm build' },
+    { RUN: 'cd /repo && ./build.sh' },
   ],
-  IGNORE: ['node_modules', '.git'],
+  IGNORE: ['.git', 'out'],
   EXPORT: { '/repo/dist': 'dist' },
 })
 ```
@@ -180,7 +169,8 @@ If that image's final `WORKDIR` contains `c/dagr.index.js`, `//` marks the mount
 A mount is materialized only when a requested target or import crosses its boundary. `dagr list`
 leaves mounts opaque.
 
-The boundary is part of package identity. `stacks/tools/c` refers to a normal repository path, while `stacks/tools//c` crosses the mount declared at `stacks/tools`.
+The boundary is part of package identity. `//stacks/tools/c` names a source package, while
+`//stacks/tools//c` crosses the mount declared at `//stacks/tools`.
 
 A package at the mounted `WORKDIR` root is addressed as:
 

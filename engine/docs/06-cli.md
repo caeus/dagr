@@ -13,7 +13,7 @@ Builds each requested target and its transitive dependencies. Requested targets 
 parallel; a shared dependency builds once per invocation.
 
 ```sh
-dagr run //apps/web:ci:build
+dagr run //services/api:ci:build
 dagr run //engine:ci:test //stacks:ci:test
 ```
 
@@ -49,7 +49,7 @@ dependencies:
 The output format is `//package:facet:target[dependency, ...]`.
 
 Discovery continues below source packages, including a package at the repository root. It skips
-`.git` and `node_modules`. Mount declarations stay opaque and are not built or extracted by
+`.git`. Mount declarations stay opaque and are not built or extracted by
 `dagr list`.
 
 The command is intentionally small and may evolve as Dagr's query needs become clearer.

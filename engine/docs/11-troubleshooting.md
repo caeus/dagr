@@ -18,7 +18,7 @@ Check that:
 - every target has `deps` and a `run` function;
 - facet and target names match the address you used;
 - imported helper files use supported `dagr.*` names;
-- the package is not inside `.git`, `node_modules`, or a mount.
+- the package is not inside `.git` or a mount.
 
 Reduce the file to one small target, confirm it appears, then add definitions back until the invalid
 part is isolated.
@@ -28,10 +28,10 @@ part is isolated.
 Compare the address with `dagr list`. A complete target address has package, facet, and target:
 
 ```text
-//apps/web:ci:build
+//services/api:ci:build
 ```
 
-Directory names and facet names are not inferred conventions. `apps/web` and `ci` are ordinary
+Directory names and facet names are not inferred conventions. `//services/api` and `ci` are ordinary
 names chosen by the repository.
 
 Use the complete address when in doubt.
