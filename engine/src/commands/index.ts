@@ -7,7 +7,7 @@ import { message } from "@optique/core/message";
 import { run } from "@optique/run";
 import { resolve } from "node:path";
 import type { PackageLoader } from "#pkg/loader.js";
-import { FQT, type Runner } from "#runner/index.js";
+import { canonicalPackageName, FQT, packageLogicalPath, type Runner } from "#runner/index.js";
 import type { DockerImageExtractor } from "#runner/docker-extractor.js";
 const runCommand = command('run', object({
   command: constant('run'),
@@ -60,9 +60,9 @@ export class ListCommandRunner implements CommandRunner {
       const facets = loaded.definition;
       for (const [facetName, targets] of Object.entries(facets)) {
         for (const [targetName, target] of Object.entries(targets)) {
-          const fqt = new FQT(packageName, facetName, targetName);
+          const fqt = new FQT(canonicalPackageName(packageName), facetName, targetName);
           const deps = target.deps.map((d) =>
-            FQT.parse(d, { pkg: packageName, facet: facetName }).toString(),
+            FQT.parse(d, { pkg: fqt.pkg, facet: facetName }).toString(),
           );
           graph.set(fqt.toString(), deps);
         }
@@ -74,7 +74,9 @@ export class ListCommandRunner implements CommandRunner {
     const visit = (key: string): void => {
       if (visited.has(key)) return;
       visited.add(key);
-      for (const dep of graph.get(key) ?? []) visit(dep);
+      for (const dep of graph.get(key) ?? []) {
+        if (graph.has(dep)) visit(dep);
+      }
       sorted.push(key);
     };
     for (const key of graph.keys()) visit(key);
@@ -95,21 +97,21 @@ export class RunCommandRunner {
 
   async execute(cmd: RunCmd): Promise<void> {
     const context = this.currentPackage
-      ? { pkg: this.currentPackage }
+      ? { pkg: canonicalPackageName(this.currentPackage) }
       : undefined;
     const results = await Promise.all(
       cmd.fqts.map((raw) => this.runner(FQT.parse(raw, context))),
     );
 
     const mountedExport = results.find(
-      result => result.export && result.fqt.pkg.includes('//'),
+      result => result.export && result.fqt.pkg.slice(2).includes('//'),
     );
     if (mountedExport)
       throw new Error(`Cannot EXPORT from a mounted package: ${mountedExport.fqt}`);
 
     for (const result of results) {
       if (result.export) {
-        const packageDir = resolve(this.root, result.fqt.pkg);
+        const packageDir = resolve(this.root, packageLogicalPath(result.fqt.pkg));
         await this.extractor.extractFromImage(
           result.imageTag,
           result.export,

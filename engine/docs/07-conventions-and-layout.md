@@ -1,242 +1,112 @@
 # Conventions and layout
 
-Some things dagr hardwires. Others are conventions that happen to work well. Knowing
-which is which saves time.
+A package is any directory containing a `dagr.index.js`. Its root-relative path, prefixed with
+`//`, becomes the package name.
 
-## Hardwired (you cannot change without editing dagr)
+The repository layout belongs to the repository. `engine/`, `stacks/`, `apps/`, `services/`, and
+`packages/` have no built-in meaning.
 
-- **The build file is named `dagr.index.js`.** `PACKAGE_FILE` in `src/pkg/loader.ts`.
-- **`dagr list` scans two places**: the repository root and everything under `packages/`.
-  `dagr run apps/web:ci:build` still loads `apps/web/dagr.index.js` directly; it simply will not
-  appear in `dagr list` unless the scan convention is extended.
-- **`packages/` may be absent.** It is treated as an empty list source.
-- **The root `dagr.index.js` gets the package name `.`** — so its FQTs look like `//:ci:deploy`.
-- **List discovery stops at the first `dagr.index.js`.** The walker descends `packages/` recursively,
-  but as soon as a directory contains a `dagr.index.js` it records that package and does **not**
-  look inside it. Nested packages (`packages/group/sub/dagr.index.js` where
-  `packages/group/dagr.index.js` also exists) do not appear in `dagr list`. They remain directly
-  addressable. To make grouped packages discoverable, leave the
-  intermediate directory without a build file — `packages/group/a/dagr.index.js` and
-  `packages/group/b/dagr.index.js` both work and are named by their full relative path.
-- **File imports are source-root-relative and start with `//`.** Local modules use the host
-  repository root. Modules reached through `//` use the mounted root. Only files named
-  `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml` can be imported. The only bare
-  specifiers are the `dagr:yaml` and `dagr:toml` built-ins.
-- **The build context is the package's own directory** — always, with no option to widen or
-  narrow it.
+## What Dagr enforces
 
-## Conventions (yours to change)
+- `dagr.index.js` is the package entry point.
+- `dagr list` walks recursively from the repository root.
+- `.git` is not searched.
+- Discovery continues below directories containing `dagr.index.js`, so nested source packages are
+  listed independently.
+- A root `dagr.index.js` defines targets such as `//:ci:build` and does not hide packages below it.
+- A package name is rooted with `//`. For example, `services/api/dagr.index.js` defines package
+  `//services/api` and target `//services/api:ci:build`. A root `dagr.index.js` defines package `//`.
+- Direct target loading uses the same package names as discovery. There is no separate `packages/`
+  lookup convention.
+- A package's Docker build context is its own directory.
+- Dagr modules use root-relative `//` imports. Importable files must match `dagr.*.js`,
+  `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml`.
 
-- **Facet names `config` / `ci` / `dev`.** dagr attaches no meaning to any of them. Nothing
-  breaks if you use `build`, `release`, or `default`.
-- **Target names `manifest` / `install` / `build` / `pack` / `typecheck` / `sync`.** Also
-  arbitrary. The chain `install → build → pack` is a useful shape, not a requirement.
-- **Excluding `node_modules` and `.git` from the build context.** This is now a recommendation
-  expressed as `IGNORE`, not something dagr bakes in — see
-  [03 — `IGNORE`](03-authoring-dagr-index-js.md#ignore). Keep the list in `lib/dagr.dockerignore.js` and
-  import it.
-- **A `base` package holding shared base images.** See below.
-- **`lib/` and `stacks/` for shared `dagr.*.js` helpers.** See below.
+Everything else is a project convention, including directory names, facet names, target names,
+stack aliases, and the location of shared helpers.
 
-## Recommended repo shape
+## This repository
 
-```
-<repo root>/
-├── dagr.index.js           # root package '.', for repo-wide targets (deploy, docs)
-├── .dagr/                  # three launcher files; the dagr launcher finds the repo by this
-│   ├── cli.sh
-│   ├── dagr
-│   └── install.sh
-├── lib/                    # low-level Dagr helpers (file writing, version pins)
-│   ├── dagr.versions.js
-│   ├── dagr.file_utils.js
-│   └── dagr.dockerignore.js
-├── stacks/                 # facet factories, one per project archetype
-│   ├── dagr.ts-lib.js
-│   ├── dagr.ts-ui.js
-│   └── dagr.ts-executable.js
-└── packages/
-    ├── base/dagr.index.js     # shared base images
-    ├── common/dagr.index.js
-    └── ui/dagr.index.js
+The Dagr repository deliberately uses two top-level product areas:
+
+```text
+dagr/
+├── .dagr/                    # launcher used by CI and local development
+├── engine/
+│   ├── dagr.index.js         # Dagr engine package
+│   ├── src/                  # engine implementation
+│   ├── docs/                 # public documentation source
+│   └── stacks/typescript/    # bootstrap mount for the TypeScript stack
+└── stacks/
+    ├── dagr.index.js         # stack tests and publishable stack images
+    ├── di/                   # DI component
+    ├── typescript/           # current composable TypeScript stack
+    ├── ts-library/           # earlier TypeScript library stack
+    └── tests/                # stack tests
 ```
 
-## The `lib/`+`stacks/` pattern
+Consequently, `dagr list` discovers `engine` and `stacks`. It does not require either directory to
+be renamed or placed below `packages/`.
 
-Writing out `install`/`build`/`typecheck` by hand in every package gets old fast, and it lets
-packages drift. The fix is to put the logic in a shared `dagr.*.js` module that returns **every facet
-a package needs**, so each `dagr.index.js` is one call.
+The root currently has no `dagr.index.js`. Adding one would define root targets without changing
+discovery below it.
 
-**`lib/`** holds primitives — no knowledge of your project archetypes:
+## Choosing a layout
+
+Put each independently addressable build unit in a directory with its own `dagr.index.js`. Group
+those directories by domain when that makes the repository easier to understand:
+
+```text
+<repo>/
+├── engine/dagr.index.js
+├── stacks/dagr.index.js
+├── services/api/dagr.index.js
+└── services/api/dagr.index.js
+```
+
+This produces:
+
+```text
+//engine:ci:build
+//stacks:ci:test
+//services/api:ci:build
+//services/api:ci:build
+```
+
+`dagr list` currently stays within source directories and does not materialize mount declarations.
+Mount contents remain addressable when a command explicitly loads a target through that boundary.
+
+## Shared stacks and helpers
+
+Shared code is ordinary importable Dagr code. Its directory name is a convention, not a Dagr
+feature. For example:
 
 ```js
-// lib/dagr.versions.js — one place to bump a version
-export const PNPM_VERSION = '11.20.0'
+import { service } from '//build/dagr.service.js'
 
-export default {
-  typescript: '6.0.3',
-  react: '19.2.8',
-  zod: '4.4.3',
-}
+export default service({ image: 'alpine:3.22' })
 ```
 
-```js
-// lib/dagr.file_utils.js — turn computed content into a step
-export function writeText(path, content) {
-  return { RUN: `echo "${Buffer.from(content).toString('base64')}" | base64 -d > ${path}` }
-}
-export function writeJson(path, value) {
-  return writeText(path, `${JSON.stringify(value, null, 2)}\n`)
-}
-```
+The `build` directory is a repository convention. A mounted stack could instead be imported through
+a project-chosen alias such as `//stacks/toolchain//dagr.stack.js`; the second `//` marks the mount
+boundary.
+
+See [Build-file environment and imports](04-sandbox-and-imports.md) for module rules and
+[Authoring `dagr.index.js`](03-authoring-dagr-index-js.md) for mounts and target definitions.
+
+## Build-context ignores
+
+Discovery exclusions and Docker build-context ignores are different things. Dagr skips `.git`
+while discovering packages. A target controls its Docker context with
+`IGNORE`:
 
 ```js
-// lib/dagr.dockerignore.js — the recommendation IGNORE used to hardwire
-export const RECOMMENDED_IGNORE = ['node_modules', '.git']
-```
-
-**`stacks/`** holds one factory per archetype, each returning all of that archetype's facets:
-
-```js
-// stacks/dagr.ts-lib.js
-import versions from '//lib/dagr.versions.js'
-import { writeJson } from '//lib/dagr.file_utils.js'
-import { RECOMMENDED_IGNORE } from '//lib/dagr.dockerignore.js'
-
-const BASE = '//packages/base:ci:node-pnpm'
-const IGNORE = RECOMMENDED_IGNORE
-
-export function stack({ name, scope, version, deps = [] }) {
-  const localDeps = deps.filter(d => 'local' in d)
-  const packTargets = localDeps.map(d => `//packages/${d.local}:ci:pack`)
-
-  return {
-    config: {
-      manifest: {
-        deps: [BASE],
-        run: ({ images }) => ({ FROM: images[BASE], steps: [ /* write package.json, tsconfig, … */ ], IGNORE }),
-      },
-    },
-    dev: {
-      sync: {
-        deps: ['config:manifest'],
-        run: ({ images }) => ({
-          FROM: images['config:manifest'], steps: [], IGNORE,
-          EXPORT: { '/repo/package.json': 'package.json', '/repo/tsconfig.json': 'tsconfig.json' },
-        }),
-      },
-    },
-    ci: {
-      install: {
-        deps: ['config:manifest', ...packTargets],
-        run: ({ images }) => ({ FROM: images['config:manifest'], steps: [ /* pnpmfile, install */ ], IGNORE }),
-      },
-      build:     { deps: ['install'], run: ({ images }) => ({ FROM: images['install'], steps: [ /* … */ ], IGNORE }) },
-      pack:      { deps: ['build'],   run: ({ images }) => ({ FROM: images['build'],   steps: [ /* … */ ], IGNORE }) },
-      typecheck: { deps: ['install'], run: ({ images }) => ({ FROM: images['install'], steps: [ /* … */ ], IGNORE }) },
-    },
-  }
-}
-```
-
-Each package then declares only what makes it different:
-
-```js
-// packages/common/dagr.index.js
-import { stack } from '//stacks/dagr.ts-lib.js'
-
-export default stack({
-  name: 'common',
-  scope: 'myorg',
-  version: '0.1.0',
-  deps: [{ remote: 'zod' }, { remote: '@orpc/contract' }],
+run: () => ({
+  FROM: 'alpine:3.22',
+  steps: [],
+  IGNORE: ['.git', 'out'],
 })
 ```
 
-### Why `config` is its own facet
-
-`config:manifest` exists so that exactly one target generates a package's manifests, and both
-`ci` and `dev` consume them:
-
-```
-config:manifest    package.json, tsconfig.json, … (cheap, no install)
-   ├── ci:install    + .pnpmfile.cjs + dep tarballs + pnpm install
-   └── dev:sync      EXPORT the manifests to the host
-```
-
-Neither `ci` nor `dev` owns the manifest, so the two can't drift. `dev:sync` gets a
-host-usable manifest purely by *not* adding the container-only `.pnpmfile.cjs` step — the
-generated file already carries plain version ranges. Cross-facet deps like
-`deps: ['config:manifest']` resolve exactly like same-facet ones.
-
-A useful convention inside these factories is tagging deps by kind — `{ remote: 'zod' }` for a
-registry package versus `{ local: 'common' }` for a sibling package — so the factory can turn
-locals into `pack` target deps and remotes into `package.json` entries. That distinction is
-yours to define; dagr only ever sees the resulting `deps` strings.
-
-## The base-image package
-
-Every target starts from *some* image, and repeating the same `corepack enable && corepack
-prepare pnpm@...` in ten targets means ten copies of that layer. Instead, make it a target:
-
-```js
-// packages/base/dagr.index.js
-import { PNPM_VERSION } from '//lib/dagr.versions.js'
-
-export default {
-  ci: {
-    'node-pnpm': {
-      deps: [],
-      run: () => ({
-        FROM: 'node:22-alpine',
-        steps: [{ RUN: `corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate` }],
-      }),
-    },
-  },
-}
-```
-
-Then every install target uses `FROM: images['//packages/base:ci:node-pnpm']`. One image, built
-once, shared by the whole repo — and bumping the pnpm version invalidates exactly one layer.
-
-## Depending on the local package manager inside a container
-
-The hardest part of containerizing a monorepo build is sibling dependencies: a container holds
-one package, so there is no workspace for the package manager to resolve against.
-
-The pattern that works with dagr's image-as-artifact model:
-
-1. Give each library a `pack` target ending in `pnpm pack --pack-destination /out`, then rename
-   the tarball to drop the version: `mv /out/*.tgz /out/<name>.tgz`. Without the rename, every
-   consumer would have to know the library's *version* to construct the `COPY` path.
-2. In the consumer's `install` target, declare a dep on that `pack` target and `COPY --from=`
-   the tarball in.
-3. Rewrite the sibling dependency to `file:./<name>.tgz` before installing, via a generated
-   `.pnpmfile.cjs` with a `readPackage` hook. The rewrite happens in memory at install time, so
-   the `package.json` on disk is never touched.
-
-The result is a genuine install from a real tarball, so the consumer's image proves the
-library's packaged artifact actually works.
-
-### Keep the manifest portable
-
-It's tempting to write the sibling dependency as `workspace:*`, but that string is meaningless
-to anything outside a pnpm workspace — including the published tarball. A plain satisfies-anything
-range keeps the manifest valid everywhere:
-
-```json
-{ "dependencies": { "@myorg/common": ">=0.0.0" } }
-```
-
-Three things fall out of that choice. The consumer needs no knowledge of the sibling's version,
-so there's no cross-package coupling. The same manifest works in CI (where `.pnpmfile.cjs`
-redirects it to a tarball) and on a developer's host (where a real workspace root links the
-sibling), which is what lets a single `config:manifest` target serve both. And since there's no
-`workspace:` marker to key on, the pnpmfile matches on the package *name* instead:
-
-```js
-if (name.startsWith(`@${scope}/`)) deps[name] = `file:./${name.slice(scope.length + 2)}.tgz`
-```
-
-For host-side resolution to prefer the sibling over the registry, the workspace root needs
-`linkWorkspacePackages: true` — pnpm 10 changed that default to `false`.
+Keep a shared `dagr.dockerignore.js` only when several packages genuinely share the same policy.
+Neither that filename nor its location is special to Dagr.

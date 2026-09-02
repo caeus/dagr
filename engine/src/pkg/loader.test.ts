@@ -23,6 +23,97 @@ async function fixture(
 }
 
 describe('RepositoryPackageLoader', () => {
+  it('lets the VM linker resolve shared transitive imports once', async () => {
+    const root = await fixture(`
+      import { left } from '//lib/dagr.left.js'
+      import { right } from '//lib/dagr.right.js'
+
+      export default {
+        ci: {
+          inspect: {
+            deps: [],
+            run: () => ({ FROM: left + right, steps: [], IGNORE: [] })
+          }
+        }
+      }
+    `, {
+      'lib/dagr.left.js': `
+        import { shared } from '//lib/dagr.shared.js'
+        export const left = shared
+      `,
+      'lib/dagr.right.js': `
+        import { shared } from '//lib/dagr.shared.js'
+        export const right = shared
+      `,
+      'lib/dagr.shared.js': `export const shared = 'a'`,
+    })
+
+    try {
+      const loaded = await new RepositoryPackageLoader(root).loadPackage('.')
+      assert.equal(loaded?.definition['ci']?.['inspect']?.run({
+        images: {},
+        host: { os: 'linux', arch: 'x64' },
+      }).FROM, 'aa')
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('discovers packages recursively without privileging a directory name', async () => {
+    const declaration = `
+      export default {
+        ci: {
+          build: {
+            deps: [],
+            run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
+          }
+        }
+      }
+    `
+    const root = await fixture(declaration, {
+      'engine/dagr.index.js': declaration,
+      'stacks/dagr.index.js': declaration,
+      'apps/web/dagr.index.js': declaration,
+    })
+
+    try {
+      const packages = await new RepositoryPackageLoader(root).loadAllPackages()
+      assert.deepEqual([...packages.keys()].sort(), ['.', 'apps/web', 'engine', 'stacks'])
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('continues discovery below packages and ignores repository metadata', async () => {
+    const declaration = `
+      export default {
+        ci: {
+          build: {
+            deps: [],
+            run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
+          }
+        }
+      }
+    `
+    const root = await fixture('', {
+      'apps/dagr.index.js': declaration,
+      'apps/nested/dagr.index.js': declaration,
+      'node_modules/dependency/dagr.index.js': declaration,
+      '.git/objects/dagr.index.js': declaration,
+    })
+
+    try {
+      const packages = await new RepositoryPackageLoader(root).loadAllPackages()
+      assert.deepEqual([...packages.keys()].sort(), [
+        'apps',
+        'apps/nested',
+        'node_modules/dependency',
+      ])
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
   it('exposes the canonical package location through import.meta.dagr', async () => {
     const declaration = `
       const metadata = {
@@ -417,7 +508,7 @@ describe('RepositoryPackageLoader', () => {
     })
   }
 
-  it('replaces a mount directory with packages from the materialized workdir', async () => {
+  it('keeps mounts opaque during repository discovery', async () => {
     const root = await fixture('', {
       'packages/tools/dagr.index.js': `
         export default {
@@ -426,23 +517,7 @@ describe('RepositoryPackageLoader', () => {
       `,
     })
     const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
-    await mkdir(join(mountedRoot, 'c'), { recursive: true })
-    await writeFile(join(mountedRoot, 'dagr.shared.js'), `
-      import { stringify } from 'dagr:yaml'
-      export const image = 'alpine'
-      export const encoded = stringify({ mounted: true })
-    `)
-    await writeFile(join(mountedRoot, 'c', 'dagr.index.js'), `
-      import { encoded, image } from '//dagr.shared.js'
-      export default {
-        ci: {
-          pack: {
-            deps: [],
-            run: () => ({ FROM: image, steps: [{ ENV: { ENCODED: encoded } }], IGNORE: [] })
-          }
-        }
-      }
-    `)
+    await writeFile(join(mountedRoot, 'dagr.index.js'), `export default { ci: {} }`)
     const calls: string[] = []
     const materializer: MountMaterializer = {
       materialize: async (_mount, logicalPath) => {
@@ -453,65 +528,8 @@ describe('RepositoryPackageLoader', () => {
 
     try {
       const packages = await new RepositoryPackageLoader(root, materializer).loadAllPackages()
-      const loaded = packages.get('packages/tools//c')
-      const run = loaded?.definition['ci']?.['pack']?.run({
-        images: {},
-        host: { os: 'linux', arch: 'x64' },
-      })
-
-      assert.equal(run?.FROM, 'alpine')
-      const step = run?.steps[0]
-      assert.ok(step && 'ENV' in step)
-      assert.deepEqual(parseYaml(step.ENV['ENCODED'] ?? ''), { mounted: true })
-      assert.equal(loaded?.context, join(mountedRoot, 'c'))
-      assert.equal(packages.has('packages/tools/c'), false)
-      assert.equal(calls.length, 1)
-      assert.equal(calls[0], 'packages/tools')
-    } finally {
-      await Promise.all([
-        rm(root, { recursive: true }),
-        rm(mountedRoot, { recursive: true }),
-      ])
-    }
-  })
-
-  it('marks a package at the mounted WORKDIR root with a trailing boundary', async () => {
-    const root = await fixture('', {
-      'packages/tools/dagr.index.js': `
-        export default {
-          '/': { FROM: 'tools:latest', steps: [], IGNORE: [] }
-        }
-      `,
-    })
-    const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
-    await writeFile(join(mountedRoot, 'dagr.index.js'), `
-      const location = import.meta.dagr.location
-      export default {
-        ci: {
-          pack: {
-            deps: [],
-            run: () => ({ FROM: location, steps: [], IGNORE: [] })
-          }
-        }
-      }
-    `)
-    const materializer: MountMaterializer = {
-      materialize: async () => ({
-        root: mountedRoot,
-        identity: 'sha256:tools:/work',
-      }),
-    }
-
-    try {
-      const packages = await new RepositoryPackageLoader(root, materializer).loadAllPackages()
-      assert.equal(packages.has('packages/tools//'), true)
-      assert.equal(packages.has('packages/tools'), false)
-      const loaded = packages.get('packages/tools//')
-      assert.equal(loaded?.context, mountedRoot)
-      assert.equal(loaded?.definition['ci']?.['pack']?.run({
-        images: {},
-        host: { os: 'linux', arch: 'x64' },
-      }).FROM, '//')
+      assert.deepEqual([...packages.keys()], [])
+      assert.deepEqual(calls, [])
     } finally {
       await Promise.all([
         rm(root, { recursive: true }),
@@ -598,9 +616,9 @@ describe('RepositoryPackageLoader', () => {
     }
 
     try {
-      const packages = await new RepositoryPackageLoader(root, materializer).loadAllPackages()
-      assert.equal(packages.has('packages/tools//c/d//e'), true)
-      assert.equal(packages.has('packages/tools/c/d/e'), false)
+      const loader = new RepositoryPackageLoader(root, materializer)
+      assert.ok(await loader.loadPackage('packages/tools//c/d//e'))
+      assert.equal(await loader.loadPackage('packages/tools/c/d/e'), undefined)
     } finally {
       await Promise.all([
         rm(root, { recursive: true }),
@@ -628,8 +646,8 @@ describe('RepositoryPackageLoader', () => {
 
     try {
       await assert.rejects(
-        new RepositoryPackageLoader(root, materializer).loadAllPackages(),
-        /Circular mount: packages\/loop -> packages\/loop/,
+        new RepositoryPackageLoader(root, materializer).loadPackage('packages/loop////'),
+        /Circular mount: packages\/loop -> packages\/loop\/\//,
       )
     } finally {
       await Promise.all([

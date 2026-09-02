@@ -10,6 +10,7 @@ import { IndexDef, type MountDef, type MountIndex, type PackageDef } from '#pkg/
 
 const PACKAGE_FILE = 'dagr.index.js'
 const IMPORT_FILE = /^dagr\..+\.(?:js|json|yaml|toml)$/
+const DISCOVERY_EXCLUDED_DIRECTORIES = new Set(['.git'])
 
 export interface PackageLoader {
   loadPackage(logicalPath: string): Promise<LoadedPackage | undefined>
@@ -56,6 +57,7 @@ interface LoadContext {
   readonly vmContext: vm.Context
   readonly builtins: ReadonlyMap<string, vm.Module>
   readonly cache: Map<string, vm.Module>
+  readonly moduleContexts: WeakMap<vm.Module, LoadContext>
   readonly resolveImport: (specifier: string, context: LoadContext) => Promise<ResolvedImport>
 }
 
@@ -110,6 +112,7 @@ async function link(specifier: string, ctx: LoadContext): Promise<vm.Module> {
       { context: resolved.context.vmContext, identifier: path }
     )
     ctx.cache.set(key, mod)
+    ctx.moduleContexts.set(mod, resolved.context)
     return mod
   }
 
@@ -119,7 +122,7 @@ async function link(specifier: string, ctx: LoadContext): Promise<vm.Module> {
     identifier: path,
   })
   ctx.cache.set(key, mod)
-  await mod.link((nestedSpecifier) => link(nestedSpecifier, resolved.context))
+  ctx.moduleContexts.set(mod, resolved.context)
   return mod
 }
 
@@ -146,7 +149,11 @@ async function loadIndex(
       })
     },
   })
-  await mod.link((specifier) => link(specifier, ctx))
+  ctx.moduleContexts.set(mod, ctx)
+  await mod.link((specifier, referencingModule) => link(
+    specifier,
+    ctx.moduleContexts.get(referencingModule) ?? ctx,
+  ))
   await mod.evaluate()
   const defaultExport = (mod.namespace as Record<string, unknown>)['default']
   const result = IndexDef.safeParse(defaultExport)
@@ -162,6 +169,7 @@ export class RepositoryPackageLoader implements PackageLoader {
   private readonly vmContext = createSandboxContext()
   private readonly builtins = createBuiltinModules(this.vmContext)
   private readonly moduleCache = new Map<string, vm.Module>()
+  private readonly moduleContexts = new WeakMap<vm.Module, LoadContext>()
   private readonly indexCache = new Map<string, Promise<IndexDef | null>>()
   private readonly packageCache = new Map<string, Promise<LoadedPackage | undefined>>()
   private readonly mountCache = new Map<string, Promise<MaterializedMount>>()
@@ -273,6 +281,7 @@ export class RepositoryPackageLoader implements PackageLoader {
       vmContext: this.vmContext,
       builtins: this.builtins,
       cache: this.moduleCache,
+      moduleContexts: this.moduleContexts,
       resolveImport: (specifier, context) => this.resolveImport(specifier, context),
     }
   }
@@ -419,28 +428,15 @@ export class RepositoryPackageLoader implements PackageLoader {
     trace: readonly MountTrace[],
   ): Promise<void> {
     const index = await this.indexAt(root, logicalRoot, sourceRoot, sourceLogicalRoot, trace)
-    if (index && isMountIndex(index)) {
-      const mounted = await this.materialize(index['/'], logicalRoot, trace)
-      const mountedRoot = await realpath(mounted.root)
-      await this.scanRepository(
-        mountedRoot,
-        mountBoundary(logicalRoot),
-        mountedRoot,
-        mountBoundary(logicalRoot),
-        acc,
-        mounted.trace,
-      )
-      return
-    }
+    if (index && isMountIndex(index)) return
     if (index) this.remember(logicalRoot, index, root, acc)
 
-    const packages = resolve(root, 'packages')
-    const entries = await readDirectories(packages)
+    const entries = await readDirectories(root)
     await Promise.all(entries.map(entry => this.walk(
-      resolve(packages, entry),
+      resolve(root, entry),
       logicalRoot === '.'
-        ? joinLogical('packages', entry)
-        : joinLogical(logicalRoot, 'packages', entry),
+        ? entry
+        : joinLogical(logicalRoot, entry),
       sourceRoot,
       sourceLogicalRoot,
       acc,
@@ -457,23 +453,8 @@ export class RepositoryPackageLoader implements PackageLoader {
     trace: readonly MountTrace[],
   ): Promise<void> {
     const index = await this.indexAt(dir, logicalPath, sourceRoot, sourceLogicalRoot, trace)
-    if (index && isMountIndex(index)) {
-      const mounted = await this.materialize(index['/'], logicalPath, trace)
-      const mountedRoot = await realpath(mounted.root)
-      await this.walk(
-        mountedRoot,
-        mountBoundary(logicalPath),
-        mountedRoot,
-        mountBoundary(logicalPath),
-        acc,
-        mounted.trace,
-      )
-      return
-    }
-    if (index) {
-      this.remember(logicalPath, index, dir, acc)
-      return
-    }
+    if (index && isMountIndex(index)) return
+    if (index) this.remember(logicalPath, index, dir, acc)
 
     const entries = await readDirectories(dir)
     await Promise.all(entries.map(entry => this.walk(
@@ -503,7 +484,9 @@ async function readDirectories(root: string): Promise<readonly string[]> {
     if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return []
     throw error
   })
-  return entries.filter(entry => entry.isDirectory()).map(entry => entry.name)
+  return entries
+    .filter(entry => entry.isDirectory() && !DISCOVERY_EXCLUDED_DIRECTORIES.has(entry.name))
+    .map(entry => entry.name)
 }
 
 function validateLogicalPath(logicalPath: string): void {

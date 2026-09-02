@@ -8,11 +8,13 @@ export class FQT {
     readonly pkg: string,
     readonly facet: string,
     readonly target: string,
-  ) {}
+  ) {
+    if (!pkg.startsWith(ROOT_MARKER))
+      throw new Error(`Package names must start with ${ROOT_MARKER}: ${pkg}`)
+  }
 
   toString(): string {
-    const pkg = this.pkg === '.' ? '' : this.pkg
-    return `${ROOT_MARKER}${pkg}:${this.facet}:${this.target}`
+    return `${this.pkg}:${this.facet}:${this.target}`
   }
 
   toJSON(): string {
@@ -25,11 +27,8 @@ export class FQT {
       const pkg = parts[0]
       if (!pkg?.startsWith(ROOT_MARKER))
         throw new Error(`Fully qualified targets must start with ${ROOT_MARKER}: ${raw}`)
-      return new FQT(
-        pkg === ROOT_MARKER ? '.' : required(pkg.slice(ROOT_MARKER.length), raw),
-        name(parts[1], raw),
-        name(parts[2], raw),
-      )
+      if (pkg !== ROOT_MARKER) required(pkg.slice(ROOT_MARKER.length), raw)
+      return new FQT(pkg, name(parts[1], raw), name(parts[2], raw))
     }
     if (parts.length === 2) {
       if (!context?.pkg) throw new Error(`Package required when only facet:target is provided: ${raw}`)
@@ -82,7 +81,8 @@ export function buildRunner(
 
     const promise = (async () => {
       const fqt = FQT.parse(raw)
-      const loaded = await packageLoader.loadPackage(fqt.pkg)
+      const packagePath = packageLogicalPath(fqt.pkg)
+      const loaded = await packageLoader.loadPackage(packagePath)
       const target = loaded?.definition[fqt.facet]?.[fqt.target]
       if (!target) throw new Error(`Unknown target: ${raw}`)
 
@@ -100,7 +100,7 @@ export function buildRunner(
         loaded.context,
         deps,
         host,
-        source => resolveCopySource(packageLoader, fqt.pkg, source),
+        source => resolveCopySource(packageLoader, packagePath, source),
       )
     })()
 
@@ -109,6 +109,16 @@ export function buildRunner(
   }
 
   return (fqt: FQT) => run(fqt.toString())
+}
+
+export function canonicalPackageName(logicalPath: string): string {
+  return logicalPath === '.' ? ROOT_MARKER : `${ROOT_MARKER}${logicalPath}`
+}
+
+export function packageLogicalPath(packageName: string): string {
+  if (!packageName.startsWith(ROOT_MARKER))
+    throw new Error(`Package names must start with ${ROOT_MARKER}: ${packageName}`)
+  return packageName === ROOT_MARKER ? '.' : packageName.slice(ROOT_MARKER.length)
 }
 
 function resolveCopySource(

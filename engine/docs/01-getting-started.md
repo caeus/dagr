@@ -2,91 +2,46 @@
 
 ## Prerequisites
 
-- **Docker** with **buildx**. dagr shells out to `docker buildx build --load`, so a plain
-  legacy `docker build` is not enough.
-- Access to the Docker socket at `/var/run/docker.sock`. dagr itself runs in a container
-  and drives your host daemon through that socket.
+- Docker with Buildx
+- access to a Docker daemon
 
-You do **not** need Node, pnpm, or TypeScript on the host. dagr runs from a published,
-commit-pinned Docker image.
+Dagr runs from a pinned container image.
 
 ## Install the launcher
 
+From a repository that contains `.dagr/`:
+
 ```sh
 .dagr/install.sh
-```
-
-That symlinks `.dagr/dagr` into `~/.local/bin/dagr`. Make sure that directory is on your
-`PATH`:
-
-```sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-## What the launcher does
+The repository controls its Dagr version through the image pin in `.dagr/cli.sh`.
 
-`dagr` is a three-line shell script with one job: find the monorepo. It records your current
-directory, then walks up the tree looking for a directory named `.dagr`. When it finds
-one it execs `.dagr/cli.sh`, passing your original directory through as `WORKING_DIR`.
-
-That means a single global `dagr` works across every monorepo that vendors dagr — the
-launcher resolves to whichever copy is above your cwd. If no ancestor contains a `.dagr/`
-directory, it fails with:
-
-```
-error: not inside a monorepo (no .dagr/ directory found in any parent)
-```
-
-`cli.sh` then runs the pinned dagr image:
-
-```sh
-docker run --rm --pull=missing \
-  -v "$REPO_ROOT:/repo" \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -e HOST_REPO_ROOT="$REPO_ROOT" \
-  -e WORKING_DIR="${WORKING_DIR:-$REPO_ROOT}" \
-  "ghcr.io/caeus/dagr:<commit-sha>" "$@"
-```
-
-Docker downloads the image once and reuses it locally. Upgrading Dagr is an explicit change to the
-image SHA in `.dagr/cli.sh`.
-
-## First run
-
-From anywhere inside the monorepo:
+## Find targets
 
 ```sh
 dagr list
 ```
 
-This scans the root package and `packages/`, then prints the discovered target graph in
-topological order. It does not build targets, though it materializes any mounts needed for
-discovery. Use it to confirm your setup and check that a build file actually parsed.
+This recursively scans the repository, skipping `.git`. It does not materialize mounts.
 
-Then build something:
+## Run a target
 
 ```sh
-dagr run //packages/ui:ci:build
+dagr run //services/api:ci:build
 ```
 
-## Running from inside a package
+A target address contains its package path, facet, and target name. Dagr builds its transitive
+dependencies first and reuses shared dependencies within the invocation.
 
-`WORKING_DIR` lets dagr infer the package you are standing in, so you can drop the package
-segment of the target name:
+## Run Dagr's checks
 
-```sh
-cd packages/ui
-dagr run ci:build      # same as: dagr run //packages/ui:ci:build
-```
-
-The facet is never inferred — `dagr run build` fails. See
-[05 — Dependencies and `EXPORT`](05-deps-and-exports.md#reference-shorthands) for the full
-resolution rules.
-
-## Running dagr's own checks
-
-These run in a checkout of the Dagr repository itself through its pinned bootstrap image:
+In this repository:
 
 ```sh
 dagr run //engine:ci:typecheck //engine:ci:test
 ```
+
+Continue with [Concepts](02-concepts.md) for the build model or
+[Authoring `dagr.index.js`](03-authoring-dagr-index-js.md) to define a package.

@@ -23,29 +23,22 @@ The name compresses **DAG runner** into `dagr`.
 Run a target from the repository root:
 
 ```sh
-dagr run //packages/ui:ci:build
+dagr run //services/api:ci:build
 ```
 
-This asks for the `build` target in the `ci` facet of `packages/ui`. dagr loads that target and its
+This asks for the `build` target in the `ci` facet of `//services/api`. dagr loads that target and its
 transitive dependencies, builds them in dependency order, and materializes any requested output.
 It does not run unrelated parts of the repository.
-
-From inside a package, omit the package path:
-
-```sh
-cd packages/ui
-dagr run ci:build
-```
 
 Run several targets together:
 
 ```sh
-dagr run //packages/ui:ci:lint //packages/ui:ci:typecheck //packages/ui:ci:test
+dagr run //services/api:ci:validate //services/api:ci:package //services/api:ci:test
 ```
 
 Their shared dependencies are built once and independent branches are launched concurrently.
 
-Inspect the complete graph without running its targets:
+Inspect source targets without running them:
 
 ```sh
 dagr list
@@ -57,34 +50,33 @@ A `dagr.index.js` file exports the targets for one package. Because it is ordina
 repeated structures do not need to become repeated configuration:
 
 ```js
-const IGNORE = ['node_modules', '.git']
+const IGNORE = ['.git', 'out']
 
-const install = {
+const prepare = {
   deps: [],
   run: () => ({
-    FROM: 'node:22-alpine',
+    FROM: 'alpine:3.22',
     steps: [
       { WORKDIR: '/repo' },
-      { COPY: { src: 'package*.json', dest: '/repo/' } },
-      { RUN: 'npm ci' },
+      { COPY: { src: 'tools', dest: '/repo/tools' } },
+      { RUN: './tools/prepare' },
     ],
     IGNORE,
   }),
 }
 
 const commands = {
-  lint: 'npm run lint',
-  typecheck: 'npm run typecheck',
-  test: 'npm test',
+  format: './tools/check-format',
+  test: './tools/test',
 }
 
 const checks = Object.fromEntries(
   Object.entries(commands).map(([name, command]) => [
     name,
     {
-      deps: ['install'],
+      deps: ['prepare'],
       run: ({ images }) => ({
-        FROM: images['install'],
+        FROM: images['prepare'],
         steps: [
           { COPY: { src: 'src', dest: '/repo/src' } },
           { RUN: command },
@@ -97,18 +89,17 @@ const checks = Object.fromEntries(
 
 export default {
   ci: {
-    install,
+    prepare,
     ...checks,
   },
 }
 ```
 
-That example calculates three targets from one model. A repository can go further and move the
-pattern into a shared `nodePackage()` helper, generate targets from richer models, or compose
-reusable helpers for every kind of package it owns.
+That example calculates targets from one model. A repository can move the pattern into shared
+helpers or generate targets from richer domain models.
 
-dagr does not need to know what a Node package, Rust crate, UI application, or deployment is. The
-repository defines those ideas in JavaScript and uses them to produce a concrete task graph.
+Dagr does not prescribe languages, frameworks, package managers, or repository shapes. The
+repository defines its own concepts in JavaScript and uses them to produce a concrete task graph.
 
 ## Familiar on purpose
 
@@ -142,11 +133,6 @@ Like EarthBuild, dagr runs work in containers and expresses recipes with familia
 semantics. EarthBuild develops that model into a broad CI/CD framework and its own Earthfile
 language. dagr stays focused on being a small, JavaScript-defined build system for a monorepo.
 
-[Turborepo](https://turborepo.com/) and [moon](https://moonrepo.dev/) are useful comparisons for
-the day-to-day job: they also orchestrate tasks across a monorepo, cache work, and run independent
-tasks concurrently. Their task graphs are primarily assembled from declared scripts and
-configuration. In dagr, the task graph itself is calculated by a program.
-
 ## Philosophy
 
 ### The graph belongs to the repository
@@ -155,7 +141,7 @@ Every repository has its own concepts. One might distinguish libraries, applicat
 clients, deployment bundles, or dozens of internal package shapes. Encoding those concepts once
 in normal code is more maintainable than repeating their expanded tasks in configuration files.
 
-dagr provides the graph runner and a small target schema. The repository provides the model.
+dagr provides the graph runner and a small target format. The repository provides the model.
 
 ### Use existing tools
 
@@ -174,36 +160,32 @@ lives beside the definitions it interprets.
 Updating dagr is an explicit source change that can be reviewed like any other dependency update.
 One global launcher merely finds and runs the copy pinned by the current repository.
 
-## How it works
+## Target results
 
 A target declares dependencies and returns a short Dockerfile-like recipe. dagr builds the
 dependencies first and makes their results available to the target.
 
-Internally, every completed target is a Docker image. This is a mechanism, not the product. It
-lets one target continue from another, copy files from another, and reuse Docker's layer cache
-without a separate artifact format or task cache.
+Every completed target is a Docker image. A downstream target can continue from that image or copy
+selected files from it, while Docker's layer cache reuses unchanged work.
 
 A target may also declare `EXPORT` to copy selected files from its result back into the package
 directory. Only targets requested directly export files, so building a dependency does not spray
 intermediate artifacts across the working tree.
 
-Build definitions are evaluated in a `node:vm` sandbox. They can use JavaScript, loops, templates,
-and imported `dagr.*.js` modules, but cannot read the filesystem, access the network, or inspect the
-host process. Dynamic code generation is disabled, while native `dagr:yaml` and `dagr:toml`
-modules encode structured values. Build definitions are expected to calculate the graph from
-committed source rather than ambient or nondeterministic state.
+Build definitions can use JavaScript, loops, templates, imported `dagr.*.js` modules, and Dagr's
+YAML and TOML encoders. They cannot inspect the host filesystem, network, process, or environment,
+so the graph comes from repository source.
 
 `dagr run` loads only packages reached by the requested targets and their dependencies. Docker
-output stays quiet unless a build fails; pass `--verbose` to stream it. `dagr list` loads the
-complete graph and prints fully resolved dependencies.
+output stays quiet unless a build fails; pass `--verbose` to stream it. `dagr list` recursively
+lists source targets and leaves mounts opaque.
 
 The complete semantics for targets, dependencies, exports, sandboxed imports, mounted package
 trees, caching, and addressing live in the [documentation](docs/README.md).
 
 ## Adopt
 
-You need Docker with buildx and access to the Docker socket. You do **not** need Node, pnpm, or
-TypeScript on the host.
+You need Docker with Buildx and access to the Docker socket.
 
 Create the repository's `.dagr/` bootstrap and pin a dagr commit by following
 [Adopting dagr in a new monorepo](docs/10-adopting-in-a-new-monorepo.md). Then install the launcher:
@@ -221,12 +203,12 @@ across every repository that uses dagr.
 The [complete documentation](docs/README.md) covers:
 
 - getting started and core concepts;
-- the `dagr.index.js` schema;
-- sandbox rules and shared modules;
+- the `dagr.index.js` format;
+- build-file APIs, imports, and shared modules;
 - target addresses, dependencies, and exports;
 - mounted package trees;
 - CLI behavior and troubleshooting;
-- internals and the adoption checklist.
+- the adoption checklist and troubleshooting.
 
 ## Development
 

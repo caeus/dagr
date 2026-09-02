@@ -3,11 +3,11 @@
 ## Reference shorthands
 
 A target reference is a `:`-separated string with one, two, or three segments. Missing
-segments are filled from context (`FQT.parse` in `src/runner/index.ts`):
+segments are filled from the target's context:
 
 | Written | Segments | Resolves to |
 | --- | --- | --- |
-| `//packages/ui:ci:build` | 3 | Exactly that. Always unambiguous. |
+| `//services/api:ci:build` | 3 | Exactly that. Always unambiguous. |
 | `ci:build` | 2 | `<current package>:ci:build` |
 | `build` | 1 | `<current package>:<current facet>:build` |
 
@@ -20,30 +20,24 @@ export default {
     install: { deps: [], run: ... },
     build:   { deps: ['install'], run: ... },                      // same package, same facet
     docs:    { deps: ['release:bundle'], run: ... },               // same package, other facet
-    deploy:  { deps: ['//packages/ui:ci:build'], run: ... },         // another package
+    deploy:  { deps: ['//services/api:ci:build'], run: ... },       // another package
   },
 }
 ```
 
-On the **command line**, only the package is inferred, from `WORKING_DIR`. There is no current
-facet, so a bare target name always fails:
+On the command line, `facet:target` may be used from that package's directory. A bare target name
+is not accepted:
 
 ```sh
-cd packages/ui
-dagr run //packages/ui:ci:build   # ✓
-dagr run ci:build               # ✓ package inferred from cwd
-dagr run build                  # ✗ Error: Facet required when only target is provided: build
+cd services/api
+dagr run ci:build
 ```
 
-**At the repo root, nothing is inferred.** `currentPackage` is computed as
-`relative(hostRoot, WORKING_DIR)`, which is the empty string when the two are the same, and an
-empty package means no context is passed at all. So from the repo root every FQT must be fully
-qualified — including targets of the root package itself, whose package name is `.`:
+Elsewhere, use the full address. A root-package target uses `//:facet:target`:
 
 ```sh
 cd <repo root>
-dagr run //:ci:deploy            # ✓
-dagr run ci:deploy              # ✗ Error: Package required when only facet:target is provided
+dagr run //:ci:deploy
 ```
 
 ## The `images` map
@@ -53,16 +47,16 @@ by their expanded FQTs. This trips people up constantly:
 
 ```js
 {
-  deps: ['install', '//packages/common:ci:pack'],
+  deps: ['install', '//libraries/common:ci:pack'],
   run: ({ images }) => ({
     FROM: images['install'],                          // ✓ the literal string from deps
-    steps: [{ COPY: { from: images['//packages/common:ci:pack'], src: '/out/x.tgz', dest: '/x.tgz' } }],
+    steps: [{ COPY: { from: images['//libraries/common:ci:pack'], src: '/out/x.tgz', dest: '/x.tgz' } }],
   })
 }
 ```
 
 ```js
-images['//packages/ui:ci:install'] // ✗ undefined, even though that's what 'install' resolved to
+images['//services/api:ci:install'] // undefined: the dependency was declared as 'install'
 ```
 
 The values are Dagr-generated image tags. A dep you declare but never read is still built;
@@ -72,7 +66,7 @@ Two practical habits follow. If you build dep strings programmatically, keep the
 expression for both the `deps` entry and the lookup:
 
 ```js
-const BASE = '//packages/base:ci:node-pnpm'
+const BASE = '//foundation:ci:toolchain'
 
 return {
   install: {
@@ -85,13 +79,13 @@ return {
 And if you generate a list of deps, generate the lookups the same way:
 
 ```js
-const packTargets = localDeps.map(d => `//packages/${d.local}:ci:pack`)
+const packTargets = localDeps.map(d => `//libraries/${d.local}:ci:pack`)
 // ...
 deps: [...packTargets, BASE],
 run: ({ images }) => ({
   FROM: images[BASE],
   steps: localDeps.map(d => ({
-    COPY: { from: images[`//packages/${d.local}:ci:pack`], src: `/out/${d.local}.tgz`, dest: `/repo/${d.local}.tgz` },
+    COPY: { from: images[`//libraries/${d.local}:ci:pack`], src: `/out/${d.local}.tgz`, dest: `/repo/${d.local}.tgz` },
   })),
 }),
 ```
@@ -110,21 +104,20 @@ The check happens at run time, not load time, so `dagr list` will happily print 
 ## `EXPORT`
 
 `EXPORT` is how files get out of an image and onto your host filesystem. It is a
-`Record<string, string>`, and the direction of each half is the thing to remember:
+map, and the direction of each half is the thing to remember:
 
 > **Keys are absolute paths inside the image. Values are paths relative to the package's
 > directory on the host.**
 
 ```js
-// in packages/ui/dagr.index.js
+// in services/api/dagr.index.js
 EXPORT: {
-  '/repo/dist': 'dist',              // image /repo/dist       → packages/ui/dist
-  '/repo/node_modules': 'node_modules', // image /repo/node_modules → packages/ui/node_modules
+  '/repo/dist': 'dist',              // image /repo/dist → services/api/dist
 }
 ```
 
 ```js
-// in the root dagr.index.js (package '.')
+// in a dagr.index.js at the repository root
 EXPORT: { '/docs': 'docs' }          // image /docs → <repo root>/docs
 ```
 
@@ -148,16 +141,11 @@ Two consequences worth internalising:
 
 - **Files and directories are not special cases.** `cp -a` copies either one to an exact
   destination, so a single-file export needs no different syntax. That is what makes a "sync the
-  generated config to my host" target practical: generate manifests inside the image, export
-  exactly the ones the host should see, and leave container-only files like `.pnpmfile.cjs`
-  behind.
+  generated config to my host" target practical: generate files inside the image and export
+  exactly the ones the host should receive.
 - **The no-slash form deletes first.** Replacing removes the destination before copying, so
   files the build no longer produces disappear. This is what stops a hash-named bundle directory
   from accumulating every past build. Use the slash form when you want additive behaviour.
-
-Since a replace deletes, `EXPORT`-ing `node_modules` will remove whatever the host had there —
-including a platform-correct install you did by hand. Good reason not to export `node_modules`
-from a target you run casually.
 
 ### The package directory cannot be replaced
 
@@ -181,53 +169,15 @@ EXPORT: { '/repo/dist': './' } // replaces just <pkg>/dist — safe, the root is
 
 This is the most important rule about `EXPORT` and it is deliberate.
 
-When you run `dagr run //packages/ui:ci:build`, dagr builds every transitive dependency, but
-it only materializes the `EXPORT` map of `//packages/ui:ci:build` itself. If
-`//packages/ui:ci:install` also declares an `EXPORT`, nothing is written for it.
+When you run `dagr run //services/api:ci:build`, Dagr builds every transitive dependency, but
+it only materializes the `EXPORT` map of `//services/api:ci:build` itself. If
+`//services/api:ci:install` also declares an `EXPORT`, nothing is written for it.
 
 So `EXPORT` on an intermediate target is not a side effect that fires whenever the target gets
-built — it is a declaration of "here is what this target is worth extracting, *if* you ask for
-it directly". To get `install`'s `node_modules` onto your host, run it directly:
+built. To receive an intermediate target's declared files, run it directly:
 
 ```sh
-dagr run //packages/ui:ci:install
+dagr run //services/api:ci:install
 ```
 
 Without this rule, building anything would spray files across your working tree.
-
-### How extraction works
-
-For each `src → dest` pair, dagr creates a container without starting it, copies from its
-filesystem, then removes it:
-
-```sh
-# source ends in "/" — merge contents, delete nothing
-docker create <image>
-docker cp <container>:<src>/. <package dir>/<dest>
-docker rm <container>
-
-# otherwise — the node becomes <dest> exactly, replacing whatever was there
-rm -rf <package dir>/<dest>
-docker create <image>
-docker cp <container>:<src> <package dir>/<dest>
-docker rm <container>
-```
-
-Implications:
-
-- The image needs no shell or utilities. `scratch` and distroless images work. The container is
-  never started, so its entrypoint and command do not run.
-- Intermediate directories in `dest` are created as needed, in both forms.
-- `docker cp` writes to dagr's local `/repo` mount, so exports appear on the host repository.
-- One stopped container per entry, processed sequentially.
-
-### Exported `node_modules` are Linux binaries
-
-`EXPORT`-ing `node_modules` gives you the tree that was installed inside a Linux container.
-Any dependency with native or platform-gated binaries (esbuild, rollup, swc, sharp) will have
-resolved to Linux artifacts. On a macOS or Windows host, tools run against that tree fail with
-missing optional-dependency errors.
-
-Exporting `node_modules` is useful for editor IntelliSense and for feeding a subsequent
-container step. It is not a substitute for a local install when you want to run a dev server
-on the host.
