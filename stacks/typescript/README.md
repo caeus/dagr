@@ -11,6 +11,7 @@ import typescript, {
   typedoc,
   vitest,
 } from '//stacks/ts//dagr.stack.js'
+import versions from '//config/dagr.versions.yaml'
 
 const stack = typescript({
   base: '//packages/base:ci:node-pnpm',

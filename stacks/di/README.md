@@ -5,6 +5,10 @@ A tiny synchronous dependency-injection graph for inline JavaScript composition.
 ```js
 import di, { toClass, toFun, toValue } from '//stacks/di//dagr.di.js'
 
+class Greeter {
+  greet(name) { return `Hello, ${name}` }
+}
+
 const module0 = di.module({
   unused: toValue(42),
   name: toValue('caeus'),
@@ -31,7 +35,7 @@ const symbolicHandler = Symbol('symbolicHandler')
 
 const module = di.module({
   json: toValue(input => JSON.parse(input), [handler]),
-  [symbolicHandler]: toFun([], () => input => input, new Set([handler])),
+  [symbolicHandler]: toFun([], () => value => value, new Set([handler])),
   handlers: toFun([{ tag: handler }], handlers => handlers),
 })
 

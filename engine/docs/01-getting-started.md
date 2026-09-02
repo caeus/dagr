@@ -3,9 +3,12 @@
 ## Prerequisites
 
 - Docker with Buildx
-- access to a Docker daemon
+- access to a Docker daemon through `/var/run/docker.sock`
+- a POSIX-compatible shell
 
-Dagr runs from a pinned container image.
+Dagr runs from a pinned container image. The launcher mounts the Docker socket into that image.
+Access to the Docker socket is effectively root access to the host, so run only trusted Dagr
+images and repository definitions.
 
 ## Install the launcher
 

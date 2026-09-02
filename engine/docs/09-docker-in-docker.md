@@ -96,9 +96,10 @@ export WORKING_DIR="$PWD"
 ```
 
 `cli.sh` derives `HOST_REPO_ROOT` from its own location, so as long as it runs on the machine
-that owns the daemon, the paths line up. What does **not** work is invoking `cli.sh` from
-inside another container whose repo path differs from the daemon's view — in that case set
-`HOST_REPO_ROOT` yourself to the daemon-visible path.
+that owns the daemon, the paths line up. The stock `cli.sh` assumes it runs on the machine that owns the daemon and derives the host path
+from its own location. Invoking it inside another container whose checkout path differs from the
+daemon's view requires a custom bootstrap that passes the daemon-visible `HOST_REPO_ROOT`.
 
-`docker cp` streams through the CLI, so extraction does not require the daemon to share the
-runner's filesystem. A remote daemon can build and export as long as the CLI can reach it.
+`docker cp` streams through the CLI, so extraction itself does not require the daemon to share the
+runner's filesystem. A remote daemon requires a custom bootstrap that passes its Docker endpoint
+and the correct daemon-visible repository path; the stock launcher mounts the local Unix socket.

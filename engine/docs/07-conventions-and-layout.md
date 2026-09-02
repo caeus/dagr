@@ -61,7 +61,7 @@ those directories by domain when that makes the repository easier to understand:
 ├── engine/dagr.index.js
 ├── stacks/dagr.index.js
 ├── services/api/dagr.index.js
-└── services/api/dagr.index.js
+└── services/web/dagr.index.js
 ```
 
 This produces:
@@ -70,7 +70,7 @@ This produces:
 //engine:ci:build
 //stacks:ci:test
 //services/api:ci:build
-//services/api:ci:build
+//services/web:ci:build
 ```
 
 `dagr list` currently stays within source directories and does not materialize mount declarations.
