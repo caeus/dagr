@@ -5,7 +5,9 @@ on:
     branches:
       - main
     paths:
-      - 'engine/**'
+      - 'engine/src/**'
+      - 'engine/dagr.index.js'
+      - 'engine/stacks/**'
 
 permissions:
   contents: read
