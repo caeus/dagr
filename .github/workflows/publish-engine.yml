@@ -1,0 +1,49 @@
+name: Publish engine
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'engine/**'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push platform images with dagr
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          for arch in amd64 arm64; do
+            DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run //engine:ci:image
+            docker tag engine-ci-image "$IMAGE:${GITHUB_SHA}-$arch"
+            docker push "$IMAGE:${GITHUB_SHA}-$arch"
+          done
+
+      - name: Publish multi-platform manifest
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          docker buildx imagetools create \
+            --tag "$IMAGE:${GITHUB_SHA}" \
+            --tag "$IMAGE:latest" \
+            "$IMAGE:${GITHUB_SHA}-amd64" \
+            "$IMAGE:${GITHUB_SHA}-arm64"
