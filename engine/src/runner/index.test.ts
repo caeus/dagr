@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { FQT, buildRunner } from '#runner/index.js'
+import { FQT, buildRunner, parseSelector } from '#runner/index.js'
 import type { TargetRunnerDeps } from '#runner/index.js'
 import type { BuildResult } from '#runner/docker-builder.js'
 import type { HostPlatform, PackageDef, RunContext } from '#pkg/schema.js'
@@ -46,6 +46,42 @@ describe('FQT.parse', () => {
     assert.throws(() => FQT.parse('b#c', { pkg: '//mod', facet: 'ci' }), /Invalid FQT/)
   })
 
+  it('resolves ./package against the context package', () => {
+    const fqt = FQT.parse('./api:ci:build', { pkg: '//services' })
+    assert.equal(fqt.pkg, '//services/api')
+    assert.equal(fqt.facet, 'ci')
+    assert.equal(fqt.target, 'build')
+  })
+
+  it('resolves a nested ./package path', () => {
+    assert.equal(FQT.parse('./web/admin:ci:test', { pkg: '//services' }).pkg, '//services/web/admin')
+  })
+
+  it('resolves ./package against the repository root', () => {
+    assert.equal(FQT.parse('./engine:ci:test', { pkg: '//' }).pkg, '//engine')
+  })
+
+  it('resolves a bare . to the context package itself', () => {
+    assert.equal(FQT.parse('.:ci:build', { pkg: '//services/api' }).pkg, '//services/api')
+    assert.equal(FQT.parse('.:ci:build', { pkg: '//' }).pkg, '//')
+  })
+
+  it('resolves ./package inside a mounted context', () => {
+    assert.equal(FQT.parse('./c:ci:pack', { pkg: '//tools//b' }).pkg, '//tools//b/c')
+  })
+
+  it('throws without package context for a relative package', () => {
+    assert.throws(() => FQT.parse('./api:ci:build'), /Package required/)
+  })
+
+  it('rejects .. in a relative package', () => {
+    assert.throws(() => FQT.parse('./../api:ci:build', { pkg: '//services' }), /Invalid FQT/)
+  })
+
+  it('rejects a relative package that crosses a mount boundary', () => {
+    assert.throws(() => FQT.parse('./tools//c:ci:pack', { pkg: '//' }), /Invalid FQT/)
+  })
+
   it('toString returns //package:facet:target', () => {
     assert.equal(new FQT('//a', 'b', 'c').toString(), '//a:b:c')
     assert.equal(new FQT('//', 'b', 'c').toString(), '//:b:c')
@@ -54,6 +90,68 @@ describe('FQT.parse', () => {
   it('toJSON equals toString', () => {
     const fqt = new FQT('//a', 'b', 'c')
     assert.equal(fqt.toJSON(), fqt.toString())
+  })
+})
+
+describe('parseSelector', () => {
+  const from = { pkg: '//services' }
+
+  it('reads an anchored package with facet and target', () => {
+    assert.deepEqual(
+      parseSelector('//engine:ci:test'),
+      { pkg: '//engine', facet: 'ci', target: 'test' },
+    )
+    assert.deepEqual(
+      parseSelector('./api:ci:test', from),
+      { pkg: '//services/api', facet: 'ci', target: 'test' },
+    )
+    assert.deepEqual(
+      parseSelector('.:ci:test', from),
+      { pkg: '//services', facet: 'ci', target: 'test' },
+    )
+  })
+
+  it('reads an anchored package with a facet as a whole facet', () => {
+    assert.deepEqual(parseSelector('//engine:ci'), { pkg: '//engine', facet: 'ci' })
+    assert.deepEqual(parseSelector('./api:ci', from), { pkg: '//services/api', facet: 'ci' })
+    assert.deepEqual(parseSelector('.:ci', from), { pkg: '//services', facet: 'ci' })
+    assert.deepEqual(parseSelector('//:ci'), { pkg: '//', facet: 'ci' })
+  })
+
+  it('reads a bare anchored package as the whole package', () => {
+    assert.deepEqual(parseSelector('//engine'), { pkg: '//engine' })
+    assert.deepEqual(parseSelector('./api', from), { pkg: '//services/api' })
+    assert.deepEqual(parseSelector('.', from), { pkg: '//services' })
+    assert.deepEqual(parseSelector('//'), { pkg: '//' })
+  })
+
+  it('reads an unanchored pair as facet and target of the context package', () => {
+    assert.deepEqual(
+      parseSelector('ci:test', from),
+      { pkg: '//services', facet: 'ci', target: 'test' },
+    )
+  })
+
+  it('reads a lone unanchored name as a facet of the context package', () => {
+    assert.deepEqual(parseSelector('ci', from), { pkg: '//services', facet: 'ci' })
+  })
+
+  it('throws without context when the package is omitted', () => {
+    assert.throws(() => parseSelector('ci'), /Package required/)
+    assert.throws(() => parseSelector('ci:test'), /Package required/)
+    assert.throws(() => parseSelector('./api:ci'), /Package required/)
+  })
+
+  it('still requires an anchor on a three-segment address', () => {
+    assert.throws(() => parseSelector('engine:ci:test', from), /must start with \/\//)
+  })
+
+  it('rejects more than three segments', () => {
+    assert.throws(() => parseSelector('//engine:ci:test:extra', from), /Invalid FQT/)
+  })
+
+  it('rejects .. in a relative package', () => {
+    assert.throws(() => parseSelector('./../api:ci', from), /Invalid FQT/)
   })
 })
 

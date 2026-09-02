@@ -22,7 +22,9 @@ import { DockerMountMaterializer } from '#runner/mount-materializer.js'
 import {
   CompositeCommandRunner,
   ListCommandRunner,
+  PackageListCommandRunner,
   RunCommandRunner,
+  ShowCommandRunner,
   parseCmd,
   type Cmd,
   type CommandRunner,
@@ -147,12 +149,25 @@ export function defaultModule(
         )
     ),
     listCommandRunner: toClass(['packageLoader', 'output'], ListCommandRunner),
+    packageListCommandRunner: toClass(
+      ['packageLoader', 'output', 'currentPackage'],
+      PackageListCommandRunner
+    ),
     runCommandRunner: toClass(
       ['runner', 'dockerImageExtractor', 'root', 'currentPackage'],
       RunCommandRunner
     ),
+    showCommandRunner: toClass(
+      ['packageLoader', 'output', 'hostPlatform', 'currentPackage'],
+      ShowCommandRunner
+    ),
     commandRunner: toClass(
-      ['runCommandRunner', 'listCommandRunner'],
+      [
+        'runCommandRunner',
+        'listCommandRunner',
+        'packageListCommandRunner',
+        'showCommandRunner'
+      ],
       CompositeCommandRunner
     )
   }).shake(['commandRunner'])

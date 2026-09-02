@@ -44,6 +44,18 @@ Inspect source targets without running them:
 dagr list
 ```
 
+See which packages live under the current directory, by relative name:
+
+```sh
+dagr pkg ls
+```
+
+See what a target would build, without building it:
+
+```sh
+dagr show //services/api:ci:build
+```
+
 ## The graph is code
 
 A `dagr.index.js` file exports the targets for one package. Because it is ordinary JavaScript,

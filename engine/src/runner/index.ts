@@ -23,13 +23,12 @@ export class FQT {
 
   static parse(raw: string, context?: { pkg: string; facet?: string }): FQT {
     const parts = raw.split(':')
-    if (parts.length === 3) {
-      const pkg = parts[0]
-      if (!pkg?.startsWith(ROOT_MARKER))
-        throw new Error(`Fully qualified targets must start with ${ROOT_MARKER}: ${raw}`)
-      if (pkg !== ROOT_MARKER) required(pkg.slice(ROOT_MARKER.length), raw)
-      return new FQT(pkg, name(parts[1], raw), name(parts[2], raw))
-    }
+    if (parts.length === 3)
+      return new FQT(
+        resolvePackagePart(parts[0] ?? '', raw, context),
+        name(parts[1], raw),
+        name(parts[2], raw),
+      )
     if (parts.length === 2) {
       if (!context?.pkg) throw new Error(`Package required when only facet:target is provided: ${raw}`)
       return new FQT(context.pkg, name(parts[0], raw), name(parts[1], raw))
@@ -41,6 +40,68 @@ export class FQT {
     }
     throw new Error(`Invalid FQT: ${raw}`)
   }
+}
+
+export interface Selector {
+  readonly pkg: string
+  readonly facet?: string
+  readonly target?: string
+}
+
+function isPackageAnchor(part: string): boolean {
+  return part === '.' || part.startsWith('./') || part.startsWith(ROOT_MARKER)
+}
+
+function contextPackage(context: { pkg: string } | undefined, raw: string): string {
+  if (!context?.pkg) throw new Error(`Package required when the package is omitted: ${raw}`)
+  return context.pkg
+}
+
+export function parseSelector(raw: string, context?: { pkg: string }): Selector {
+  const parts = raw.split(':')
+
+  if (parts.length === 1) {
+    const only = parts[0]!
+    if (isPackageAnchor(only)) return { pkg: resolvePackagePart(only, raw, context) }
+    return { pkg: contextPackage(context, raw), facet: name(only, raw) }
+  }
+
+  if (parts.length === 2) {
+    const first = parts[0]!
+    if (isPackageAnchor(first))
+      return { pkg: resolvePackagePart(first, raw, context), facet: name(parts[1], raw) }
+    return {
+      pkg: contextPackage(context, raw),
+      facet: name(first, raw),
+      target: name(parts[1], raw),
+    }
+  }
+
+  const fqt = FQT.parse(raw, context)
+  return { pkg: fqt.pkg, facet: fqt.facet, target: fqt.target }
+}
+
+function resolvePackagePart(pkg: string, raw: string, context?: { pkg: string }): string {
+  if (pkg === '.' || pkg.startsWith('./')) {
+    if (!context?.pkg)
+      throw new Error(`Package required when a relative package is provided: ${raw}`)
+    return resolveRelativePackage(context.pkg, pkg, raw)
+  }
+  if (!pkg.startsWith(ROOT_MARKER))
+    throw new Error(`Fully qualified targets must start with ${ROOT_MARKER}: ${raw}`)
+  if (pkg !== ROOT_MARKER) required(pkg.slice(ROOT_MARKER.length), raw)
+  return pkg
+}
+
+function resolveRelativePackage(contextPkg: string, relative: string, raw: string): string {
+  const rest = relative === '.' ? '' : relative.slice('./'.length)
+  if (rest === '') return contextPkg
+  if (rest.split('/').some(segment => !segment || segment === '.' || segment === '..'))
+    throw new Error(`Invalid FQT: ${raw}`)
+
+  const base = packageLogicalPath(contextPkg)
+  if (base === '.') return canonicalPackageName(rest)
+  return canonicalPackageName(base.endsWith('/') ? `${base}${rest}` : `${base}/${rest}`)
 }
 
 function required(value: string | undefined, raw: string): string {
