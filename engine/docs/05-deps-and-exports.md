@@ -8,8 +8,14 @@ segments are filled from the target's context:
 | Written | Segments | Resolves to |
 | --- | --- | --- |
 | `//services/api:ci:build` | 3 | Exactly that. Always unambiguous. |
+| `./api:ci:build` | 3 | `<current package>/api:ci:build` |
+| `.:ci:build` | 3 | `<current package>:ci:build` |
 | `ci:build` | 2 | `<current package>:ci:build` |
 | `build` | 1 | `<current package>:<current facet>:build` |
+
+`//` anchors an address at the repository root; `./` anchors it at the current package. A relative
+address may descend several levels (`./web/admin:ci:test`) but may not contain `..`, and it may not
+cross a mount boundary — reach a mounted package with the `//` form.
 
 Inside a `deps` array, "context" is the package **and** facet of the target doing the
 depending. So all three forms work in `deps`:
@@ -25,15 +31,25 @@ export default {
 }
 ```
 
-On the command line, `facet:target` may be used from that package's directory. A bare target name
-is not accepted:
+On the command line, "current package" means the package of the working directory, and at the
+repository root it means the root package. `facet:target` may be used from that package's
+directory; a bare target name is not accepted:
 
 ```sh
 cd services/api
 dagr run ci:build
 ```
 
-Elsewhere, use the full address. A root-package target uses `//:facet:target`:
+From anywhere else, address the package with either anchor. `dagr pkg ls` prints the relative
+names available from the working directory:
+
+```sh
+cd services
+dagr run ./api:ci:build          # relative to the working directory
+dagr run //services/api:ci:build # same target, from the repository root
+```
+
+A root-package target uses `//:facet:target`:
 
 ```sh
 cd <repo root>

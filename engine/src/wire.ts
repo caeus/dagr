@@ -12,7 +12,7 @@ import {
 } from '#pkg/loader.js'
 import type { HostPlatform } from '#pkg/schema.js'
 import { hostPlatform } from '#sys/host-platform.js'
-import { buildRunner, type Runner } from '#runner/index.js'
+import { buildRunner, canonicalPackageName, type Runner } from '#runner/index.js'
 import { renderDockerfile, type DockerfileRenderer } from '#runner/dockerfile-renderer.js'
 import { buildDockerImage, type DockerImageBuilder } from '#runner/docker-builder.js'
 import { extractFromImage, type DockerImageExtractor } from '#runner/docker-extractor.js'
@@ -22,7 +22,9 @@ import { DockerMountMaterializer } from '#runner/mount-materializer.js'
 import {
   CompositeCommandRunner,
   ListCommandRunner,
+  PackageListCommandRunner,
   RunCommandRunner,
+  ShowCommandRunner,
   parseCmd,
   type Cmd,
   type CommandRunner,
@@ -34,6 +36,11 @@ export type ModuleFactory = (
   parsedArgs: Cmd,
   stack: AsyncDisposeStack
 ) => ValidModule<{ readonly commandRunner: CommandRunner }>
+
+// node's relative() yields '' when the working directory is the root; '.' is the logical path for it.
+export function workingPackageName(env: NodeJS.ProcessEnv, hostRoot: string): string {
+  return canonicalPackageName(relative(hostRoot, env['WORKING_DIR'] ?? hostRoot) || '.')
+}
 
 export function defaultModule(
   env: NodeJS.ProcessEnv,
@@ -57,11 +64,7 @@ export function defaultModule(
       (env: NodeJS.ProcessEnv, root: string) => env['HOST_REPO_ROOT'] ?? root
     ),
     mountRoot: toValue(mountRoot),
-    currentPackage: toFactory(
-      ['env', 'hostRoot'],
-      (env: NodeJS.ProcessEnv, hostRoot: string) =>
-        relative(hostRoot, env['WORKING_DIR'] ?? hostRoot)
-    ),
+    currentPackage: toFactory(['env', 'hostRoot'], workingPackageName),
     reporter: toValue(
       consoleReporter({
         verbose: cmd.command === 'run' && cmd.verbose === true
@@ -147,12 +150,25 @@ export function defaultModule(
         )
     ),
     listCommandRunner: toClass(['packageLoader', 'output'], ListCommandRunner),
+    packageListCommandRunner: toClass(
+      ['packageLoader', 'output', 'currentPackage'],
+      PackageListCommandRunner
+    ),
     runCommandRunner: toClass(
       ['runner', 'dockerImageExtractor', 'root', 'currentPackage'],
       RunCommandRunner
     ),
+    showCommandRunner: toClass(
+      ['packageLoader', 'output', 'hostPlatform', 'currentPackage'],
+      ShowCommandRunner
+    ),
     commandRunner: toClass(
-      ['runCommandRunner', 'listCommandRunner'],
+      [
+        'runCommandRunner',
+        'listCommandRunner',
+        'packageListCommandRunner',
+        'showCommandRunner'
+      ],
       CompositeCommandRunner
     )
   }).shake(['commandRunner'])
