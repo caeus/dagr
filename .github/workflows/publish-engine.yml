@@ -1,24 +1,25 @@
 name: Publish engine
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'engine/src/**'
-      - 'engine/dagr.index.js'
-      - 'engine/stacks/**'
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Check out main
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve main revision
+        id: release
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -33,19 +34,38 @@ jobs:
       - name: Build and push platform images with dagr
         env:
           IMAGE: ghcr.io/${{ github.repository }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           for arch in amd64 arm64; do
             DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run //engine:ci:image
-            docker tag engine-ci-image "$IMAGE:${GITHUB_SHA}-$arch"
-            docker push "$IMAGE:${GITHUB_SHA}-$arch"
+            docker tag engine-ci-image "$IMAGE:$RELEASE_SHA-$arch"
+            docker push "$IMAGE:$RELEASE_SHA-$arch"
           done
 
       - name: Publish multi-platform manifest
         env:
           IMAGE: ghcr.io/${{ github.repository }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           docker buildx imagetools create \
-            --tag "$IMAGE:${GITHUB_SHA}" \
+            --tag "$IMAGE:$RELEASE_SHA" \
             --tag "$IMAGE:latest" \
-            "$IMAGE:${GITHUB_SHA}-amd64" \
-            "$IMAGE:${GITHUB_SHA}-arm64"
+            "$IMAGE:$RELEASE_SHA-amd64" \
+            "$IMAGE:$RELEASE_SHA-arm64"
+
+      - name: Advance dogfood pin
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          sed -i "s|^PIN=\"ghcr.io/caeus/dagr:[^\"]*\"$|PIN=\"ghcr.io/caeus/dagr:$RELEASE_SHA\"|" .dagr/cli.sh
+          grep -qx "PIN=\"ghcr.io/caeus/dagr:$RELEASE_SHA\"" .dagr/cli.sh
+
+          if git diff --quiet -- .dagr/cli.sh; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .dagr/cli.sh
+          git commit -m "chore: advance dogfood engine to $RELEASE_SHA"
+          git push origin HEAD:main
