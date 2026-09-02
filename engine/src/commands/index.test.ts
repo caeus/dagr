@@ -63,7 +63,7 @@ describe('RunCommandRunner', () => {
       runner,
       extractor,
       '/',
-      'packages/ui',
+      '//packages/ui',
     ).execute({ command: 'run', verbose: false, fqts: ['ci:lint', 'ci:test'] })
 
     assert.deepEqual(ran, ['//packages/ui:ci:lint', '//packages/ui:ci:test'])
@@ -80,7 +80,7 @@ describe('RunCommandRunner', () => {
       runner,
       { extractFromImage: async () => undefined },
       '/',
-      'services',
+      '//services',
     ).execute({ command: 'run', verbose: false, fqts: ['./api:ci:build', '.:ci:lint'] })
 
     assert.deepEqual(ran, ['//services/api:ci:build', '//services:ci:lint'])
@@ -97,7 +97,7 @@ describe('RunCommandRunner', () => {
       runner,
       { extractFromImage: async () => undefined },
       '/',
-      '.',
+      '//',
     ).execute({ command: 'run', verbose: false, fqts: ['./engine:ci:test'] })
 
     assert.deepEqual(ran, ['//engine:ci:test'])
@@ -121,7 +121,7 @@ describe('RunCommandRunner', () => {
       runner,
       extractor,
       '/repo',
-      '.',
+      '//',
     ).execute({ command: 'run', verbose: false, fqts: ['//pkg:ci:build'] })
 
     assert.deepEqual(extracted, [{ imageTag: 'pkg-ci-build', destDir: '/repo/pkg' }])
@@ -139,7 +139,7 @@ describe('RunCommandRunner', () => {
     const extractor: DockerImageExtractor = {
       extractFromImage: async () => { extracted = true },
     }
-    const command = new RunCommandRunner(runner, extractor, '/host/repo', '.')
+    const command = new RunCommandRunner(runner, extractor, '/host/repo', '//')
 
     await assert.rejects(
       command.execute({ command: 'run', verbose: false, fqts: [result.fqt.toString()] }),
@@ -182,7 +182,7 @@ describe('ShowCommandRunner', () => {
   }
 
   it('renders the run definition as YAML', async () => {
-    const { text } = await showFrom(hello, 'pkg', '//pkg:ci:hello')
+    const { text } = await showFrom(hello, '//pkg', '//pkg:ci:hello')
     assert.deepEqual(parseYaml(text), {
       FROM: 'alpine:3.22',
       steps: [{ RUN: 'echo hi' }],
@@ -191,7 +191,7 @@ describe('ShowCommandRunner', () => {
   })
 
   it('labels the document with the resolved address', async () => {
-    const { text } = await showFrom(hello, 'pkg', '//pkg:ci:hello')
+    const { text } = await showFrom(hello, '//pkg', '//pkg:ci:hello')
     assert.equal(text.split('\n')[0], '# //pkg:ci:hello')
   })
 
@@ -215,7 +215,7 @@ describe('ShowCommandRunner', () => {
       },
     }
 
-    const { text } = await showFrom(definition, 'pkg', '//pkg:ci:build')
+    const { text } = await showFrom(definition, '//pkg', '//pkg:ci:build')
 
     assert.deepEqual(parseYaml(text), {
       FROM: '//pkg:ci:install',
@@ -238,19 +238,19 @@ describe('ShowCommandRunner', () => {
       },
     }
 
-    const { text } = await showFrom(definition, 'pkg', '//pkg:ci:probe')
+    const { text } = await showFrom(definition, '//pkg', '//pkg:ci:probe')
 
     assert.equal((parseYaml(text) as { FROM: string }).FROM, 'linux/x64/glibc')
   })
 
   it('resolves a relative address against the working directory', async () => {
-    const { requested, text } = await showFrom(hello, 'services', './api:ci:hello')
+    const { requested, text } = await showFrom(hello, '//services', './api:ci:hello')
     assert.deepEqual(requested, ['services/api'])
     assert.equal(text.split('\n')[0], '# //services/api:ci:hello')
   })
 
   it('separates several targets as YAML documents', async () => {
-    const { text } = await showFrom(hello, 'pkg', '//pkg:ci:hello', '//other:ci:hello')
+    const { text } = await showFrom(hello, '//pkg', '//pkg:ci:hello', '//other:ci:hello')
     const documents = text.split('\n---\n')
     assert.equal(documents.length, 2)
     assert.equal(documents[0]?.split('\n')[0], '# //pkg:ci:hello')
@@ -263,7 +263,7 @@ describe('ShowCommandRunner', () => {
       ci: { long: { deps: [], run: () => ({ FROM: 'alpine', steps: [{ RUN: long }], IGNORE: [] }) } },
     }
 
-    const { text } = await showFrom(definition, 'pkg', '//pkg:ci:long')
+    const { text } = await showFrom(definition, '//pkg', '//pkg:ci:long')
 
     assert.ok(
       text.split('\n').some(line => line.includes(long)),
@@ -284,7 +284,7 @@ describe('ShowCommandRunner', () => {
   }
 
   it('shows a facet as its targets with resolved dependencies', async () => {
-    const { text } = await showFrom(workspace, 'pkg', '//pkg:ci')
+    const { text } = await showFrom(workspace, '//pkg', '//pkg:ci')
 
     assert.equal(text.split('\n')[0], '# //pkg:ci')
     assert.deepEqual(parseYaml(text), {
@@ -295,12 +295,12 @@ describe('ShowCommandRunner', () => {
   })
 
   it('keeps declaration order within a facet', async () => {
-    const { text } = await showFrom(workspace, 'pkg', '//pkg:ci')
+    const { text } = await showFrom(workspace, '//pkg', '//pkg:ci')
     assert.deepEqual(Object.keys(parseYaml(text) as object), ['install', 'build', 'test'])
   })
 
   it('shows a package as its facets of targets', async () => {
-    const { text } = await showFrom(workspace, 'pkg', '//pkg')
+    const { text } = await showFrom(workspace, '//pkg', '//pkg')
 
     assert.equal(text.split('\n')[0], '# //pkg')
     assert.deepEqual(parseYaml(text), {
@@ -314,7 +314,7 @@ describe('ShowCommandRunner', () => {
   })
 
   it('shows a facet of the working directory package from a lone name', async () => {
-    const { text } = await showFrom(workspace, 'pkg', 'ci')
+    const { text } = await showFrom(workspace, '//pkg', 'ci')
     assert.equal(text.split('\n')[0], '# //pkg:ci')
   })
 
@@ -323,15 +323,15 @@ describe('ShowCommandRunner', () => {
       ci: { boom: { deps: [], run: () => { throw new Error('run must not be called') } } },
     }
 
-    assert.deepEqual(parseYaml((await showFrom(exploding, 'pkg', '//pkg:ci')).text), { boom: [] })
+    assert.deepEqual(parseYaml((await showFrom(exploding, '//pkg', '//pkg:ci')).text), { boom: [] })
     assert.deepEqual(
-      parseYaml((await showFrom(exploding, 'pkg', '//pkg')).text),
+      parseYaml((await showFrom(exploding, '//pkg', '//pkg')).text),
       { ci: { boom: [] } },
     )
   })
 
   it('throws on an unknown facet', async () => {
-    await assert.rejects(showFrom(workspace, 'pkg', '//pkg:absent'), /Unknown facet/)
+    await assert.rejects(showFrom(workspace, '//pkg', '//pkg:absent'), /Unknown facet/)
   })
 
   it('throws on an unknown package', async () => {
@@ -342,7 +342,7 @@ describe('ShowCommandRunner', () => {
       },
       { write: () => undefined },
       host,
-      '.',
+      '//',
     )
 
     await assert.rejects(
@@ -352,7 +352,7 @@ describe('ShowCommandRunner', () => {
   })
 
   it('throws on an unknown target', async () => {
-    await assert.rejects(showFrom(hello, 'pkg', '//pkg:ci:absent'), /Unknown target/)
+    await assert.rejects(showFrom(hello, '//pkg', '//pkg:ci:absent'), /Unknown target/)
   })
 
   it('throws on an invalid run definition', async () => {
@@ -361,7 +361,7 @@ describe('ShowCommandRunner', () => {
     } as unknown as PackageDef
 
     await assert.rejects(
-      showFrom(definition, 'pkg', '//pkg:ci:broken'),
+      showFrom(definition, '//pkg', '//pkg:ci:broken'),
       /Invalid run definition/,
     )
   })
@@ -389,35 +389,35 @@ describe('PackageListCommandRunner', () => {
 
   it('names packages under the working directory relative to it', async () => {
     assert.deepEqual(
-      await namesFrom('services', 'services', 'services/api', 'services/web/admin'),
+      await namesFrom('//services', 'services', 'services/api', 'services/web/admin'),
       ['.', './api', './web/admin'],
     )
   })
 
   it('lists every package from the repository root', async () => {
     assert.deepEqual(
-      await namesFrom('.', '.', 'engine', 'stacks'),
+      await namesFrom('//', '.', 'engine', 'stacks'),
       ['.', './engine', './stacks'],
     )
   })
 
   it('excludes packages outside the working directory', async () => {
     assert.deepEqual(
-      await namesFrom('services', 'engine', 'services/api', 'tools'),
+      await namesFrom('//services', 'engine', 'services/api', 'tools'),
       ['./api'],
     )
   })
 
   it('does not treat a name-prefix sibling as a descendant', async () => {
-    assert.deepEqual(await namesFrom('engine', 'engineering', 'engine/examples'), ['./examples'])
+    assert.deepEqual(await namesFrom('//engine', 'engineering', 'engine/examples'), ['./examples'])
   })
 
   it('prints nothing when no package is under the working directory', async () => {
-    assert.deepEqual(await namesFrom('docs', 'engine'), [])
+    assert.deepEqual(await namesFrom('//docs', 'engine'), [])
   })
 
   it('names packages under a mounted working directory', async () => {
-    assert.deepEqual(await namesFrom('tools//b', 'tools//b', 'tools//b/c'), ['.', './c'])
+    assert.deepEqual(await namesFrom('//tools//b', 'tools//b', 'tools//b/c'), ['.', './c'])
   })
 })
 

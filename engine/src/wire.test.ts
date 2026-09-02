@@ -2,16 +2,19 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { Module, toValue } from '@caeus/wyr'
 import type { Cmd, CommandRunner } from '#commands/index.js'
-import { wire, workingPackage, type ModuleFactory } from '#wire.js'
+import { wire, workingPackageName, type ModuleFactory } from '#wire.js'
 
-describe('workingPackage', () => {
-  it('names the repository root as the root logical path', () => {
-    assert.equal(workingPackage({ WORKING_DIR: '/repo' }, '/repo'), '.')
-    assert.equal(workingPackage({}, '/repo'), '.')
+describe('workingPackageName', () => {
+  it('names the repository root as the root package', () => {
+    assert.equal(workingPackageName({ WORKING_DIR: '/repo' }, '/repo'), '//')
+    assert.equal(workingPackageName({}, '/repo'), '//')
   })
 
-  it('names a nested working directory by its logical path', () => {
-    assert.equal(workingPackage({ WORKING_DIR: '/repo/engine/examples' }, '/repo'), 'engine/examples')
+  it('names a nested working directory as a canonical package', () => {
+    assert.equal(
+      workingPackageName({ WORKING_DIR: '/repo/engine/examples' }, '/repo'),
+      '//engine/examples',
+    )
   })
 })
 
