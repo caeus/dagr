@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { FQT, buildRunner, parseSelector } from '#runner/index.js'
+import { FQT, buildRunner, parseSelector, relativePackageName } from '#runner/index.js'
 import type { TargetRunnerDeps } from '#runner/index.js'
 import type { BuildResult } from '#runner/docker-builder.js'
 import type { HostPlatform, PackageDef, RunContext } from '#pkg/schema.js'
@@ -152,6 +152,50 @@ describe('parseSelector', () => {
 
   it('rejects .. in a relative package', () => {
     assert.throws(() => parseSelector('./../api:ci', from), /Invalid FQT/)
+  })
+})
+
+describe('relativePackageName', () => {
+  it('names a package under the base package', () => {
+    assert.equal(relativePackageName('//services', '//services/api'), './api')
+    assert.equal(relativePackageName('//services', '//services/web/admin'), './web/admin')
+    assert.equal(relativePackageName('//', '//engine'), './engine')
+  })
+
+  it('names the base package itself as a bare dot', () => {
+    assert.equal(relativePackageName('//services', '//services'), '.')
+    assert.equal(relativePackageName('//', '//'), '.')
+  })
+
+  it('returns undefined for a package outside the base', () => {
+    assert.equal(relativePackageName('//services', '//engine'), undefined)
+    assert.equal(relativePackageName('//engine', '//engineering'), undefined)
+  })
+
+  it('names a package under a mounted base', () => {
+    assert.equal(relativePackageName('//tools//b', '//tools//b/c'), './c')
+  })
+
+  it('round-trips through parseSelector', () => {
+    const cases = [
+      ['//services', '//services/api'],
+      ['//services', '//services/web/admin'],
+      ['//services', '//services'],
+      ['//', '//engine'],
+      ['//', '//'],
+      ['//tools//b', '//tools//b/c'],
+      ['//tools//b', '//tools//b'],
+    ] as const
+
+    for (const [base, pkg] of cases) {
+      const name = relativePackageName(base, pkg)
+      assert.ok(name !== undefined, `${pkg} should be nameable relative to ${base}`)
+      assert.equal(
+        parseSelector(`${name}:ci`, { pkg: base }).pkg,
+        pkg,
+        `${base} + ${name} should resolve back to ${pkg}`,
+      )
+    }
   })
 })
 

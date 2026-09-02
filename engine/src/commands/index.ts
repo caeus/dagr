@@ -14,6 +14,7 @@ import {
   FQT,
   packageLogicalPath,
   parseSelector,
+  relativePackageName,
   type Runner,
 } from "#runner/index.js";
 import type { DockerImageExtractor } from "#runner/docker-extractor.js";
@@ -121,20 +122,13 @@ export class PackageListCommandRunner implements CommandRunner {
 
   async execute(): Promise<void> {
     const packages = await this.packageLoader.loadAllPackages();
-    const base = this.currentPackage === '' ? '.' : this.currentPackage;
+    const base = canonicalPackageName(this.currentPackage || '.');
     const names = [...packages.keys()]
-      .map(logicalPath => relativePackageName(base, logicalPath))
+      .map(logicalPath => relativePackageName(base, canonicalPackageName(logicalPath)))
       .filter((name): name is string => name !== undefined)
       .sort();
     for (const name of names) this.output.write(name);
   }
-}
-
-function relativePackageName(base: string, logicalPath: string): string | undefined {
-  if (logicalPath === base) return '.';
-  if (base === '.') return `./${logicalPath}`;
-  const prefix = base.endsWith('/') ? base : `${base}/`;
-  return logicalPath.startsWith(prefix) ? `./${logicalPath.slice(prefix.length)}` : undefined;
 }
 
 export class RunCommandRunner {

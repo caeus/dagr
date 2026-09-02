@@ -93,6 +93,18 @@ function resolvePackagePart(pkg: string, raw: string, context?: { pkg: string })
   return pkg
 }
 
+// Inverse of resolveRelativePackage: keep both halves of the ./ convention together.
+export function relativePackageName(basePkg: string, pkg: string): string | undefined {
+  if (pkg === basePkg) return '.'
+
+  const base = packageLogicalPath(basePkg)
+  const path = packageLogicalPath(pkg)
+  if (base === '.') return `./${path}`
+
+  const prefix = base.endsWith('/') ? base : `${base}/`
+  return path.startsWith(prefix) ? `./${path.slice(prefix.length)}` : undefined
+}
+
 function resolveRelativePackage(contextPkg: string, relative: string, raw: string): string {
   const rest = relative === '.' ? '' : relative.slice('./'.length)
   if (rest === '') return contextPkg
