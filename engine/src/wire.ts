@@ -37,6 +37,11 @@ export type ModuleFactory = (
   stack: AsyncDisposeStack
 ) => ValidModule<{ readonly commandRunner: CommandRunner }>
 
+// node's relative() yields '' when the working directory is the root; '.' is the logical path for it.
+export function workingPackage(env: NodeJS.ProcessEnv, hostRoot: string): string {
+  return relative(hostRoot, env['WORKING_DIR'] ?? hostRoot) || '.'
+}
+
 export function defaultModule(
   env: NodeJS.ProcessEnv,
   cmd: Cmd,
@@ -59,11 +64,7 @@ export function defaultModule(
       (env: NodeJS.ProcessEnv, root: string) => env['HOST_REPO_ROOT'] ?? root
     ),
     mountRoot: toValue(mountRoot),
-    currentPackage: toFactory(
-      ['env', 'hostRoot'],
-      (env: NodeJS.ProcessEnv, hostRoot: string) =>
-        relative(hostRoot, env['WORKING_DIR'] ?? hostRoot)
-    ),
+    currentPackage: toFactory(['env', 'hostRoot'], workingPackage),
     reporter: toValue(
       consoleReporter({
         verbose: cmd.command === 'run' && cmd.verbose === true

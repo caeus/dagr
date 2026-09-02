@@ -122,7 +122,7 @@ export class PackageListCommandRunner implements CommandRunner {
 
   async execute(): Promise<void> {
     const packages = await this.packageLoader.loadAllPackages();
-    const base = canonicalPackageName(this.currentPackage || '.');
+    const base = canonicalPackageName(this.currentPackage);
     const names = [...packages.keys()]
       .map(logicalPath => relativePackageName(base, canonicalPackageName(logicalPath)))
       .filter((name): name is string => name !== undefined)
@@ -140,7 +140,7 @@ export class RunCommandRunner {
   ) {}
 
   async execute(cmd: RunCmd): Promise<void> {
-    const context = { pkg: canonicalPackageName(this.currentPackage || '.') };
+    const context = { pkg: canonicalPackageName(this.currentPackage) };
     const results = await Promise.all(
       cmd.fqts.map((raw) => this.runner(FQT.parse(raw, context))),
     );
@@ -173,7 +173,7 @@ export class ShowCommandRunner {
   ) {}
 
   async execute(cmd: ShowCmd): Promise<void> {
-    const context = { pkg: canonicalPackageName(this.currentPackage || '.') };
+    const context = { pkg: canonicalPackageName(this.currentPackage) };
     const documents: string[] = [];
 
     for (const raw of cmd.fqts) {

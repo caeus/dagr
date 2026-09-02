@@ -97,7 +97,7 @@ describe('RunCommandRunner', () => {
       runner,
       { extractFromImage: async () => undefined },
       '/',
-      '',
+      '.',
     ).execute({ command: 'run', verbose: false, fqts: ['./engine:ci:test'] })
 
     assert.deepEqual(ran, ['//engine:ci:test'])
@@ -121,7 +121,7 @@ describe('RunCommandRunner', () => {
       runner,
       extractor,
       '/repo',
-      '',
+      '.',
     ).execute({ command: 'run', verbose: false, fqts: ['//pkg:ci:build'] })
 
     assert.deepEqual(extracted, [{ imageTag: 'pkg-ci-build', destDir: '/repo/pkg' }])
@@ -139,7 +139,7 @@ describe('RunCommandRunner', () => {
     const extractor: DockerImageExtractor = {
       extractFromImage: async () => { extracted = true },
     }
-    const command = new RunCommandRunner(runner, extractor, '/host/repo', '')
+    const command = new RunCommandRunner(runner, extractor, '/host/repo', '.')
 
     await assert.rejects(
       command.execute({ command: 'run', verbose: false, fqts: [result.fqt.toString()] }),
@@ -342,7 +342,7 @@ describe('ShowCommandRunner', () => {
       },
       { write: () => undefined },
       host,
-      '',
+      '.',
     )
 
     await assert.rejects(
@@ -396,7 +396,7 @@ describe('PackageListCommandRunner', () => {
 
   it('lists every package from the repository root', async () => {
     assert.deepEqual(
-      await namesFrom('', '.', 'engine', 'stacks'),
+      await namesFrom('.', '.', 'engine', 'stacks'),
       ['.', './engine', './stacks'],
     )
   })
