@@ -112,7 +112,10 @@ function createStack(options, features, declaration) {
   for (const facet of Object.values(facets)) {
     bindings[`facet:${facet.name}`] = di.toFun(
       [{ tag: facet.targets }],
-      targets => ({ name: facet.name, targets: collectNamed('target', targets) }),
+      targets => ({
+        name: facet.name,
+        targets: collectNamed('target', targets, ({ deps, run }) => ({ deps, run })),
+      }),
       [facetsTag],
     )
   }

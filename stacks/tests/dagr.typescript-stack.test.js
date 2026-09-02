@@ -36,7 +36,7 @@ describe('mountable TypeScript stack', () => {
       'typecheck',
     ].sort())
     assert.deepEqual(Object.keys(index.publish), ['pack'])
-    assert.equal(index.ci.test.name, 'test')
+    assert.deepEqual(Object.keys(index.ci.test).sort(), ['deps', 'run'])
     assert.deepEqual([...index.ci.test.deps], ['install-test'])
     assert.equal(typeof index.ci.test.run, 'function')
     assert.equal(calculations.nodes['dev:sync/intent'].deps.length, 0)
@@ -61,7 +61,10 @@ describe('mountable TypeScript stack', () => {
     const extended = stack.default({ base: 'base', versions })
       .with(stack.library())
       .with(health)
-    assert.equal(extended({ location: '//example' }).quality.health.name, 'health')
+    assert.deepEqual(
+      Object.keys(extended({ location: '//example' }).quality.health).sort(),
+      ['deps', 'run'],
+    )
 
     const first = stack.di.module({
       firstTarget: stack.di.toFun([], () => stack.target('same', {

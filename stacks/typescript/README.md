@@ -197,7 +197,7 @@ export const health = () => di.module({
 })
 ```
 
-That value is exactly:
+That internal contribution value is exactly:
 
 ```js
 {
@@ -207,7 +207,8 @@ That value is exactly:
 }
 ```
 
-There is no target specification or target-kind interpreter. The `ci` facet collects every value
+Facet assembly consumes `name` as the target's map key and emits Dagr's public
+`{ deps, run }` target shape. There is no target specification or target-kind interpreter. The `ci` facet collects every value
 tagged with `ciFacet.targets`; the root facet tag then collects `ci`:
 
 ```text
