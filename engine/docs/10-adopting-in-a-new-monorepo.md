@@ -5,11 +5,11 @@ defines packages wherever its domain model needs them.
 
 ## Install the launcher
 
-Copy the launcher files from this repository:
+Copy the launcher from the starter example, which carries a complete `.dagr/`:
 
 ```sh
 mkdir <your-repo>/.dagr
-cp <dagr-source>/engine/{cli.sh,dagr,install.sh} <your-repo>/.dagr/
+cp -R <dagr-source>/engine/examples/starter/.dagr/. <your-repo>/.dagr/
 ```
 
 Pin the runtime image in `.dagr/cli.sh`:
