@@ -25,6 +25,7 @@ export default {
           `sed -i 's#//di//dagr.di.js#//di/dagr.di.features.js#' /stack/dagr.features.js`,
           `sed -i 's#//di//dagr.di.js#//di/dagr.di.module.js#' /stack/dagr.module.js`,
           `sed -i 's#//di//dagr.di.js#//di/dagr.di.stack.js#' /stack/dagr.stack.js`,
+          `sed -i "s#collectNamed('target', targets)#collectNamed('target', targets, ({ deps, run }) => ({ deps, run }))#" /stack/dagr.stack.js`,
         ].join(' && '),
       },
       { WORKDIR: '/stack' },
