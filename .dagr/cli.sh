@@ -3,7 +3,8 @@ set -e
 
 DAGR_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$DAGR_DIR/.." && pwd)"
-IMAGE="ghcr.io/caeus/dagr:145bdefbd5e9341e2d2da6286e606c1f29d92602"
+PIN="ghcr.io/caeus/dagr:145bdefbd5e9341e2d2da6286e606c1f29d92602"
+
 TARGET_PLATFORM="${DOCKER_DEFAULT_PLATFORM:-}"
 unset DOCKER_DEFAULT_PLATFORM
 
@@ -22,15 +23,28 @@ fi
 PLATFORM_ENV=""
 if [ -n "$TARGET_PLATFORM" ]; then PLATFORM_ENV="-e DOCKER_DEFAULT_PLATFORM=$TARGET_PLATFORM"; fi
 
-docker run --rm --pull=missing \
-  -v "$REPO_ROOT:/repo" \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -e HOST_REPO_ROOT="$REPO_ROOT" \
-  -e MOUNT_ROOT=/tmp/dagr-mounts \
-  -e CLEAN_MOUNT_ROOT=1 \
-  -e WORKING_DIR="${WORKING_DIR:-$REPO_ROOT}" \
-  -e HOST_OS="$HOST_OS" \
-  -e HOST_ARCH="$HOST_ARCH" \
-  $LIBC_ENV \
-  $PLATFORM_ENV \
-  "$IMAGE" "$@"
+dagr_docker_run() {
+  image="$1"
+  shift
+  docker run --rm --pull=missing \
+    -v "$REPO_ROOT:/repo" \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -e HOST_REPO_ROOT="$REPO_ROOT" \
+    -e MOUNT_ROOT=/tmp/dagr-mounts \
+    -e CLEAN_MOUNT_ROOT=1 \
+    -e WORKING_DIR="${WORKING_DIR:-$REPO_ROOT}" \
+    -e HOST_OS="$HOST_OS" \
+    -e HOST_ARCH="$HOST_ARCH" \
+    $LIBC_ENV \
+    $PLATFORM_ENV \
+    "$image" "$@"
+}
+
+# DOGFEED=true rebuilds the engine from this working tree with the pinned
+# release, then runs the requested command with that freshly built engine.
+if [ "${DOGFEED:-}" = true ]; then
+  dagr_docker_run "$PIN" run //engine:ci:image
+  dagr_docker_run engine-ci-image "$@"
+else
+  dagr_docker_run "$PIN" "$@"
+fi
