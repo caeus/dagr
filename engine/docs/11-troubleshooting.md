@@ -34,13 +34,7 @@ Compare the address with `dagr list`. A complete target address has package, fac
 Directory names and facet names are not inferred conventions. `apps/web` and `ci` are ordinary
 names chosen by the repository.
 
-From inside a package directory, the package may be omitted:
-
-```sh
-dagr run ci:build
-```
-
-From elsewhere, use the complete address.
+Use the complete address when in doubt.
 
 ## `Facet required when only target is provided`
 
@@ -69,7 +63,7 @@ For a mounted stack, a second `//` crosses the mount boundary:
 import stack from '//stacks/ts//dagr.stack.js'
 ```
 
-See [Sandbox and imports](04-sandbox-and-imports.md) for the complete rules.
+See [Build-file environment and imports](04-sandbox-and-imports.md) for the complete rules.
 
 ## A target definition is rejected
 

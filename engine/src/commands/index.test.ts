@@ -103,7 +103,7 @@ describe('ListCommandRunner', () => {
     const definition: PackageDef = {
       ci: {
         build: {
-          deps: [],
+          deps: ['//stacks/ts//:ci:build'],
           run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] }),
         },
       },
@@ -122,6 +122,8 @@ describe('ListCommandRunner', () => {
     await command.execute()
 
     assert.equal(scans, 1)
-    assert.deepEqual(lines, ['//packages/ui:ci:build[]'])
+    assert.deepEqual(lines, [
+      '//packages/ui:ci:build[//stacks/ts//:ci:build]',
+    ])
   })
 })

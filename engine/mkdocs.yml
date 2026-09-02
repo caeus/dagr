@@ -18,6 +18,7 @@ plugins:
 
 exclude_docs: |
   08-internals.md
+  09-docker-in-docker.md
 
 markdown_extensions:
   - admonition
@@ -31,10 +32,9 @@ nav:
   - Getting started: 01-getting-started.md
   - Concepts: 02-concepts.md
   - Authoring dagr.index.js: 03-authoring-dagr-index-js.md
-  - Sandbox and imports: 04-sandbox-and-imports.md
+  - Build-file environment and imports: 04-sandbox-and-imports.md
   - Dependencies and EXPORT: 05-deps-and-exports.md
   - CLI reference: 06-cli.md
   - Conventions and layout: 07-conventions-and-layout.md
-  - Docker-in-Docker: 09-docker-in-docker.md
   - Adopting in a new monorepo: 10-adopting-in-a-new-monorepo.md
   - Troubleshooting: 11-troubleshooting.md

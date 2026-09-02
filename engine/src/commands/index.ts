@@ -74,7 +74,9 @@ export class ListCommandRunner implements CommandRunner {
     const visit = (key: string): void => {
       if (visited.has(key)) return;
       visited.add(key);
-      for (const dep of graph.get(key) ?? []) visit(dep);
+      for (const dep of graph.get(key) ?? []) {
+        if (graph.has(dep)) visit(dep);
+      }
       sorted.push(key);
     };
     for (const key of graph.keys()) visit(key);

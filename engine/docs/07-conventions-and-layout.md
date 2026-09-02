@@ -13,7 +13,7 @@ The repository layout belongs to the repository. `engine/`, `stacks/`, `apps/`, 
 - `.git` and `node_modules` are not searched.
 - Discovery continues below directories containing `dagr.index.js`, so nested source packages are
   listed independently.
-- A root `dagr.index.js` is package `.` and does not hide packages below it.
+- A root `dagr.index.js` defines targets such as `//:ci:build` and does not hide packages below it.
 - A package path is relative to the repository root. For example, `apps/web/dagr.index.js` defines
   package `apps/web` and target `//apps/web:ci:build`.
 - Direct target loading uses the same package paths as discovery. There is no separate `packages/`
@@ -48,7 +48,7 @@ dagr/
 Consequently, `dagr list` discovers `engine` and `stacks`. It does not require either directory to
 be renamed or placed below `packages/`.
 
-The root currently has no `dagr.index.js`. Adding one would create package `.` without changing
+The root currently has no `dagr.index.js`. Adding one would define root targets without changing
 discovery below it.
 
 ## Choosing a layout
@@ -78,7 +78,7 @@ Mount contents remain addressable when a command explicitly loads a target throu
 
 ## Shared stacks and helpers
 
-Shared code is ordinary importable Dagr code. Its directory name is a convention, not a loader
+Shared code is ordinary importable Dagr code. Its directory name is a convention, not a Dagr
 feature. For example:
 
 ```js
@@ -101,7 +101,7 @@ Here `stacks/ts` is a project-chosen alias for a mounted stack image. The second
 mount boundary. Source helpers can also live directly in the repository and be imported with a
 single root marker, such as `//build/dagr.helpers.js`.
 
-See [Sandbox and imports](04-sandbox-and-imports.md) for module rules and
+See [Build-file environment and imports](04-sandbox-and-imports.md) for module rules and
 [Authoring `dagr.index.js`](03-authoring-dagr-index-js.md) for mounts and target definitions.
 
 ## Build-context ignores

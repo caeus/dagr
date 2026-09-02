@@ -1,55 +1,49 @@
-# Adopting dagr in a new monorepo
+# Adopting Dagr in a monorepo
 
-dagr runs from a published container image. You adopt it by copying three small launcher files
-into a `.dagr/` directory at your repo root and pinning an image commit in `cli.sh`. You do **not**
-copy dagr's source or install its Node dependencies.
+Dagr runs from a pinned container image. A repository keeps a small launcher under `.dagr/` and
+defines packages wherever its domain model needs them.
 
-## Checklist
+## Install the launcher
 
-**1. Create `.dagr/` and copy the launcher files.** They live under `engine/` in the Dagr
-repository:
+Copy the launcher files from this repository:
 
 ```sh
 mkdir <your-repo>/.dagr
 cp <dagr-source>/engine/{cli.sh,dagr,install.sh} <your-repo>/.dagr/
 ```
 
-The directory must be named `.dagr` and sit at the repo root — the `dagr` launcher finds your
-repository by walking up until it sees a directory with that name. Nothing inside these three
-files needs structural editing; `cli.sh` derives its own location.
-
-**2. Pin the runtime image.** In `.dagr/cli.sh`, set `IMAGE` to an immutable Dagr commit tag:
+Pin the runtime image in `.dagr/cli.sh`:
 
 ```sh
-IMAGE="ghcr.io/caeus/dagr:<dagr-commit-sha>"
+IMAGE="ghcr.io/caeus/dagr:<commit-sha>"
 ```
 
-To upgrade Dagr later, change that SHA; nothing else moves. The host only needs Docker with
-buildx and access to the Docker socket.
-
-**3. Install the launcher.** Once per machine, not once per repo:
+Then install the launcher once on the machine:
 
 ```sh
 .dagr/install.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-**4. Choose domain directories.** Dagr recursively discovers packages from the repository root, so
-directory names are yours. `apps/`, `services/`, `engine/`, and `packages/` have no built-in
-meaning.
+The host needs Docker with Buildx and permission to reach the Docker daemon.
 
-**5. Add a base-image package.** Almost every target wants the same starting image; make it a
-target so it is built once and shared:
+## Add the first package
+
+Choose a domain directory. No directory name is privileged:
 
 ```js
-// packages/base/dagr.index.js
+// apps/web/dagr.index.js
 export default {
   ci: {
-    'node-pnpm': {
+    build: {
       deps: [],
       run: () => ({
         FROM: 'node:22-alpine',
-        steps: [{ RUN: 'corepack enable && corepack prepare pnpm@11.20.0 --activate' }],
+        steps: [
+          { WORKDIR: '/repo' },
+          { COPY: { src: '.', dest: '/repo' } },
+          { RUN: 'npm test' },
+        ],
         IGNORE: ['node_modules', '.git'],
       }),
     },
@@ -57,93 +51,68 @@ export default {
 }
 ```
 
-**6. Verify the plumbing before writing anything real:**
+Verify discovery, then run it:
 
 ```sh
 dagr list
+dagr run //apps/web:ci:build
 ```
 
-Expected output:
+`dagr list` recursively finds source packages but leaves mounts opaque. Direct runs load the named
+package and any dependencies they reach.
 
-```
-//packages/base:ci:node-pnpm[]
-```
+## Grow from working targets
 
-Then:
+Start with one package and one target. Add dependencies and shared helpers after duplication is
+visible. A common split is:
 
-```sh
-dagr run //packages/base:ci:node-pnpm
-```
-
-If that produces an image, dagr is working: the loader found your package, the sandbox
-evaluated it, the renderer produced a Dockerfile, and the socket mount reached your daemon.
-
-**7. Add a real package.** Start with one package and one target, get it green, then add the
-next target to the same package. Resist writing a `stacks/` abstraction until you have two
-packages that actually want the same facet — the third similar target is when the factory pays
-for itself.
-
-**8. Extract shared logic into `lib/` and `stacks/`** once the duplication is real. See
-[07 — Conventions and layout](07-conventions-and-layout.md#the-libstacks-pattern).
-
-## Sizing the split between `install` and `build`
-
-The single decision that determines whether your repo feels fast: put everything that does
-*not* depend on your source code into an earlier target than the code itself.
-
-```
-install    generated package.json, tsconfig, lockfile install     ← changes rarely
-   ↓
-build      COPY src, compile                                       ← changes constantly
+```text
+install  dependency metadata and package installation
+build    source copy and compilation
 ```
 
-Editing a source file then leaves the `install` image entirely cached, and only the final few
-layers rebuild. Inverting this — copying `src` before installing — makes every keystroke a full
-dependency install.
+Keeping dependency installation before frequently changed source usually improves cache reuse:
 
-## Things to decide up front
+```js
+build: {
+  deps: ['install'],
+  run: ({ images }) => ({
+    FROM: images.install,
+    steps: [
+      { COPY: { src: 'src', dest: '/repo/src' } },
+      { RUN: 'npm run build' },
+    ],
+    IGNORE: ['node_modules', 'dist'],
+  }),
+}
+```
 
-- **Facet naming.** One `ci` facet is enough for most repos. Split only when you have targets
-  with genuinely different lifecycles (`ci` vs `release`).
-- **Where generated config lives.** dagr's model favours generating `package.json`,
-  `tsconfig.json`, and lockfile-adjacent files *inside* the image from `dagr.*.js` literals, rather
-  than committing them. That gives one source of truth for versions and makes drift between
-  packages impossible. The cost is that host-side tooling (your editor, a local dev server)
-  no longer finds those files on disk, so plan for a local-development story separately.
-- **How local packages depend on each other.** See
-  [07 — Depending on the local package manager inside a container](07-conventions-and-layout.md#depending-on-the-local-package-manager-inside-a-container).
-- **Whether you need host-side `node_modules`.** If you want to run a dev server or have your
-  editor resolve imports, remember that `EXPORT`-ed `node_modules` are Linux binaries
-  ([05](05-deps-and-exports.md#exported-node_modules-are-linux-binaries)). A local install
-  alongside the containerized build is usually the pragmatic answer.
+Facet names and target names are repository choices. Dagr does not assign semantics to names such
+as `ci`, `dev`, `build`, or `release`.
 
-## Local development alongside dagr
+## Share build logic when useful
 
-dagr is for reproducible builds, not for the inner loop. Nothing stops you from keeping a
-normal package-manager workspace for day-to-day work and using dagr for verification and
-release. The two can coexist as long as you accept that the host `node_modules` and the
-in-image one are separate trees.
+Helpers can live anywhere under supported `dagr.*` filenames:
 
-If you go this route, treat the `dagr.*.js` version registry as authoritative and derive host-side
-manifests from it, not the other way around — otherwise the two drift and the container build
-starts failing for reasons your local run cannot reproduce.
+```js
+import { nodePackage } from '//build/dagr.node.js'
 
-## Adapting dagr itself
+export default nodePackage({ image: 'node:22-alpine' })
+```
 
-The hardwired conventions in
-[07 — Conventions and layout](07-conventions-and-layout.md#hardwired-you-cannot-change-without-editing-dagr)
-are each one small edit away from being different. The most likely ones:
+For independently versioned build logic, mount a pinned stack image and import through its boundary.
+See [Build-file environment and imports](04-sandbox-and-imports.md#mount-boundaries).
 
-| Want | Change |
-| --- | --- |
-| A different build-file name | `PACKAGE_FILE` in `src/pkg/loader.ts` |
-| Change discovery exclusions or traversal | `scanAllPackages` in `src/pkg/loader.ts` |
-| Different `.dockerignore` entries | per-target `IGNORE`; no dagr change needed |
-| A new step kind | the `Step` union in `src/pkg/schema.ts` **and** the switch in `src/runner/dockerfile-renderer.ts` |
-| A new command | a parser in `src/commands/index.ts`, a runner class, one branch in `CompositeCommandRunner` |
+## Keep host and image concerns separate
 
-These live in the engine, so changing them means working in a checkout of this repository and
-publishing the resulting runtime image from your fork. Pin that image SHA in `.dagr/cli.sh`. Run
-`dagr run //engine:ci:typecheck //engine:ci:test` after any change. The renderer and runner both
-have unit tests that do not require a Docker daemon themselves, though Dagr executes the suite in
-its containerized build graph.
+Dagr builds in Linux images. Generated artifacts can be exported to the host, but installed
+dependencies may contain Linux-specific binaries and should not be treated as a portable host
+installation.
+
+Use Dagr for reproducible build targets. A normal package-manager workspace can coexist with it for
+editor support or local development.
+
+## Upgrade deliberately
+
+Upgrade by changing the pinned Dagr image SHA in `.dagr/cli.sh`, then run the repository's normal
+Dagr checks. The pin makes runtime changes explicit and reviewable.
