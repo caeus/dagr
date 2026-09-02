@@ -36,7 +36,8 @@ Notes on validation:
 - `steps` is required. Use `steps: []` for a target that only re-tags or re-exports its base.
 - `IGNORE` is required, and `IGNORE: []` means "upload the whole context". Also no default —
   see [`IGNORE`](#ignore) below.
-- Unknown or misspelled fields are rejected.
+- Additional target fields are preserved, allowing stacks to attach metadata. `deps` and `run`
+  are still validated.
 
 ## Package location
 
