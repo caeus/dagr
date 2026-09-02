@@ -29,7 +29,7 @@ jobs:
 
       - name: Smoke-test self-built image
         run: |
-          docker run --rm \
+          LIST_OUTPUT="$(docker run --rm \
             -v "$PWD:/repo" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -e HOST_REPO_ROOT="$PWD" \
@@ -39,4 +39,7 @@ jobs:
             -e HOST_OS=linux \
             -e HOST_ARCH=x64 \
             -e HOST_LIBC=glibc \
-            engine-ci-image list > /dev/null
+            engine-ci-image list)"
+          printf '%s\n' "$LIST_OUTPUT"
+          printf '%s\n' "$LIST_OUTPUT" | grep -q '^//engine:'
+          printf '%s\n' "$LIST_OUTPUT" | grep -q '^//stacks:'
