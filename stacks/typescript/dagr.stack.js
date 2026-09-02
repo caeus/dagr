@@ -20,14 +20,13 @@ const contributionValues = contributions => Reflect.ownKeys(contributions)
   .map(name => contributions[name])
   .filter(value => value !== undefined)
 
-const collectNamed = (kind, contributions, valueOf) => {
+const collectNamed = (kind, contributions, valueOf = contribution => contribution) => {
   const values = {}
   for (const contribution of contributionValues(contributions)) {
-    const { name, ...value } = contribution
-    if (Object.hasOwn(values, name)) {
-      throw new Error(`${kind} ${JSON.stringify(name)} has more than one owner`)
+    if (Object.hasOwn(values, contribution.name)) {
+      throw new Error(`${kind} ${JSON.stringify(contribution.name)} has more than one owner`)
     }
-    values[name] = valueOf ? valueOf(contribution) : value
+    values[contribution.name] = valueOf(contribution)
   }
   return values
 }
@@ -113,10 +112,7 @@ function createStack(options, features, declaration) {
   for (const facet of Object.values(facets)) {
     bindings[`facet:${facet.name}`] = di.toFun(
       [{ tag: facet.targets }],
-      targets => ({
-        name: facet.name,
-        targets: collectNamed('target', targets),
-      }),
+      targets => ({ name: facet.name, targets: collectNamed('target', targets) }),
       [facetsTag],
     )
   }
