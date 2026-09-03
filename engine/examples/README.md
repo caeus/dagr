@@ -8,7 +8,6 @@ It contains exactly the files needed to bootstrap dagr and one runnable target:
 ```text
 starter/
 ├── .dagr/
-│   ├── Dockerfile
 │   ├── cli.sh
 │   ├── dagr
 │   └── install.sh
@@ -26,7 +25,7 @@ dagr list
 dagr run ci:hello
 ```
 
-The four files under `.dagr/` are the repository-local runner bootstrap. `dagr.index.js` is where
+The three files under `.dagr/` are the repository-local runner bootstrap. `dagr.index.js` is where
 your build graph starts. Replace `ci:hello` with your first real target, then split targets into
 package-level `dagr.index.js` files as the repository grows.
 

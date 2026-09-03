@@ -5,11 +5,11 @@ defines packages wherever its domain model needs them.
 
 ## Install the launcher
 
-Copy the launcher files from this repository:
+Copy the starter bootstrap from this repository:
 
 ```sh
-mkdir <your-repo>/.dagr
-cp <dagr-source>/engine/{cli.sh,dagr,install.sh} <your-repo>/.dagr/
+mkdir -p <your-repo>/.dagr
+cp -R <dagr-source>/engine/examples/starter/.dagr/. <your-repo>/.dagr/
 ```
 
 Pin the runtime image in `.dagr/cli.sh`:
@@ -25,7 +25,11 @@ Then install the launcher once on the machine:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The host needs Docker with Buildx and permission to reach the Docker daemon.
+The host needs a POSIX-compatible shell, Docker with Buildx, and permission to reach the Docker
+daemon through `/var/run/docker.sock`.
+
+The launcher mounts that socket into the Dagr container. Docker socket access is effectively root
+access to the host, so use only trusted Dagr images and repository definitions.
 
 ## Add the first package
 

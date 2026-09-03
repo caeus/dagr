@@ -1,332 +1,170 @@
 # Internals
 
-For contributors to dagr itself, and for anyone debugging behaviour that the authoring
-docs don't explain.
+This page explains the current engine structure for contributors and for debugging behavior that
+the authoring documentation does not cover.
 
 ## Source map
 
-```
+```text
 src/
-├── index.ts                    entrypoint: wire().catch(reporter.failure)
-├── wire.ts                     DI bindings + main()
-├── report/reporter.ts          human-readable stderr reporter
-├── sys/
-│   ├── process-runner.ts       captured child processes + bounded output tails
-│   ├── host-platform.ts        reads the real host os/arch/libc out of the env
-│   └── dispose-stack.ts        LIFO finalizers (no external DI dependency)
-├── commands/index.ts           arg parsing + one runner class per command
+├── index.ts                    process entry point
+├── wire.ts                     dependency composition and command dispatch
+├── commands/index.ts           parsing and runners for run, list, pkg ls, and show
+├── report/reporter.ts          progress and bounded failure output
+├── sys/                        process execution, host detection, and disposal
 ├── pkg/
-│   ├── schema.ts               Zod schemas for IndexDef/MountDef/PackageDef/Run/Step
-│   └── loader.ts               filesystem/source walk + vm sandbox evaluation
+│   ├── schema.ts               index, target, recipe, step, and export schemas
+│   ├── loader.ts               discovery, sandboxed modules, imports, and mounts
+│   ├── builtins.ts             dagr:yaml and dagr:toml
+│   └── sandbox.ts              restricted VM context
 └── runner/
-    ├── index.ts                FQT, TargetResult, buildRunner (graph walk + memo)
-    ├── target-runner.ts        runTarget: one target → one image
-    ├── dockerfile-renderer.ts  Run → Dockerfile text
-    ├── docker-builder.ts       docker buildx build
-    ├── docker-copier.ts        docker create + cp + rm for mounted trees
-    ├── docker-inspector.ts     reads an image's configured WORKDIR
-    ├── docker-extractor.ts     prepares EXPORT destinations and delegates to docker-copier
-    └── mount-materializer.ts   mount build, extraction, memo, and symlink validation
+    ├── index.ts                addresses, dependency walk, cycles, and memoization
+    ├── target-runner.ts        recipe evaluation and mounted COPY resolution
+    ├── dockerfile-renderer.ts  recipe to Dockerfile text
+    ├── docker-builder.ts       Buildx invocation and named build contexts
+    ├── docker-copier.ts        stopped-container copies
+    ├── docker-extractor.ts     EXPORT materialization
+    ├── docker-inspector.ts     image WORKDIR inspection
+    └── mount-materializer.ts   mount build, extraction, identity, and cleanup
 ```
 
-Internal imports never use relative paths. `package.json` declares a `#*` subpath map, so every
-module is referenced from the source root — `#report/reporter.js`, `#runner/index.js` — including
-imports between siblings in the same directory. Keep the `.js` extension; the package is ESM and
-`moduleResolution` is `NodeNext`.
+The engine's own build, tests, bundle, and runtime image are defined by
+[`engine/dagr.index.js`](../dagr.index.js). Generated package-manager and compiler files are build
+inputs produced by that graph, not committed configuration.
 
-Each Docker runner module owns the interface for its capability (`DockerImageBuilder`,
-`DockerImageCopier`, and so on). `wire.ts` imports those ports and composes them; runner and
-command modules never depend on the composition root.
+## Startup and command dispatch
 
-The map points at `./dist/*`, and there is deliberately only one target. Tests are the subtle part:
-they stay TypeScript and are run from `src/` by tsx, but their `#`-prefixed imports still resolve
-to `dist/`, so they exercise the very modules the container runs. That is why `make test` depends
-on `make build`. If tests resolved to `src/` while the entrypoint resolved to `dist/`, a wrong map
-would pass every test and still fail on the first real invocation — not a hypothetical, it shipped
-once in `9e567d2`.
+`index.ts` calls `wire()`. `wire()` parses arguments with Optique, builds the dependency module,
+shakes it to `commandRunner`, compiles it, and executes the selected command. An
+`AsyncDisposeStack` owns temporary mount cleanup when execution fails.
 
-Tests are never compiled and never shipped: `make build` and the `Dockerfile` both use
-`tsconfig.build.json`, which excludes `src/**/*.test.ts`. The root `tsconfig.json` still includes
-them so `make typecheck` covers them. The two configs keep separate `tsBuildInfoFile`s so their
-incremental caches don't invalidate each other.
+`CompositeCommandRunner` delegates to four runners:
 
-The `Dockerfile` additionally runs `dagr list` against an empty fixture right after `tsc`, so any
-load-time breakage fails the image build rather than the first real invocation.
+- `RunCommandRunner` builds requested targets and materializes their declared exports.
+- `ListCommandRunner` recursively discovers source packages and prints their resolved dependency
+  outlines.
+- `PackageListCommandRunner` filters discovered packages to the current working directory and
+  prints relative names.
+- `ShowCommandRunner` loads a package, facet, or target and prints YAML without building an image.
 
-## The pipeline
+`show` evaluates a target's `run()` function to obtain its recipe. Build definitions must therefore
+remain deterministic even when no build is requested.
 
-```
-argv ──► parseCmd ──► Cmd
-                       │
-         ┌─────────────┴──────────────┐
-         ▼                            ▼
-  RunCommandRunner            ListCommandRunner
-         │                            │
-   FQT.parse(cmd.fqt,           packageLoader.loadAllPackages()
-     {pkg: currentPackage})     then topological sort → stdout
-         │
-         ▼
-  buildRunner(packageLoader, deps, host)   ── memo: Map<string, Promise<TargetResult>>
-         │
-         ├─ packageLoader.loadPackage(fqt.pkg)
-         │  for each dep, load its package and recurse with Promise.all
-         ▼
-  runTarget(fqt, target, depResults, loaded.context, deps, host)
-         │
-         ├─ tag       = fqt.toString() with : → -, / → _, leading non-alnum stripped
-         ├─ packageDir = loaded.context
-         ├─ images    = { <raw dep string>: <dep image tag> }
-         ├─ runDef    = target.run({ images, host })
-         ├─ content   = renderDockerfile(runDef)
-         └─ build     = buildDockerImage(content, tag, packageDir, runDef.IGNORE)
-         │
-         ▼
-  TargetResult { fqt, imageTag, imageDigest, export? }
-         │
-         ▼
-  RunCommandRunner: if result.export, extractFromImage(imageTag, export, join(hostRoot, pkg))
-```
+## Addresses
 
-Note the split of responsibility at the last step: `runTarget` returns the `EXPORT` map but
-never acts on it. Extraction is done by `RunCommandRunner`, which is the only place that knows
-the request was for *this* target specifically. That is what makes "only the invoked target
-exports" fall out of the structure rather than needing a flag.
+`FQT` carries a package, facet, and target as a value instead of passing an ambiguous string
+through the engine. `FQT.parse()` expands dependency and command-line shorthands once, then the
+runner uses the structured value.
 
-## Loading
+Package names always begin with `//`. Mounted boundaries add another `//` inside the logical
+package name. `packageLogicalPath()` removes only the leading root marker when translating a
+source package to its repository directory.
 
-`RepositoryPackageLoader` owns package, mount, index, and module caches for one invocation.
-`loadPackage(logicalPath)` resolves one exact path without scanning siblings.
-`loadAllPackages()` performs the conventional root and `packages/` scan used by `dagr list`.
+## Discovery and loading
 
-Each physical source tree gets a `LoadContext` containing:
+`RepositoryPackageLoader.loadAllPackages()` recursively walks the repository root. It skips
+`.git`, continues below ordinary packages, and stops at mount declarations because discovery must
+not materialize remote trees. A package at the repository root does not hide nested packages.
 
-- `vmContext`, the one VM context shared by the invocation.
-- `root`, the physical source root for `/` imports.
-- `logicalRoot`, the mount path that produced that source.
-- `trace`, the mount identities used for cycle detection.
-- `cache`, keyed by logical source root and resolved module path.
+`loadPackage()` resolves one exact logical package path. It walks each mount boundary in that path
+without scanning unrelated directories. Package, index, module, and mount promises are cached for
+the invocation, so concurrent requests share both successful work and failures.
 
-Exact package resolution works as follows:
+A `dagr.index.js` file is evaluated as a `vm.SourceTextModule`. Its default export is validated by
+`IndexDef`. An invalid shape currently becomes `null`, so discovery silently omits that package.
+That behavior is a known diagnostic weakness; see
+[A package or target is missing](11-troubleshooting.md#a-package-or-target-is-missing).
 
-1. Split the logical package path on `//`.
-2. Resolve the first segment directly from the host repository root.
-3. Every non-final segment must contain a `/` index. Materialize it, append the boundary to
-   the logical root, and continue from the extracted final `WORKDIR`.
-4. Parse the final `dagr.index.js` as a normal package and return its definition plus physical
-   build context.
-5. Cache the promise by logical package path before awaiting it, so concurrent branches share
-   both successful loads and failures.
+JavaScript imports use the same VM context. JSON, YAML, and TOML imports become deeply frozen
+`vm.SyntheticModule` values. The sandbox exposes standard JavaScript, `Buffer`, `dagr:yaml`, and
+`dagr:toml`, but not Node filesystem, process, network, timer, or CommonJS APIs.
 
-Imports follow the same source-root model. `/lib/dagr.shared.js` stays within the importing
-module's source tree. `/tools//dagr.shared.js` materializes the mount at `tools`, then links the
-module with the mounted root as its new `/`. If that module imports `/c//dagr.next.js`, `c` is
-resolved inside the mounted tree. Each module carries its destination `LoadContext`, so nested
-imports never fall back to the original host root.
+`node:vm` reduces accidental ambient access. It is not a security boundary, so repository source
+and pinned images must still be trusted.
 
-Indexes and JavaScript imports are `vm.SourceTextModule`s. JSON, YAML, and TOML imports become
-`vm.SyntheticModule`s with deep-frozen default exports. `dagr:yaml` and `dagr:toml` are synthetic
-modules exposing context-native wrappers around the runner's pinned serializers. The shared VM
-context exposes no ambient Node capabilities and disables dynamic code generation. It does not
-attempt to remove standard JavaScript globals or enforce purity. Each index receives a frozen,
-null-prototype `import.meta.dagr` whose `location` is its canonical logical package location;
-the location is relative to the current source root, so mount ancestry and physical source paths
-are never exposed. An index's default export is parsed with
-`IndexDef.safeParse`; on schema failure the package is silently skipped. Mount identities are
-`<image digest>:<final workdir>` and are threaded through package and import resolution to detect
-cycles.
+## Imports and mount boundaries
 
-That silent skip is the single biggest ergonomic wart in dagr. See
-[11 — Troubleshooting](11-troubleshooting.md#my-package-doesnt-show-up-in-dagr-list).
+An import beginning with `//` resolves from the current source root. Each additional `//` crosses
+a mount declared by `dagr.index.js`, materializes that image, and establishes a new source root.
+Modules inside the mounted tree resolve their own leading `//` from that tree, not from the host
+repository.
 
-## `FQT`
+`import.meta.dagr.location` is derived from the current source root. A mounted component therefore
+sees the same logical locations regardless of where a consuming repository mounts it.
 
-A value class, not a string alias, so it is parsed once and passed around structurally:
+A mount recipe is rendered and built like a target recipe. The materializer inspects the image's
+final `WORKDIR`, copies that directory into temporary storage, and identifies the mount by image
+digest plus workdir. Re-entering the same identity through the active trace is a circular mount.
 
-```ts
-class FQT {
-  constructor(readonly pkg: string, readonly facet: string, readonly target: string) {}
-  toString(): string          // `//${pkg}:${facet}:${target}`
-  toJSON(): string            // === toString(), so it serializes as a plain string
-  static parse(raw: string, context?: { pkg: string; facet?: string }): FQT
-}
-```
+## Target execution
 
-`parse` splits on `:` and fills missing leading segments from `context`, throwing
-`Package required...` or `Facet required...` when context is insufficient. `Runner` is
-`(fqt: FQT) => Promise<TargetResult>` — it takes the parsed object, never a string, so no layer
-re-parses what an earlier layer already parsed.
+`buildRunner()` memoizes a `Promise<TargetResult>` by fully qualified target. Memoizing the promise
+means two concurrent branches share one in-flight prerequisite. A separate trace detects cycles
+and reports the complete dependency path.
 
-The field is `pkg`, not `package`, because `package` is a future-reserved word in strict mode
-and ESM is always strict. It would be legal as a property but not as the constructor parameter
-that a TS parameter property implies, so the abbreviation is uniform rather than half-applied.
+For each target, the runner:
 
-## Graph walk and memoization
+1. Loads the exact package.
+2. Resolves and builds dependencies concurrently.
+3. Creates `ctx.images` using the dependency strings exactly as authored.
+4. Evaluates `run({ images, host })`.
+5. Validates the returned recipe with `Run`.
+6. Resolves mounted `COPY` sources.
+7. Renders and builds the Docker image.
 
-`buildRunner` closes over a `Map<string, Promise<TargetResult>>` keyed by the fully-qualified FQT
-string. Because the *promise* is memoized rather than the result, two concurrent requests for
-the same target share one in-flight build — the `memoizes` test asserts exactly one
-`buildDockerImage` call for two parallel `runner()` invocations.
+A source such as `tools//include/a.h` crosses the mount at `tools`. The runner materializes the
+mount once, assigns it a generated BuildKit context name, and rewrites the rendered `COPY` to use
+that named context. A `COPY` with an explicit `from` is left unchanged.
 
-Before looking up each target, the runner asks `PackageLoader.loadPackage(fqt.pkg)`. A dependency
-in another package therefore extends the loaded graph only when recursion reaches it.
+## Docker builds and tags
 
-Cycle detection uses an explicit `trace` array threaded through the recursion, so the error
-message contains the full path rather than just "cycle detected". The memo and the trace are
-independent: a diamond dependency hits the memo and is fine; a true cycle hits the trace and
-throws.
-
-## Image tag derivation
-
-```ts
-const tag = fqt.toString()
-  .replace(/:/g, '-')
-  .replace(/\//g, '_')
-  .replace(/^[^a-zA-Z0-9]+/, '')
-```
-
-| FQT | Tag |
-| --- | --- |
-| `//packages/ui:ci:build` | `packages_ui-ci-build` |
-| `//packages/base:ci:node-pnpm` | `packages_base-ci-node-pnpm` |
-| `//:ci:deploy` | `ci-deploy` |
-
-The leading-character strip removes the root marker: `//:ci:deploy` becomes `ci-deploy` rather
-than a tag beginning with underscores.
-
-Tags are **stable and unversioned**. Rebuilding a target overwrites the tag, and the previous
-image becomes a dangling layer. `docker image prune` is your friend on a long-lived machine.
-Because tags are deterministic, they are also predictable from outside dagr — handy for
-`docker run packages_ui-ci-build` to poke at a result by hand.
-
-## Building
-
-`buildDockerImage(content, tag, contextPath, ignore)` writes to a temp directory:
-
-- `<base>.Dockerfile` — the rendered content.
-- `<base>.Dockerfile.dockerignore` — the target's `IGNORE` list, one entry per line, and
-  nothing else. Docker looks for `<dockerfile>.dockerignore` when `-f` points outside the
-  context, which is what lets a temp-file Dockerfile still carry ignore rules.
-- `<base>.iid` — receives the image ID.
-
-Then:
+The builder writes a temporary Dockerfile, a matching `.dockerignore`, and an iid file, then runs:
 
 ```sh
-docker buildx build --progress=plain --load -t <tag> --iidfile <iid> -f <dockerfile> <contextPath>
+docker buildx build --progress=plain --load \
+  -t <tag> --iidfile <iidfile> -f <dockerfile> <package-context>
 ```
 
-`--load` is required so the built image lands in the local daemon's image store where the next
-target's `FROM` and the extractor can find it. The digest in `TargetResult` is the trimmed
-contents of the iidfile. All three temp files are removed in a `finally`.
+Mounted copy contexts add `--build-context <name>=<path>`. `--load` places the result in the Docker
+daemon used by later targets, exports, and manual inspection.
 
-`--progress=plain` makes BuildKit output line-oriented. `ProcessRunner` pipes stdout and stderr,
-hands every complete line to `Reporter.processLine` — which prints it only under `--verbose` —
-and retains a bounded 100-line tail per stream. The tail is what `ProcessExecutionError` carries,
-so a quiet run can still explain a failure. Docker writes ordinary progress to stderr, so the
-stream name is recorded as data and never treated as a severity.
+The local tag is derived from the target address by replacing `:` with `-`, `/` with `_`, and
+removing leading non-alphanumeric characters. For example, `//packages/ui:ci:build` becomes
+`packages_ui-ci-build`. Tags are stable and unversioned; rebuilding replaces the tag while Docker
+retains reusable layers.
 
-## Extracting
+The process runner streams output only in verbose mode and otherwise retains a bounded tail from
+stdout and stderr. A failed command includes that tail, which keeps normal output quiet without
+hiding the useful part of a failure.
 
-```sh
-docker create <imageTag>
-docker cp <container>:<src> <dest>
-docker rm <container>
-```
+## Exports
 
-One stopped container per entry in the `EXPORT` map, processed sequentially. Path syntax still
-controls intent without inspecting the image: a source ending in `/` copies `<src>/.` into an
-existing destination, while the no-slash form deletes the exact destination before `docker cp`.
-A destination ending in `/` resolves to `<dest>/<basename(src)>`.
+`runTarget()` returns an `EXPORT` map but never copies it. `RunCommandRunner` performs extraction
+only for targets explicitly requested by the user, which prevents exports from becoming
+transitive side effects. Direct exports from mounted package identities are rejected because they
+cannot map unambiguously onto a host package directory.
 
-The extractor throws for a replace aimed at the package directory itself (`'.'` or `''`) and for
-any destination escaping that directory. `Run`'s schema rejects both shapes too; runtime guards
-remain because the failure mode is deleting files outside the intended export destination.
+Extraction uses `docker create`, `docker cp`, and `docker rm`; the temporary container is never
+started. Replace versus merge behavior is determined by trailing slashes and is validated before
+copying.
 
-## Validating `run()` output
+## Host and container paths
 
-`PackageDef` is parsed when a `dagr.index.js` loads, but that only checks `deps` and that `run` is
-a function — it cannot see what `run` *returns*, since the function is not called until build
-time. So `runTarget` parses the result:
+The Dagr process reads the repository at `/repo`, while the host Docker daemon knows the checkout
+by its host path. The launcher passes both `REPO_ROOT` and `HOST_REPO_ROOT`; `WORKING_DIR` is
+translated against the host root to find the current package. Docker build contexts and
+`docker cp` destinations use paths visible inside the Dagr container.
 
-```ts
-const parsed = Run.safeParse(target.run({ images, host }))
-if (!parsed.success) throw new Error(`Invalid run definition for ${fqt}: ${parsed.error.message}`)
-```
+The launcher mounts `/var/run/docker.sock`. Access to that socket is effectively root access to
+the host. The VM sandbox limits what build-definition code can do directly, but the repository and
+runtime image remain trusted inputs.
 
-This is what makes the `Run` schema load-bearing rather than a type-level fiction. A missing
-`IGNORE`, a misspelled step key, or an incoherent `EXPORT` pairing surfaces as a named error
-against a specific FQT, before any Docker build starts — instead of a `TypeError` deep in the
-builder.
+## Dependency composition
 
-## The DI container
+`wire.ts` uses `@caeus/wyr` to assemble the engine. Providers are immutable definitions; `shake()`
+retains the command runner and its transitive dependencies, and `compile()` validates and eagerly
+resolves that graph. The resulting container lookup is synchronous.
 
-`wire.ts` uses `@caeus/wyr`. `defaultModule` returns one immutable `Module({ ...providers })`, and
-its third parameter lets tests replace the entire graph.
-
-- `toValue(value)` provides a constant.
-- `toFactory([deps], fn)` resolves the named dependencies and passes them positionally to a sync
-  or async factory.
-- `toClass([deps], Class)` does the same for a constructor.
-- `.shake(['commandRunner'])` retains only that key and its transitive dependencies.
-- `.compile()` validates and eagerly resolves the shaken graph. Missing, mismatched, and circular
-  dependencies are rejected by Wyr's types at the compile call.
-- The compiled container's `.get(key)` is synchronous because resolution already happened.
-- `AsyncDisposeStack` is separate from Wyr. It runs finalizers LIFO in `wire`'s `finally`; mount
-  storage registers its temporary-directory cleanup there.
-
-The bindings in `wire.ts`:
-
-| Key | Bound to |
-| --- | --- |
-| `root` | `REPO_ROOT`, or dagr's parent directory |
-| `hostRoot` | `HOST_REPO_ROOT`, falling back to `root` |
-| `mountRoot` | `MOUNT_ROOT`, falling back to a process-specific temporary directory |
-| `currentPackage` | `relative(hostRoot, WORKING_DIR ?? hostRoot)` |
-| `reporter` | human-readable progress and failure writer targeting stderr |
-| `output` | command-result writer targeting stdout |
-| `processRunner` | child-process runner capturing both streams and feeding the reporter |
-| `dockerImageCopier` | stopped-container `docker cp` adapter |
-| `mountMaterializer` | mount builder, inspector, copier, and validator |
-| `packageLoader` | `RepositoryPackageLoader(root, mountMaterializer)` |
-| `dockerfileRenderer` | `{ renderDockerfile }` |
-| `dockerImageBuilder` | `{ buildDockerImage }` |
-| `dockerImageExtractor` | `{ extractFromImage }` |
-| `hostPlatform` | `hostPlatform(env)` |
-| `runner` | `buildRunner(packageLoader, deps, hostPlatform)` |
-| `listCommandRunner` | `ListCommandRunner(packageLoader)` |
-| `runCommandRunner` | `RunCommandRunner(runner, extractor, root, currentPackage)` |
-| `commandRunner` | `CompositeCommandRunner(runCommandRunner, listCommandRunner)` |
-
-Target build contexts come from `LoadedPackage.context`, which may be a local directory or an
-extracted mount. `EXPORT` destinations use the container-side repository root; direct exports from
-mounted package identities are rejected. `docker cp` writes through the existing `/repo` bind
-mount.
-
-## Command dispatch
-
-`CompositeCommandRunner` is the only place that switches on `cmd.command`. Each concrete runner
-then takes the narrowest type it can:
-
-```ts
-export type Cmd = InferValue<typeof parser>
-export type RunCmd = InferValue<typeof runCommand>
-
-class RunCommandRunner  { execute(cmd: RunCmd): Promise<void> }
-class ListCommandRunner { execute(): Promise<void> }
-```
-
-`RunCommandRunner` never re-checks the discriminant, and `ListCommandRunner` takes no argument
-at all — because dispatch already established both facts. Adding a command means adding a
-parser, a runner class, and one branch in the composite.
-
-## The dagr image
-
-The repository's `//engine:ci:image` target builds the runtime from the bundled engine artifact.
-Dagr N-1 builds and tests Dagr N, then the main-branch workflow publishes that image under Dagr
-N's commit SHA. Consumers pin the published SHA as described in
-[10 — Adopting in a new monorepo](10-adopting-in-a-new-monorepo.md).
-
-The image carries the Docker CLI and buildx plugin but no daemon; `cli.sh` mounts the host
-socket. Build-time Node and pnpm details remain inside the self-hosted target graph.
-
-`--experimental-vm-modules` is what enables `vm.SourceTextModule`. Without it, the loader
-throws immediately.
+The composition root owns environment-derived paths, reporting, process execution, Docker
+adapters, the package loader, target runner, and all four command runners. Lower-level runner and
+package modules depend on those narrow capabilities rather than importing the composition root.

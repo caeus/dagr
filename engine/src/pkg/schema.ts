@@ -86,7 +86,7 @@ export interface RunContext {
 export type RunFn = (ctx: RunContext) => Run;
 
 export const TargetDef = z
-  .object({
+  .looseObject({
     deps: z.array(z.string()).readonly(),
     run: z.custom<RunFn>((v) => typeof v === "function"),
   })

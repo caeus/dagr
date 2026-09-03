@@ -165,9 +165,9 @@ persistent layer cache. dagr uses those answers instead of inventing parallel sy
 
 ### Pin the runner with the build
 
-dagr is not published as a package. A consuming repository keeps a small bootstrap under
-`.dagr/`, including a Dockerfile that pins an exact dagr commit. The runner version therefore
-lives beside the definitions it interprets.
+dagr is distributed as a container image rather than a language package. A consuming repository
+keeps a small bootstrap under `.dagr/`; its `cli.sh` pins an exact image tag derived from a dagr
+commit. The runner version therefore lives beside the definitions it interprets.
 
 Updating dagr is an explicit source change that can be reviewed like any other dependency update.
 One global launcher merely finds and runs the copy pinned by the current repository.

@@ -36,7 +36,8 @@ Notes on validation:
 - `steps` is required. Use `steps: []` for a target that only re-tags or re-exports its base.
 - `IGNORE` is required, and `IGNORE: []` means "upload the whole context". Also no default —
   see [`IGNORE`](#ignore) below.
-- Unknown or misspelled fields are rejected.
+- Additional target fields are preserved, allowing stacks to attach metadata. `deps` and `run`
+  are still validated.
 
 ## Package location
 
@@ -92,11 +93,14 @@ its boundary.
 
 ## `run(context)`
 
-`run` is called once, at build time, with an `images` object mapping each entry of
-`deps` to that dependency's built **image tag**. The keys are the dep strings **exactly as you
-wrote them** — see [05 — Dependencies and `EXPORT`](05-deps-and-exports.md#the-images-map).
+`run` is evaluated when a target is built and when its recipe is inspected with `dagr show`.
+During one `dagr run`, each reached target is evaluated at most once because its in-flight build is
+memoized. The `images` object maps each entry of `deps` to that dependency's built **image tag**.
+The keys are the dep strings **exactly as you wrote them**. See
+[Dependencies and `EXPORT`](05-deps-and-exports.md#the-images-map).
 
-`run` must be pure. It is called inside the sandbox and has no access to the filesystem.
+`run` must be deterministic and pure. It is evaluated inside the sandbox and has no access to the
+filesystem.
 
 ## Step reference
 
@@ -120,12 +124,29 @@ never a shell string.
 
 ### `COPY` and the build context
 
-`src` in a `COPY` without `from` is resolved against the **build context**, which is the
-package's own directory. For `services/api`, `{ COPY: { src: 'src', dest: '/repo/src' } }`
-copies `services/api/src`. You cannot `COPY` a path outside your package — that is Docker's
-rule, not dagr's.
+`src` in an ordinary `COPY` without `from` is resolved against the **build context**, which is
+the package's own directory. For `services/api`, `{ COPY: { src: 'src', dest: '/repo/src' } }`
+copies `services/api/src`. An ordinary source cannot escape that directory.
 
-What the context excludes is controlled by `IGNORE`, described next.
+A source containing `//` deliberately crosses a mount boundary relative to the package:
+
+```js
+{ COPY: { src: 'tools//include/a.h', dest: '/include/a.h' } }
+```
+
+Here `tools/dagr.index.js` must declare a mount. Dagr materializes the mounted image's final
+`WORKDIR`, passes it to BuildKit as a named build context, and copies `include/a.h` from that
+context. Several copies from the same mount reuse one materialized context. Every path segment
+before a `//` must resolve to a mount.
+
+When `from` is present, `src` is interpreted inside that explicitly named image and `//` has no
+special meaning:
+
+```js
+{ COPY: { from: images.tools, src: '/include/a.h', dest: '/include/a.h' } }
+```
+
+What the package context excludes is controlled by `IGNORE`, described next.
 
 ## `IGNORE`
 

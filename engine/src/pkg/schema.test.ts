@@ -40,6 +40,14 @@ describe('PackageDef names', () => {
   it('applies Name to target keys', () => {
     assert.equal(PackageDef.safeParse({ ci: { 'build/run': target } }).success, false)
   })
+
+  it('preserves additional target fields', () => {
+    const definition = { ...target, name: 'build' }
+    assert.deepEqual(
+      PackageDef.parse({ ci: { build: definition } }),
+      { ci: { build: definition } },
+    )
+  })
 })
 
 describe('IndexDef', () => {
