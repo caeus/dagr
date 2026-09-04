@@ -41,6 +41,13 @@ describe('PackageDef names', () => {
     assert.equal(PackageDef.safeParse({ ci: { 'build/run': target } }).success, false)
   })
 
+  it('rejects "/" as a reserved facet name', () => {
+    const result = PackageDef.safeParse({ '/': { build: target } })
+    assert.equal(result.success, false)
+    if (!result.success)
+      assert.match(result.error.message, /reserved for mount declarations/)
+  })
+
   it('preserves additional target fields', () => {
     const definition = { ...target, name: 'build' }
     assert.deepEqual(
@@ -51,21 +58,19 @@ describe('PackageDef names', () => {
 })
 
 describe('IndexDef', () => {
-  const mount = { FROM: 'alpine', steps: [], IGNORE: [] }
+  const id = 'github.com/acme/foo'
 
   it('accepts a mount as an alternative to a package', () => {
-    assert.deepEqual(IndexDef.parse({ '/': mount }), { '/': mount })
+    assert.deepEqual(IndexDef.parse({ '/': id }), { '/': id })
   })
 
   it('rejects facets alongside a mount', () => {
-    assert.equal(IndexDef.safeParse({ '/': mount, ci: { build: target } }).success, false)
+    assert.equal(IndexDef.safeParse({ '/': id, ci: { build: target } }).success, false)
   })
 
-  it('rejects EXPORT on a mount', () => {
-    assert.equal(
-      IndexDef.safeParse({ '/': { ...mount, EXPORT: { '/out': 'out' } } }).success,
-      false,
-    )
+  it('rejects non-string and empty mount IDs', () => {
+    for (const value of [undefined, null, 1, {}, [], ''])
+      assert.equal(IndexDef.safeParse({ '/': value }).success, false)
   })
 })
 

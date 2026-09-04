@@ -145,18 +145,18 @@ Without `EXPORT`, the result can stay internal to the build graph.
 
 ## Mounted package trees
 
-A `dagr.index.js` can also replace its directory with the final working directory of another built image instead of declaring facets:
+A `dagr.index.js` can also declare a mounted filesystem by global logical ID instead of declaring facets:
 
 ```js
 // stacks/tools/dagr.index.js
 export default {
-  '/': {
-    FROM: 'ghcr.io/acme/dagr-tools:1',
-    steps: [],
-    IGNORE: [],
-  },
+  '/': 'github.com/acme/dagr-tools',
 }
 ```
+
+The root monorepo's `.dagr/config.js` exports `mount(id)`, which returns the image recipe for an ID.
+The ID is filesystem identity, not an implementation or version. The root resolver is authoritative
+for the whole composed monorepo, and all occurrences of the same ID share one mounted filesystem.
 
 If that image's final `WORKDIR` contains `c/dagr.index.js`, `//` marks the mount boundary in its package address:
 
@@ -166,8 +166,8 @@ If that image's final `WORKDIR` contains `c/dagr.index.js`, `//` marks the mount
 
 `/` is an alternate index kind, not a special facet. It cannot coexist with facets.
 
-A mount is materialized only when a requested target or import crosses its boundary. `dagr list`
-leaves mounts opaque.
+A mount is resolved and materialized only when a requested target or import crosses its boundary.
+`dagr list` leaves mounts opaque.
 
 The boundary is part of package identity. `//stacks/tools/c` names a source package, while
 `//stacks/tools//c` crosses the mount declared at `//stacks/tools`.

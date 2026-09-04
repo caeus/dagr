@@ -16,13 +16,17 @@ const PACKAGE = `
   }
 `
 
-const MOUNT = `export default { '/': { FROM: 'tools', steps: [], IGNORE: [] } }`
+const mount = (id: string) => `export default { '/': '${id}' }`
 
 async function repository(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'dagr-copy-source-'))
   await mkdir(join(root, 'packages/app/tools'), { recursive: true })
+  await mkdir(join(root, '.dagr'))
+  await writeFile(join(root, '.dagr/config.js'), `
+    export const mount = id => ({ FROM: id, steps: [], IGNORE: [] })
+  `)
   await writeFile(join(root, 'packages/app/dagr.index.js'), PACKAGE)
-  await writeFile(join(root, 'packages/app/tools/dagr.index.js'), MOUNT)
+  await writeFile(join(root, 'packages/app/tools/dagr.index.js'), mount('tools'))
   return root
 }
 
@@ -32,9 +36,9 @@ describe('RepositoryPackageLoader.resolveCopySource', () => {
     const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-copy-mount-'))
     const calls: string[] = []
     const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => {
-        calls.push(logicalPath)
-        return { root: mountedRoot, identity: 'sha256:tools:/work' }
+      materialize: async (_mount, id) => {
+        calls.push(id)
+        return { root: mountedRoot }
       },
     }
 
@@ -43,7 +47,7 @@ describe('RepositoryPackageLoader.resolveCopySource', () => {
       const resolved = await loader.resolveCopySource('packages/app', 'tools//include/a.h')
 
       assert.deepEqual(resolved, { context: mountedRoot, src: 'include/a.h' })
-      assert.deepEqual(calls, ['packages/app/tools'])
+      assert.deepEqual(calls, ['tools'])
     } finally {
       await Promise.all([
         rm(root, { recursive: true, force: true }),
@@ -57,15 +61,13 @@ describe('RepositoryPackageLoader.resolveCopySource', () => {
     const firstRoot = await mkdtemp(join(tmpdir(), 'dagr-copy-mount-'))
     const secondRoot = await mkdtemp(join(tmpdir(), 'dagr-copy-mount-'))
     await mkdir(join(firstRoot, 'deps'), { recursive: true })
-    await writeFile(join(firstRoot, 'deps/dagr.index.js'), MOUNT)
+    await writeFile(join(firstRoot, 'deps/dagr.index.js'), mount('deps'))
 
     const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => {
-        if (logicalPath === 'packages/app/tools')
-          return { root: firstRoot, identity: 'sha256:first:/work' }
-        if (logicalPath === 'packages/app/tools//deps')
-          return { root: secondRoot, identity: 'sha256:second:/work' }
-        throw new Error(`Unexpected mount: ${logicalPath}`)
+      materialize: async (_mount, id) => {
+        if (id === 'tools') return { root: firstRoot }
+        if (id === 'deps') return { root: secondRoot }
+        throw new Error(`Unexpected mount: ${id}`)
       },
     }
 

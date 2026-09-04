@@ -6,9 +6,18 @@ import { parse as parseYaml } from 'yaml'
 import { BUILTIN_PREFIX, createBuiltinModules } from '#pkg/builtins.js'
 import { ROOT_MARKER } from '#pkg/namespace.js'
 import { createSandboxContext } from '#pkg/sandbox.js'
-import { IndexDef, type MountDef, type MountIndex, type PackageDef } from '#pkg/schema.js'
+import {
+  ImageRecipe,
+  IndexDef,
+  type MountId,
+  type MountImpl,
+  type MountIndex,
+  type MountResolver,
+  type PackageDef,
+} from '#pkg/schema.js'
 
 const PACKAGE_FILE = 'dagr.index.js'
+const CONFIG_FILE = '.dagr/config.js'
 const IMPORT_FILE = /^dagr\..+\.(?:js|json|yaml|toml)$/
 const DISCOVERY_EXCLUDED_DIRECTORIES = new Set(['.git'])
 
@@ -30,19 +39,22 @@ export interface ResolvedCopySource {
 
 export interface MaterializedMount {
   readonly root: string
-  readonly identity: string
 }
 
 export interface MountMaterializer {
   materialize(
-    mount: MountDef,
-    logicalPath: string,
+    mount: MountImpl,
+    id: MountId,
   ): Promise<MaterializedMount>
 }
 
 interface MountTrace {
-  readonly identity: string
+  readonly id: MountId
   readonly logicalPath: string
+}
+
+interface RootConfig {
+  readonly mount?: MountResolver
 }
 
 interface ResolvedImport {
@@ -157,7 +169,45 @@ async function loadIndex(
   await mod.evaluate()
   const defaultExport = (mod.namespace as Record<string, unknown>)['default']
   const result = IndexDef.safeParse(defaultExport)
-  return result.success ? deepFreeze(result.data) : null
+  if (result.success) return deepFreeze(result.data)
+  if (
+    defaultExport !== null &&
+    typeof defaultExport === 'object' &&
+    Object.hasOwn(defaultExport, '/')
+  ) throw new Error(
+    `Invalid mount declaration at ${logicalAddress(logicalPath)}: ${result.error.message}`,
+  )
+  return null
+}
+
+async function loadRootConfig(root: string, context: vm.Context): Promise<RootConfig> {
+  let path: string
+  try {
+    path = await realpath(resolve(root, CONFIG_FILE))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return Object.freeze({})
+    throw error
+  }
+  if (isOutside(root, path))
+    throw new Error(`Dagr root configuration must stay inside its source root`)
+
+  let code: string
+  try {
+    code = await readFile(path, 'utf-8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return Object.freeze({})
+    throw error
+  }
+
+  const mod = new vm.SourceTextModule(code, { context, identifier: path })
+  await mod.link((specifier) => {
+    throw new Error(`Dagr root configuration cannot import ${specifier}`)
+  })
+  await mod.evaluate()
+  const mount = (mod.namespace as Record<string, unknown>)['mount']
+  if (mount !== undefined && typeof mount !== 'function')
+    throw new Error(`Invalid Dagr root configuration: "mount" must be a function`)
+  return Object.freeze({ mount: mount as MountResolver | undefined })
 }
 
 function isMountIndex(index: IndexDef): index is MountIndex {
@@ -172,7 +222,9 @@ export class RepositoryPackageLoader implements PackageLoader {
   private readonly moduleContexts = new WeakMap<vm.Module, LoadContext>()
   private readonly indexCache = new Map<string, Promise<IndexDef | null>>()
   private readonly packageCache = new Map<string, Promise<LoadedPackage | undefined>>()
-  private readonly mountCache = new Map<string, Promise<MaterializedMount>>()
+  private rootConfig?: Promise<RootConfig>
+  private readonly mountImplCache = new Map<MountId, Promise<MountImpl | undefined>>()
+  private readonly mountCache = new Map<MountId, Promise<MaterializedMount>>()
   private allPackages?: Promise<ReadonlyMap<string, LoadedPackage>>
 
   constructor(
@@ -389,27 +441,78 @@ export class RepositoryPackageLoader implements PackageLoader {
   }
 
   private async materialize(
-    mount: MountDef,
+    id: MountId,
     logicalPath: string,
     trace: readonly MountTrace[],
   ): Promise<{ readonly root: string; readonly trace: readonly MountTrace[] }> {
-    if (!this.mountMaterializer)
-      throw new Error(`Cannot load mount at ${logicalPath}: no mount materializer configured`)
-
-    let materialized = this.mountCache.get(logicalPath)
-    if (!materialized) {
-      materialized = this.mountMaterializer.materialize(mount, logicalPath)
-      this.mountCache.set(logicalPath, materialized)
-    }
-    const mounted = await materialized
-    if (trace.some(entry => entry.identity === mounted.identity))
+    if (trace.some(entry => entry.id === id))
       throw new Error(
-        `Circular mount: ${[...trace.map(entry => entry.logicalPath), logicalPath].join(' -> ')}`,
+        `Circular mount: ${[...trace.map(entry => entry.logicalPath), logicalPath]
+          .map(logicalAddress)
+          .join(' -> ')}`,
       )
+
+    let mount: MountImpl | undefined
+    try {
+      mount = await this.resolveMount(id)
+    } catch (error) {
+      throw new Error(
+        `Cannot resolve mount "${id}" reached through ${logicalAddress(logicalPath)}: ${errorMessage(error)}`,
+        { cause: error },
+      )
+    }
+    if (mount === undefined)
+      throw new Error(
+        `Unresolved mount "${id}" reached through ${logicalAddress(logicalPath)}`,
+      )
+    if (!this.mountMaterializer)
+      throw new Error(
+        `Cannot load mount "${id}" reached through ${logicalAddress(logicalPath)}: no mount materializer configured`,
+      )
+
+    let materialized = this.mountCache.get(id)
+    if (!materialized) {
+      materialized = this.mountMaterializer.materialize(mount, id)
+      this.mountCache.set(id, materialized)
+    }
+    let mounted: MaterializedMount
+    try {
+      mounted = await materialized
+    } catch (error) {
+      throw new Error(
+        `Cannot materialize mount "${id}" reached through ${logicalAddress(logicalPath)}: ${errorMessage(error)}`,
+        { cause: error },
+      )
+    }
     return {
       root: mounted.root,
-      trace: [...trace, { identity: mounted.identity, logicalPath }],
+      trace: [...trace, { id, logicalPath }],
     }
+  }
+
+  private resolveMount(id: MountId): Promise<MountImpl | undefined> {
+    let resolved = this.mountImplCache.get(id)
+    if (!resolved) {
+      resolved = this.loadMountImpl(id)
+      this.mountImplCache.set(id, resolved)
+    }
+    return resolved
+  }
+
+  private async loadMountImpl(id: MountId): Promise<MountImpl | undefined> {
+    let config = this.rootConfig
+    if (!config) {
+      config = this.canonicalRoot.then(root => loadRootConfig(root, this.vmContext))
+      this.rootConfig = config
+    }
+    const resolver = (await config).mount
+    const mount = resolver?.(id)
+    if (mount === undefined) return undefined
+
+    const result = ImageRecipe.safeParse(mount)
+    if (!result.success)
+      throw new Error(`Invalid implementation: ${result.error.message}`)
+    return deepFreeze(result.data)
   }
 
   private async scanAllPackages(): Promise<ReadonlyMap<string, LoadedPackage>> {
@@ -537,4 +640,12 @@ function joinLogical(parent: string, ...children: readonly string[]): string {
 
 function mountBoundary(logicalPath: string): string {
   return `${logicalPath}//`
+}
+
+function logicalAddress(logicalPath: string): string {
+  return logicalPath === '.' ? ROOT_MARKER : `${ROOT_MARKER}${logicalPath}`
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }

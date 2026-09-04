@@ -13,6 +13,10 @@ async function fixture(
 ): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'dagr-loader-'))
   await mkdir(join(root, 'packages'))
+  await mkdir(join(root, '.dagr'))
+  await writeFile(join(root, '.dagr/config.js'), `
+    export const mount = id => ({ FROM: id, steps: [], IGNORE: [] })
+  `)
   await writeFile(join(root, 'dagr.index.js'), marker)
   for (const [path, contents] of Object.entries(files)) {
     const target = join(root, path)
@@ -194,10 +198,10 @@ describe('RepositoryPackageLoader', () => {
     }
   })
 
-  it('materializes a mount once while loading packages below it on demand', async () => {
+  it('resolves a root-config mount and materializes it once on demand', async () => {
     const root = await fixture('', {
       'a/b/dagr.index.js': `
-        export default { '/': { FROM: 'tools', steps: [], IGNORE: [] } }
+        export default { '/': 'github.com/acme/tools' }
       `,
     })
     const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
@@ -214,11 +218,11 @@ describe('RepositoryPackageLoader', () => {
         }
       `)
     }
-    let calls = 0
+    const calls: unknown[][] = []
     const materializer: MountMaterializer = {
-      materialize: async () => {
-        calls++
-        return { root: mountedRoot, identity: 'sha256:tools:/work' }
+      materialize: async (...args) => {
+        calls.push(args)
+        return { root: mountedRoot }
       },
     }
 
@@ -231,7 +235,10 @@ describe('RepositoryPackageLoader', () => {
 
       assert.equal(c?.context, join(mountedRoot, 'c'))
       assert.equal(d?.context, join(mountedRoot, 'd'))
-      assert.equal(calls, 1)
+      assert.deepEqual(calls, [[
+        { FROM: 'github.com/acme/tools', steps: [], IGNORE: [] },
+        'github.com/acme/tools',
+      ]])
     } finally {
       await Promise.all([
         rm(root, { recursive: true }),
@@ -439,7 +446,7 @@ describe('RepositoryPackageLoader', () => {
         }
       `,
       'b/dagr.index.js': `
-        export default { '/': { FROM: 'b', steps: [], IGNORE: [] } }
+        export default { '/': 'b' }
       `,
     })
     const bRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-b-'))
@@ -450,16 +457,14 @@ describe('RepositoryPackageLoader', () => {
     `)
     await mkdir(join(bRoot, 'c'), { recursive: true })
     await writeFile(join(bRoot, 'c', 'dagr.index.js'), `
-      export default { '/': { FROM: 'c', steps: [], IGNORE: [] } }
+      export default { '/': 'c' }
     `)
     await writeFile(join(cRoot, 'dagr.util2.js'), `export default 'nested-image'`)
     const calls: string[] = []
     const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => {
-        calls.push(logicalPath)
-        return logicalPath === 'b'
-          ? { root: bRoot, identity: 'sha256:b:/work' }
-          : { root: cRoot, identity: 'sha256:c:/work' }
+      materialize: async (_mount, id) => {
+        calls.push(id)
+        return id === 'b' ? { root: bRoot } : { root: cRoot }
       },
     }
 
@@ -471,7 +476,7 @@ describe('RepositoryPackageLoader', () => {
       })
 
       assert.equal(run?.FROM, 'nested-image')
-      assert.deepEqual(calls, ['b', 'b//c'])
+      assert.deepEqual(calls, ['b', 'c'])
     } finally {
       await Promise.all([
         rm(root, { recursive: true }),
@@ -510,9 +515,10 @@ describe('RepositoryPackageLoader', () => {
 
   it('keeps mounts opaque during repository discovery', async () => {
     const root = await fixture('', {
+      '.dagr/config.js': `export const mount = () => undefined`,
       'packages/tools/dagr.index.js': `
         export default {
-          '/': { FROM: 'tools:latest', steps: [], IGNORE: [] }
+          '/': 'github.com/acme/unresolved'
         }
       `,
     })
@@ -520,9 +526,9 @@ describe('RepositoryPackageLoader', () => {
     await writeFile(join(mountedRoot, 'dagr.index.js'), `export default { ci: {} }`)
     const calls: string[] = []
     const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => {
-        calls.push(logicalPath)
-        return { root: mountedRoot, identity: 'sha256:tools:/work' }
+      materialize: async (_mount, id) => {
+        calls.push(id)
+        return { root: mountedRoot }
       },
     }
 
@@ -538,8 +544,46 @@ describe('RepositoryPackageLoader', () => {
     }
   })
 
-  it('does not expose the mounter through a mounted package location', async () => {
-    const mount = `export default { '/': { FROM: 'tools', steps: [], IGNORE: [] } }`
+  it('fails only when traversal reaches an unresolved mount ID', async () => {
+    const root = await fixture('', {
+      '.dagr/config.js': `export const mount = () => undefined`,
+      'vendor/foo/dagr.index.js': `
+        export default { '/': 'github.com/acme/missing' }
+      `,
+    })
+    try {
+      await assert.rejects(
+        new RepositoryPackageLoader(root).loadPackage('vendor/foo//pkg'),
+        (error: Error) => {
+          assert.match(error.message, /github\.com\/acme\/missing/)
+          assert.match(error.message, /\/\/vendor\/foo/)
+          return true
+        },
+      )
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('rejects a non-string mount ID when the declaration is loaded', async () => {
+    const root = await fixture('', {
+      'vendor/foo/dagr.index.js': `
+        export default { '/': { FROM: 'foo', steps: [], IGNORE: [] } }
+      `,
+    })
+
+    try {
+      await assert.rejects(
+        new RepositoryPackageLoader(root).loadAllPackages(),
+        /Invalid mount declaration at \/\/vendor\/foo:.*mount ID must be a string/s,
+      )
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('reuses one mounted filesystem for the same ID at different addresses', async () => {
+    const mount = `export default { '/': 'tools' }`
     const root = await fixture('', {
       'packages/left/dagr.index.js': mount,
       'packages/right/dagr.index.js': mount,
@@ -557,11 +601,12 @@ describe('RepositoryPackageLoader', () => {
         }
       }
     `)
+    let calls = 0
     const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => ({
-        root: mountedRoot,
-        identity: `sha256:${logicalPath}:/work`,
-      }),
+      materialize: async () => {
+        calls++
+        return { root: mountedRoot }
+      },
     }
 
     try {
@@ -577,6 +622,8 @@ describe('RepositoryPackageLoader', () => {
 
       assert.equal(location(left), '//c')
       assert.equal(location(right), '//c')
+      assert.equal(left?.context, right?.context)
+      assert.equal(calls, 1)
     } finally {
       await Promise.all([
         rm(root, { recursive: true }),
@@ -585,10 +632,82 @@ describe('RepositoryPackageLoader', () => {
     }
   })
 
-  it('preserves every nested mount boundary in the package identity', async () => {
-    const mountIndex = (image: string) => `
+  it('resolves a shared mount ID once across a diamond', async () => {
+    const root = await fixture('', {
+      '.dagr/config.js': `
+        export const mount = id => ({ FROM: 'root:' + id, steps: [], IGNORE: [] })
+      `,
+      'vendor/left/dagr.index.js': `export default { '/': 'left' }`,
+      'vendor/right/dagr.index.js': `export default { '/': 'right' }`,
+    })
+    const leftRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-left-'))
+    const rightRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-right-'))
+    const sharedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-shared-'))
+    for (const mountedRoot of [leftRoot, rightRoot]) {
+      await mkdir(join(mountedRoot, 'shared'), { recursive: true })
+      await mkdir(join(mountedRoot, '.dagr'))
+      await writeFile(
+        join(mountedRoot, 'shared', 'dagr.index.js'),
+        `export default { '/': 'github.com/acme/shared' }`,
+      )
+      await writeFile(
+        join(mountedRoot, '.dagr/config.js'),
+        `export const mount = () => ({ FROM: 'mounted-config', steps: [], IGNORE: [] })`,
+      )
+    }
+    await mkdir(join(sharedRoot, 'pkg'), { recursive: true })
+    await writeFile(join(sharedRoot, 'pkg', 'dagr.index.js'), `
       export default {
-        '/': { FROM: '${image}', steps: [], IGNORE: [] }
+        ci: {
+          build: {
+            deps: [],
+            run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
+          }
+        }
+      }
+    `)
+    const calls: Array<{ id: string; from: string }> = []
+    const materializer: MountMaterializer = {
+      materialize: async (mount, id) => {
+        calls.push({ id, from: mount.FROM })
+        if (id === 'left') return { root: leftRoot }
+        if (id === 'right') return { root: rightRoot }
+        return { root: sharedRoot }
+      },
+    }
+
+    try {
+      const loader = new RepositoryPackageLoader(root, materializer)
+      const [left, right] = await Promise.all([
+        loader.loadPackage('vendor/left//shared//pkg'),
+        loader.loadPackage('vendor/right//shared//pkg'),
+      ])
+
+      assert.equal(left?.context, join(sharedRoot, 'pkg'))
+      assert.equal(right?.context, join(sharedRoot, 'pkg'))
+      assert.deepEqual(calls.map(call => call.id).sort(), [
+        'github.com/acme/shared',
+        'left',
+        'right',
+      ])
+      assert.equal(
+        calls.find(call => call.id === 'github.com/acme/shared')?.from,
+        'root:github.com/acme/shared',
+      )
+    } finally {
+      await Promise.all([
+        rm(root, { recursive: true }),
+        rm(leftRoot, { recursive: true }),
+        rm(rightRoot, { recursive: true }),
+        rm(sharedRoot, { recursive: true }),
+      ])
+    }
+  })
+
+  it('preserves every nested mount boundary in the package identity', async () => {
+    const mountIndex = (id: string) => `
+      export default {
+        '/': '${id}'
       }
     `
     const root = await fixture('', {
@@ -610,9 +729,9 @@ describe('RepositoryPackageLoader', () => {
       }
     `)
     const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => logicalPath === 'packages/tools'
-        ? { root: outerRoot, identity: 'sha256:outer:/work' }
-        : { root: innerRoot, identity: 'sha256:inner:/work' },
+      materialize: async (_mount, id) => id === 'outer'
+        ? { root: outerRoot }
+        : { root: innerRoot },
     }
 
     try {
@@ -628,10 +747,10 @@ describe('RepositoryPackageLoader', () => {
     }
   })
 
-  it('detects recursive mounts by materialized image identity', async () => {
+  it('detects recursive mounts by global mount ID', async () => {
     const declaration = `
       export default {
-        '/': { FROM: 'recursive:latest', steps: [], IGNORE: [] }
+        '/': 'recursive'
       }
     `
     const root = await fixture('', { 'packages/loop/dagr.index.js': declaration })
@@ -640,14 +759,13 @@ describe('RepositoryPackageLoader', () => {
     const materializer: MountMaterializer = {
       materialize: async () => ({
         root: mountedRoot,
-        identity: 'sha256:recursive:/work',
       }),
     }
 
     try {
       await assert.rejects(
         new RepositoryPackageLoader(root, materializer).loadPackage('packages/loop////'),
-        /Circular mount: packages\/loop -> packages\/loop\/\//,
+        /Circular mount: \/\/packages\/loop -> \/\/packages\/loop\/\//,
       )
     } finally {
       await Promise.all([

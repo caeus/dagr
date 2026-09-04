@@ -16,7 +16,7 @@ describe('DockerMountMaterializer', () => {
     const renderer: DockerfileRenderer = { renderDockerfile: () => 'FROM tools\n' }
     const builder: DockerImageBuilder = {
       buildDockerImage: async (_content, tag, context, ignore) => {
-        assert.equal(tag, 'packages_tools-mount')
+        assert.equal(tag, 'github.com_acme_tools-c302b2bfb79b-mount')
         assert.equal(context, join(mountRoot, '.context'))
         assert.deepEqual(ignore, ['node_modules'])
         return { tag, digest: 'sha256:tools' }
@@ -41,10 +41,9 @@ describe('DockerMountMaterializer', () => {
       )
       const mounted = await materializer.materialize(
         { FROM: 'tools', steps: [], IGNORE: ['node_modules'] },
-        'packages/tools',
+        'github.com/acme/tools',
       )
 
-      assert.equal(mounted.identity, 'sha256:tools:/dagr')
       assert.equal(calls.length, 1)
       assert.deepEqual(calls[0], { src: '/dagr/.', dest: mounted.root })
     } finally {
@@ -71,7 +70,7 @@ describe('DockerMountMaterializer', () => {
       await assert.rejects(
         materializer.materialize(
           { FROM: 'tools', steps: [], IGNORE: [] },
-          'packages/tools',
+          'github.com/acme/tools',
         ),
         /non-root final WORKDIR/,
       )
