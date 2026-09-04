@@ -4,13 +4,27 @@ import { posix } from "node:path";
 // Facet and target names are embedded in FQTs, image tags, log labels, and shell-facing CLI
 // arguments. Keep them to portable filename characters, and require an alphanumeric first
 // character so a name cannot be mistaken for an option, a hidden path, or a directive.
+const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const NAME_MESSAGE =
+  "must start with an ASCII letter or digit and contain only ASCII letters, digits, '.', '_', or '-'";
+
 export const Name = z
   .string()
-  .regex(
-    /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
-    "must start with an ASCII letter or digit and contain only ASCII letters, digits, '.', '_', or '-'",
-  );
+  .regex(NAME_PATTERN, NAME_MESSAGE);
 export type Name = z.infer<typeof Name>;
+
+export const FacetName = z.string().superRefine((name, ctx) => {
+  if (name === "/") {
+    ctx.addIssue({
+      code: "custom",
+      message: '"/" is reserved for mount declarations and cannot be used as a facet name',
+    });
+    return;
+  }
+  if (!NAME_PATTERN.test(name))
+    ctx.addIssue({ code: "custom", message: NAME_MESSAGE });
+});
+export type FacetName = z.infer<typeof FacetName>;
 
 export const Copy = z
   .object({ from: z.string().optional(), src: z.string(), dest: z.string() })
@@ -96,14 +110,21 @@ export interface TargetDef extends z.infer<typeof TargetDef> {}
 export const FacetDef = z.record(Name, TargetDef).readonly();
 export interface FacetDef extends z.infer<typeof FacetDef> {}
 
-export const PackageDef = z.record(Name, FacetDef).readonly();
+export const PackageDef = z.record(FacetName, FacetDef).readonly();
 export interface PackageDef extends z.infer<typeof PackageDef> {}
 
-export const MountDef = ImageRecipe;
-export interface MountDef extends z.infer<typeof MountDef> {}
+export const MountId = z
+  .string({ error: "mount ID must be a string" })
+  .min(1, "mount ID must be a non-empty string");
+export type MountId = z.infer<typeof MountId>;
+
+export const MountImpl = ImageRecipe;
+export interface MountImpl extends z.infer<typeof MountImpl> {}
+
+export type MountResolver = (id: MountId) => MountImpl | undefined;
 
 export const MountIndex = z
-  .object({ "/": MountDef })
+  .object({ "/": MountId })
   .strict()
   .readonly();
 export interface MountIndex extends z.infer<typeof MountIndex> {}

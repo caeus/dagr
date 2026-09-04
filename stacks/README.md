@@ -48,16 +48,22 @@ Supporting components use a descriptive `dagr.*.js` entry point instead.
 
 ## Mounting
 
-Published components can be mounted directly from GHCR. For example:
+Published components can be selected by the root monorepo's `.dagr/config.js`:
 
 ```js
-export default {
-  '/': {
+export const mount = id => {
+  if (id === 'github.com/caeus/dagr-stacks/typescript') return {
     FROM: 'ghcr.io/caeus/dagr-stacks-typescript:<tree-sha>',
     steps: [],
     IGNORE: [],
-  },
+  }
 }
+```
+
+The local `dagr.index.js` declares only the logical ID:
+
+```js
+export default { '/': 'github.com/caeus/dagr-stacks/typescript' }
 ```
 
 The image's final `WORKDIR` is `/stack`, so Dagr materializes the component contents directly.

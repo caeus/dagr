@@ -67,12 +67,12 @@ source package to its repository directory.
 not materialize remote trees. A package at the repository root does not hide nested packages.
 
 `loadPackage()` resolves one exact logical package path. It walks each mount boundary in that path
-without scanning unrelated directories. Package, index, module, and mount promises are cached for
-the invocation, so concurrent requests share both successful work and failures.
+without scanning unrelated directories. Package, index, and module promises are cached for the
+invocation; mounted filesystems are cached globally by mount ID.
 
 A `dagr.index.js` file is evaluated as a `vm.SourceTextModule`. Its default export is validated by
-`IndexDef`. An invalid shape currently becomes `null`, so discovery silently omits that package.
-That behavior is a known diagnostic weakness; see
+`IndexDef`. An invalid package shape currently becomes `null`, so discovery silently omits that
+package. A malformed mount declaration fails immediately when its index is loaded. See
 [A package or target is missing](11-troubleshooting.md#a-package-or-target-is-missing).
 
 JavaScript imports use the same VM context. JSON, YAML, and TOML imports become deeply frozen
@@ -92,9 +92,11 @@ repository.
 `import.meta.dagr.location` is derived from the current source root. A mounted component therefore
 sees the same logical locations regardless of where a consuming repository mounts it.
 
-A mount recipe is rendered and built like a target recipe. The materializer inspects the image's
-final `WORKDIR`, copies that directory into temporary storage, and identifies the mount by image
-digest plus workdir. Re-entering the same identity through the active trace is a circular mount.
+When traversal reaches a mount ID, the loader asks the root `.dagr/config.js` resolver for its image
+recipe. Mounted configurations are never consulted. The materializer builds the recipe, inspects the
+image's final `WORKDIR`, and copies that directory into temporary storage. Resolution and
+materialization are cached by ID, while image digest plus workdir may still deduplicate extracted
+bytes. Re-entering the same ID through the active trace is a circular mount.
 
 ## Target execution
 

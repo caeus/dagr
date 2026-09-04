@@ -51,6 +51,10 @@ import toolchain from '//stacks/toolchain//dagr.stack.js'
 Imports made inside that mounted tree resolve their own leading `//` from the mounted root. Nested
 mounts add another boundary marker.
 
+Mount declarations contain logical string IDs. The root monorepo's `.dagr/config.js` resolves those
+IDs globally, so different boundary routes can reach the same mounted filesystem. Mounted trees do
+not contribute resolvers.
+
 Mounts are materialized only when an explicit target or import crosses their boundary. `dagr list`
 does not materialize them.
 

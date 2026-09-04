@@ -57,22 +57,35 @@ source tree observes the same locations on every host and under every mounter.
 
 ## `/`
 
-A mount replaces the directory containing its `dagr.index.js` with the resulting image's final
-`WORKDIR`:
+A mount declaration gives the mounted filesystem a global logical ID:
 
 ```js
 export default {
-  '/': {
-    FROM: 'ghcr.io/acme/dagr-tools:1',
-    steps: [{ WORKDIR: '/dagr' }],
-    IGNORE: [],
-  },
+  '/': 'github.com/acme/dagr-tools',
 }
 ```
 
-It cannot contain facets, `deps`, `run`, or `EXPORT`. The mounted image must declare a final
-`WORKDIR` other than `/`; that directory becomes the mounted source root. A mount has no source
-build context and cannot depend on targets.
+The root monorepo maps IDs to image recipes in `.dagr/config.js`:
+
+```js
+export const mount = id => {
+  if (id === 'github.com/acme/dagr-tools') {
+    return {
+      FROM: 'ghcr.io/acme/dagr-tools:1',
+      steps: [{ WORKDIR: '/dagr' }],
+      IGNORE: [],
+    }
+  }
+}
+```
+
+Only the root configuration participates. Configuration inside mounted trees cannot select mount
+implementations. Every occurrence of one ID shares one resolved filesystem, even when different
+`//` addresses reach it. Resolution and materialization remain lazy.
+
+The declaration cannot contain facets, `deps`, `run`, or `EXPORT`, and `/` cannot be used as a
+facet name. The resolved image must declare a final `WORKDIR` other than `/`; that directory becomes
+the mounted source root. A mount has no source build context and cannot depend on targets.
 
 For example, a mount at `stacks/tools` whose final workdir contains `c/dagr.index.js` exposes
 `//stacks/tools//c:facet:target`. The `//` is a canonical image-boundary marker, not a filesystem
