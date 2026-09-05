@@ -153,6 +153,7 @@ describe('RepositoryPackageLoader', () => {
       'apps/dagr.index.js': declaration,
       'apps/nested/dagr.index.js': declaration,
       'node_modules/dependency/dagr.index.js': declaration,
+      '.dagr/bootstrap/dagr.index.js': declaration,
       '.git/objects/dagr.index.js': declaration,
     })
 

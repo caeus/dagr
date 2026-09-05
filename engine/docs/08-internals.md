@@ -65,7 +65,7 @@ source package to its repository directory.
 ## Discovery and loading
 
 `RepositoryPackageLoader.loadAllPackages()` recursively walks the repository root. It skips
-`.git`, continues below ordinary packages, and stops below directories containing
+`.dagr` and `.git`, continues below ordinary packages, and stops below directories containing
 `dagr.mount.yaml` because discovery must not materialize volumes. A colocated `dagr.index.js`
 remains independently discoverable. A package at the repository root does not hide nested packages.
 

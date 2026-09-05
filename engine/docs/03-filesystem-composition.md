@@ -94,6 +94,7 @@ When traversal crosses a mount boundary, Dagr:
 
 Actual materialization is lazy. `dagr list` leaves mount contents opaque, and an unused mount does
 not require a matching entry in `.dagr/volumes.yaml`. Discovery may still parse the mount request.
+The root `.dagr` directory is control metadata and is excluded from package discovery.
 
 Within one invocation, Dagr caches materialization by volume ID. Different requests and different
 attachment paths that identify as the same ID share one logical filesystem:

@@ -18,7 +18,7 @@ import { deepFreeze } from '#pkg/value.js'
 
 const PACKAGE_FILE = 'dagr.index.js'
 const IMPORT_FILE = /^dagr\..+\.(?:js|json|yaml|toml)$/
-const DISCOVERY_EXCLUDED_DIRECTORIES = new Set(['.git'])
+const DISCOVERY_EXCLUDED_DIRECTORIES = new Set(['.dagr', '.git'])
 
 export interface PackageLoader {
   loadPackage(logicalPath: string): Promise<LoadedPackage | undefined>

@@ -97,8 +97,8 @@ See [Build-file environment and imports](04-sandbox-and-imports.md) for module r
 
 ## Build-context ignores
 
-Discovery exclusions and Docker build-context ignores are different things. Dagr skips `.git`
-while discovering packages. A target controls its Docker context with
+Discovery exclusions and Docker build-context ignores are different things. Dagr skips `.dagr`
+and `.git` while discovering packages. A target controls its Docker context with
 `IGNORE`:
 
 ```js
