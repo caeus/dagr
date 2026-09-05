@@ -7,6 +7,7 @@ The documentation site uses that README as its homepage, so the product position
 
 | Page | What's in it |
 | --- | --- |
+| [Why dagr?](00-why-dagr.md) | Design choices, fit, and deliberate tradeoffs |
 | [Getting started](01-getting-started.md) | Install the `dagr` launcher, prerequisites, first run |
 | [Concepts](02-concepts.md) | Packages, facets, targets, addressing, execution model |
 | [Authoring `dagr.index.js`](03-authoring-dagr-index-js.md) | The target format and step kinds |

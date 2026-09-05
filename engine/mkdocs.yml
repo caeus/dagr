@@ -1,5 +1,5 @@
 site_name: dagr
-site_description: A monorepo task runner where every target is a Docker image.
+site_description: Programmable monorepo builds using JavaScript and Docker.
 site_url: https://caeus.github.io/dagr/
 repo_url: https://github.com/caeus/dagr
 repo_name: caeus/dagr
@@ -17,6 +17,7 @@ plugins:
   - search
 
 exclude_docs: |
+  README.md
   08-internals.md
   09-docker-in-docker.md
 
@@ -29,6 +30,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Why dagr?: 00-why-dagr.md
   - Getting started: 01-getting-started.md
   - Concepts: 02-concepts.md
   - Authoring dagr.index.js: 03-authoring-dagr-index-js.md
