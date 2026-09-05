@@ -16,7 +16,9 @@ Build definitions are JavaScript programs. They can define targets directly, gen
 loops and functions, or import the repository's own abstractions. The graph is program output, not
 a pile of configuration that must be maintained by hand.
 
-The name compresses **DAG runner** into `dagr`.
+The name compresses **DAG runner** into `dagr`, because its author is obsessed with DAGs. It also
+nods to Daguerre and the daguerreotype: `dagr` executes those DAGs by producing and composing
+container images.
 
 ## Use
 
