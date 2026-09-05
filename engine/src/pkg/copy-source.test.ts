@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
-import { RepositoryPackageLoader, type MountMaterializer } from '#pkg/loader.js'
+import { RepositoryPackageLoader, type VolumeMaterializer } from '#pkg/loader.js'
 
 const PACKAGE = `
   export default {
@@ -16,13 +16,20 @@ const PACKAGE = `
   }
 `
 
-const MOUNT = `export default { '/': { FROM: 'tools', steps: [], IGNORE: [] } }`
-
 async function repository(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'dagr-copy-source-'))
   await mkdir(join(root, 'packages/app/tools'), { recursive: true })
+  await mkdir(join(root, '.dagr'), { recursive: true })
   await writeFile(join(root, 'packages/app/dagr.index.js'), PACKAGE)
-  await writeFile(join(root, 'packages/app/tools/dagr.index.js'), MOUNT)
+  await writeFile(join(root, 'packages/app/tools/dagr.mount.yaml'), 'id: tools\n')
+  await writeFile(join(root, '.dagr/config.js'), 'export const identifyVolume = request => request.id\n')
+  await writeFile(join(root, '.dagr/volumes.yaml'), `
+tools: &volume
+  FROM: tools
+  steps: []
+  IGNORE: []
+deps: *volume
+`)
   return root
 }
 
@@ -31,10 +38,10 @@ describe('RepositoryPackageLoader.resolveCopySource', () => {
     const root = await repository()
     const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-copy-mount-'))
     const calls: string[] = []
-    const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => {
+    const materializer: VolumeMaterializer = {
+      materialize: async (_id, _implementation, logicalPath) => {
         calls.push(logicalPath)
-        return { root: mountedRoot, identity: 'sha256:tools:/work' }
+        return { root: mountedRoot }
       },
     }
 
@@ -57,14 +64,14 @@ describe('RepositoryPackageLoader.resolveCopySource', () => {
     const firstRoot = await mkdtemp(join(tmpdir(), 'dagr-copy-mount-'))
     const secondRoot = await mkdtemp(join(tmpdir(), 'dagr-copy-mount-'))
     await mkdir(join(firstRoot, 'deps'), { recursive: true })
-    await writeFile(join(firstRoot, 'deps/dagr.index.js'), MOUNT)
+    await writeFile(join(firstRoot, 'deps/dagr.mount.yaml'), 'id: deps\n')
 
-    const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => {
+    const materializer: VolumeMaterializer = {
+      materialize: async (_id, _implementation, logicalPath) => {
         if (logicalPath === 'packages/app/tools')
-          return { root: firstRoot, identity: 'sha256:first:/work' }
+          return { root: firstRoot }
         if (logicalPath === 'packages/app/tools//deps')
-          return { root: secondRoot, identity: 'sha256:second:/work' }
+          return { root: secondRoot }
         throw new Error(`Unexpected mount: ${logicalPath}`)
       },
     }

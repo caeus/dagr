@@ -188,6 +188,11 @@ Build definitions can use JavaScript, loops, templates, imported `dagr.*.js` mod
 YAML and TOML encoders. They cannot inspect the host filesystem, network, process, or environment,
 so the graph comes from repository source.
 
+Filesystem composition stays separate from target definitions. A directory's `dagr.mount.yaml`
+requests a volume, while the root monorepo's `.dagr/config.js` assigns its global identity and
+`.dagr/volumes.yaml` selects its image recipe. Different paths and requests may therefore converge
+on one lazily materialized filesystem without changing Dagr's nested `//` addressing.
+
 `dagr run` loads only packages reached by the requested targets and their dependencies. Docker
 output stays quiet unless a build fails; pass `--verbose` to stream it. `dagr list` recursively
 lists source targets and leaves mounts opaque.
@@ -218,7 +223,7 @@ The [complete documentation](docs/README.md) covers:
 - the `dagr.index.js` format;
 - build-file APIs, imports, and shared modules;
 - target addresses, dependencies, and exports;
-- mounted package trees;
+- filesystem composition and mounted package trees;
 - CLI behavior and troubleshooting;
 - the adoption checklist and troubleshooting.
 

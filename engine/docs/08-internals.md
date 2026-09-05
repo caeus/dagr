@@ -14,7 +14,9 @@ src/
 ├── sys/                        process execution, host detection, and disposal
 ├── pkg/
 │   ├── schema.ts               index, target, recipe, step, and export schemas
-│   ├── loader.ts               discovery, sandboxed modules, imports, and mounts
+│   ├── loader.ts               discovery, sandboxed modules, imports, and traversal
+│   ├── mount-request.ts        mount request parsing and validation
+│   ├── volume-registry.ts      root-owned identity and implementation policy
 │   ├── builtins.ts             dagr:yaml and dagr:toml
 │   └── sandbox.ts              restricted VM context
 └── runner/
@@ -25,7 +27,7 @@ src/
     ├── docker-copier.ts        stopped-container copies
     ├── docker-extractor.ts     EXPORT materialization
     ├── docker-inspector.ts     image WORKDIR inspection
-    └── mount-materializer.ts   mount build, extraction, identity, and cleanup
+    └── volume-materializer.ts  volume build, extraction, and cleanup
 ```
 
 The engine's own build, tests, bundle, and runtime image are defined by
@@ -36,7 +38,7 @@ inputs produced by that graph, not committed configuration.
 
 `index.ts` calls `wire()`. `wire()` parses arguments with Optique, builds the dependency module,
 shakes it to `commandRunner`, compiles it, and executes the selected command. An
-`AsyncDisposeStack` owns temporary mount cleanup when execution fails.
+`AsyncDisposeStack` owns temporary materialized-volume cleanup when execution fails.
 
 `CompositeCommandRunner` delegates to four runners:
 
@@ -63,17 +65,18 @@ source package to its repository directory.
 ## Discovery and loading
 
 `RepositoryPackageLoader.loadAllPackages()` recursively walks the repository root. It skips
-`.git`, continues below ordinary packages, and stops at mount declarations because discovery must
-not materialize remote trees. A package at the repository root does not hide nested packages.
+`.git`, continues below ordinary packages, and stops below directories containing
+`dagr.mount.yaml` because discovery must not materialize volumes. A colocated `dagr.index.js`
+remains independently discoverable. A package at the repository root does not hide nested packages.
 
 `loadPackage()` resolves one exact logical package path. It walks each mount boundary in that path
-without scanning unrelated directories. Package, index, module, and mount promises are cached for
-the invocation, so concurrent requests share both successful work and failures.
+without scanning unrelated directories. Package, index, module, and volume promises are cached for
+the invocation, so concurrent requests share both successful work and failures. Volume promises
+are keyed by root-defined volume ID, not by mount path.
 
 A `dagr.index.js` file is evaluated as a `vm.SourceTextModule`. Its default export is validated by
-`IndexDef`. An invalid shape currently becomes `null`, so discovery silently omits that package.
-That behavior is a known diagnostic weakness; see
-[A package or target is missing](11-troubleshooting.md#a-package-or-target-is-missing).
+`IndexDef`, and an invalid shape is reported with its logical package path. The removed `{ '/':
+mountImplementation }` shape receives direct migration guidance.
 
 JavaScript imports use the same VM context. JSON, YAML, and TOML imports become deeply frozen
 `vm.SyntheticModule` values. The sandbox exposes standard JavaScript, `Buffer`, `dagr:yaml`, and
@@ -85,16 +88,20 @@ and pinned images must still be trusted.
 ## Imports and mount boundaries
 
 An import beginning with `//` resolves from the current source root. Each additional `//` crosses
-a mount declared by `dagr.index.js`, materializes that image, and establishes a new source root.
+a mount requested by `dagr.mount.yaml`, materializes its root-defined volume implementation, and
+establishes a new source root.
 Modules inside the mounted tree resolve their own leading `//` from that tree, not from the host
 repository.
 
 `import.meta.dagr.location` is derived from the current source root. A mounted component therefore
 sees the same logical locations regardless of where a consuming repository mounts it.
 
-A mount recipe is rendered and built like a target recipe. The materializer inspects the image's
-final `WORKDIR`, copies that directory into temporary storage, and identifies the mount by image
-digest plus workdir. Re-entering the same identity through the active trace is a circular mount.
+The invocation root loads `.dagr/config.js` and `.dagr/volumes.yaml` the first time a mount is
+traversed. `identifyVolume(request)` returns a string ID, and the matching volume implementation is
+rendered and built as an image recipe using the invocation root as its build context. The
+materializer inspects the image's final `WORKDIR` and copies that directory into temporary storage.
+Re-entering the same volume ID through the active trace is a circular mount. Configuration found
+inside mounted repositories is never consulted.
 
 ## Target execution
 

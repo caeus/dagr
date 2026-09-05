@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { IndexDef, Name, PackageDef, Run } from '#pkg/schema.js'
+import { IndexDef, MountImplementation, Name, PackageDef, Run, Volumes } from '#pkg/schema.js'
 
 const target = { deps: [], run: () => ({ FROM: 'scratch', steps: [], IGNORE: [] }) }
 
@@ -50,22 +50,16 @@ describe('PackageDef names', () => {
   })
 })
 
-describe('IndexDef', () => {
+describe('filesystem composition schemas', () => {
   const mount = { FROM: 'alpine', steps: [], IGNORE: [] }
 
-  it('accepts a mount as an alternative to a package', () => {
-    assert.deepEqual(IndexDef.parse({ '/': mount }), { '/': mount })
+  it('keeps mount implementations out of dagr.index.js', () => {
+    assert.equal(IndexDef.safeParse({ '/': mount }).success, false)
   })
 
-  it('rejects facets alongside a mount', () => {
-    assert.equal(IndexDef.safeParse({ '/': mount, ci: { build: target } }).success, false)
-  })
-
-  it('rejects EXPORT on a mount', () => {
-    assert.equal(
-      IndexDef.safeParse({ '/': { ...mount, EXPORT: { '/out': 'out' } } }).success,
-      false,
-    )
+  it('uses the existing image recipe schema for volume implementations', () => {
+    assert.deepEqual(MountImplementation.parse(mount), mount)
+    assert.deepEqual(Volumes.parse({ tools: mount }), { tools: mount })
   })
 })
 

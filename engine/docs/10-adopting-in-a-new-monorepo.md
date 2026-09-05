@@ -104,8 +104,11 @@ import { component } from '//build/dagr.component.js'
 export default component({ image: 'alpine:3.22' })
 ```
 
-For independently versioned build logic, mount a pinned stack image and import through its boundary.
-See [Build-file environment and imports](04-sandbox-and-imports.md#mount-boundaries).
+For independently versioned build logic, add `dagr.mount.yaml` at the attachment point, define
+`identifyVolume` in the root `.dagr/config.js`, and select its image recipe in the root
+`.dagr/volumes.yaml`. Then import through its boundary.
+See [Filesystem composition](03-filesystem-composition.md) and
+[Build-file environment and imports](04-sandbox-and-imports.md#mount-boundaries).
 
 ## Keep host and image concerns separate
 

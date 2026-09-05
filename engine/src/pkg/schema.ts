@@ -99,14 +99,19 @@ export interface FacetDef extends z.infer<typeof FacetDef> {}
 export const PackageDef = z.record(Name, FacetDef).readonly();
 export interface PackageDef extends z.infer<typeof PackageDef> {}
 
-export const MountDef = ImageRecipe;
-export interface MountDef extends z.infer<typeof MountDef> {}
+export const JsonValue = z.json();
+export type JsonValue = z.infer<typeof JsonValue>;
 
-export const MountIndex = z
-  .object({ "/": MountDef })
-  .strict()
-  .readonly();
-export interface MountIndex extends z.infer<typeof MountIndex> {}
+export type MountRequest = JsonValue;
+export type VolumeId = string;
+export type IdentifyVolume = (request: MountRequest) => VolumeId;
 
-export const IndexDef = z.union([MountIndex, PackageDef]);
-export type IndexDef = z.infer<typeof IndexDef>;
+export const MountImplementation = ImageRecipe;
+export interface MountImplementation extends z.infer<typeof MountImplementation> {}
+
+export const Volumes = z.record(z.string(), MountImplementation).readonly();
+export interface Volumes extends z.infer<typeof Volumes> {}
+
+// Filesystem composition is declared by dagr.mount.yaml. dagr.index.js only describes targets.
+export const IndexDef = PackageDef;
+export type IndexDef = PackageDef;

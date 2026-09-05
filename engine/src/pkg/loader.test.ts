@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
-import { RepositoryPackageLoader, type MountMaterializer } from '#pkg/loader.js'
+import { RepositoryPackageLoader, type VolumeMaterializer } from '#pkg/loader.js'
 
 async function fixture(
   marker: string,
@@ -13,7 +13,22 @@ async function fixture(
 ): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'dagr-loader-'))
   await mkdir(join(root, 'packages'))
-  await writeFile(join(root, 'dagr.index.js'), marker)
+  await mkdir(join(root, '.dagr'))
+  if (marker) await writeFile(join(root, 'dagr.index.js'), marker)
+  await writeFile(join(root, '.dagr/config.js'), `
+    export const identifyVolume = request => request.id
+  `)
+  await writeFile(join(root, '.dagr/volumes.yaml'), `
+tools: &volume
+  FROM: tools
+  steps: []
+  IGNORE: []
+b: *volume
+c: *volume
+outer: *volume
+inner: *volume
+recursive: *volume
+`)
   for (const [path, contents] of Object.entries(files)) {
     const target = join(root, path)
     await mkdir(join(target, '..'), { recursive: true })
@@ -23,6 +38,45 @@ async function fixture(
 }
 
 describe('RepositoryPackageLoader', () => {
+  it('reports an invalid index with its logical package path', async () => {
+    const root = await fixture('', {
+      'packages/broken/dagr.index.js': 'export default { ci: { build: {} } }\n',
+    })
+
+    try {
+      await assert.rejects(
+        new RepositoryPackageLoader(root).loadPackage('packages/broken'),
+        error => {
+          assert.match(String(error), /Invalid Dagr index at \/\/packages\/broken/)
+          assert.match(String(error), /deps/)
+          assert.match(String(error), /run/)
+          return true
+        },
+      )
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('reports an index whose exported value is cyclic', async () => {
+    const root = await fixture('', {
+      'packages/broken/dagr.index.js': `
+        const cyclic = {}
+        cyclic.self = cyclic
+        export default cyclic
+      `,
+    })
+
+    try {
+      await assert.rejects(
+        new RepositoryPackageLoader(root).loadPackage('packages/broken'),
+        /Invalid Dagr index at \/\/packages\/broken/,
+      )
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
   it('lets the VM linker resolve shared transitive imports once', async () => {
     const root = await fixture(`
       import { left } from '//lib/dagr.left.js'
@@ -196,9 +250,7 @@ describe('RepositoryPackageLoader', () => {
 
   it('materializes a mount once while loading packages below it on demand', async () => {
     const root = await fixture('', {
-      'a/b/dagr.index.js': `
-        export default { '/': { FROM: 'tools', steps: [], IGNORE: [] } }
-      `,
+      'a/b/dagr.mount.yaml': 'id: tools\n',
     })
     const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
     for (const name of ['c', 'd']) {
@@ -215,10 +267,10 @@ describe('RepositoryPackageLoader', () => {
       `)
     }
     let calls = 0
-    const materializer: MountMaterializer = {
+    const materializer: VolumeMaterializer = {
       materialize: async () => {
         calls++
-        return { root: mountedRoot, identity: 'sha256:tools:/work' }
+        return { root: mountedRoot }
       },
     }
 
@@ -438,9 +490,7 @@ describe('RepositoryPackageLoader', () => {
           }
         }
       `,
-      'b/dagr.index.js': `
-        export default { '/': { FROM: 'b', steps: [], IGNORE: [] } }
-      `,
+      'b/dagr.mount.yaml': 'id: b\n',
     })
     const bRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-b-'))
     const cRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-c-'))
@@ -449,17 +499,15 @@ describe('RepositoryPackageLoader', () => {
       export default image
     `)
     await mkdir(join(bRoot, 'c'), { recursive: true })
-    await writeFile(join(bRoot, 'c', 'dagr.index.js'), `
-      export default { '/': { FROM: 'c', steps: [], IGNORE: [] } }
-    `)
+    await writeFile(join(bRoot, 'c', 'dagr.mount.yaml'), 'id: c\n')
     await writeFile(join(cRoot, 'dagr.util2.js'), `export default 'nested-image'`)
     const calls: string[] = []
-    const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => {
+    const materializer: VolumeMaterializer = {
+      materialize: async (_id, _implementation, logicalPath) => {
         calls.push(logicalPath)
         return logicalPath === 'b'
-          ? { root: bRoot, identity: 'sha256:b:/work' }
-          : { root: cRoot, identity: 'sha256:c:/work' }
+          ? { root: bRoot }
+          : { root: cRoot }
       },
     }
 
@@ -510,19 +558,15 @@ describe('RepositoryPackageLoader', () => {
 
   it('keeps mounts opaque during repository discovery', async () => {
     const root = await fixture('', {
-      'packages/tools/dagr.index.js': `
-        export default {
-          '/': { FROM: 'tools:latest', steps: [], IGNORE: [] }
-        }
-      `,
+      'packages/tools/dagr.mount.yaml': 'id: tools\n',
     })
     const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
     await writeFile(join(mountedRoot, 'dagr.index.js'), `export default { ci: {} }`)
     const calls: string[] = []
-    const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => {
+    const materializer: VolumeMaterializer = {
+      materialize: async (_id, _implementation, logicalPath) => {
         calls.push(logicalPath)
-        return { root: mountedRoot, identity: 'sha256:tools:/work' }
+        return { root: mountedRoot }
       },
     }
 
@@ -539,10 +583,9 @@ describe('RepositoryPackageLoader', () => {
   })
 
   it('does not expose the mounter through a mounted package location', async () => {
-    const mount = `export default { '/': { FROM: 'tools', steps: [], IGNORE: [] } }`
     const root = await fixture('', {
-      'packages/left/dagr.index.js': mount,
-      'packages/right/dagr.index.js': mount,
+      'packages/left/dagr.mount.yaml': 'id: tools\n',
+      'packages/right/dagr.mount.yaml': 'id: tools\n',
     })
     const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
     await mkdir(join(mountedRoot, 'c'), { recursive: true })
@@ -557,10 +600,9 @@ describe('RepositoryPackageLoader', () => {
         }
       }
     `)
-    const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => ({
+    const materializer: VolumeMaterializer = {
+      materialize: async () => ({
         root: mountedRoot,
-        identity: `sha256:${logicalPath}:/work`,
       }),
     }
 
@@ -586,18 +628,13 @@ describe('RepositoryPackageLoader', () => {
   })
 
   it('preserves every nested mount boundary in the package identity', async () => {
-    const mountIndex = (image: string) => `
-      export default {
-        '/': { FROM: '${image}', steps: [], IGNORE: [] }
-      }
-    `
     const root = await fixture('', {
-      'packages/tools/dagr.index.js': mountIndex('outer'),
+      'packages/tools/dagr.mount.yaml': 'id: outer\n',
     })
     const outerRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
     const innerRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
     await mkdir(join(outerRoot, 'c', 'd'), { recursive: true })
-    await writeFile(join(outerRoot, 'c', 'd', 'dagr.index.js'), mountIndex('inner'))
+    await writeFile(join(outerRoot, 'c', 'd', 'dagr.mount.yaml'), 'id: inner\n')
     await mkdir(join(innerRoot, 'e'), { recursive: true })
     await writeFile(join(innerRoot, 'e', 'dagr.index.js'), `
       export default {
@@ -609,10 +646,10 @@ describe('RepositoryPackageLoader', () => {
         }
       }
     `)
-    const materializer: MountMaterializer = {
-      materialize: async (_mount, logicalPath) => logicalPath === 'packages/tools'
-        ? { root: outerRoot, identity: 'sha256:outer:/work' }
-        : { root: innerRoot, identity: 'sha256:inner:/work' },
+    const materializer: VolumeMaterializer = {
+      materialize: async (_id, _implementation, logicalPath) => logicalPath === 'packages/tools'
+        ? { root: outerRoot }
+        : { root: innerRoot },
     }
 
     try {
@@ -628,26 +665,21 @@ describe('RepositoryPackageLoader', () => {
     }
   })
 
-  it('detects recursive mounts by materialized image identity', async () => {
-    const declaration = `
-      export default {
-        '/': { FROM: 'recursive:latest', steps: [], IGNORE: [] }
-      }
-    `
-    const root = await fixture('', { 'packages/loop/dagr.index.js': declaration })
+  it('detects recursive mounts by global volume identity', async () => {
+    const declaration = 'id: recursive\n'
+    const root = await fixture('', { 'packages/loop/dagr.mount.yaml': declaration })
     const mountedRoot = await mkdtemp(join(tmpdir(), 'dagr-mounted-'))
-    await writeFile(join(mountedRoot, 'dagr.index.js'), declaration)
-    const materializer: MountMaterializer = {
+    await writeFile(join(mountedRoot, 'dagr.mount.yaml'), declaration)
+    const materializer: VolumeMaterializer = {
       materialize: async () => ({
         root: mountedRoot,
-        identity: 'sha256:recursive:/work',
       }),
     }
 
     try {
       await assert.rejects(
         new RepositoryPackageLoader(root, materializer).loadPackage('packages/loop////'),
-        /Circular mount: packages\/loop -> packages\/loop\/\//,
+        /Circular volume "recursive": \/\/packages\/loop -> \/\/packages\/loop\/\//,
       )
     } finally {
       await Promise.all([

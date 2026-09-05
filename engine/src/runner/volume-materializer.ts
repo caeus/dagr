@@ -1,14 +1,15 @@
 import { mkdir, readdir, realpath } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { isAbsolute, join, relative, sep } from 'node:path'
-import type { MaterializedMount, MountMaterializer } from '#pkg/loader.js'
-import type { MountDef } from '#pkg/schema.js'
+import { canonicalMountPath } from '#pkg/mount-request.js'
+import type { MaterializedVolume, VolumeMaterializer } from '#pkg/loader.js'
+import type { MountImplementation, VolumeId } from '#pkg/schema.js'
 import type { DockerfileRenderer } from '#runner/dockerfile-renderer.js'
 import type { DockerImageBuilder } from '#runner/docker-builder.js'
 import type { DockerImageCopier } from '#runner/docker-copier.js'
 import type { DockerImageInspector } from '#runner/docker-inspector.js'
 
-export class DockerMountMaterializer implements MountMaterializer {
+export class DockerVolumeMaterializer implements VolumeMaterializer {
   private readonly extracted = new Map<string, Promise<string>>()
 
   constructor(
@@ -16,36 +17,46 @@ export class DockerMountMaterializer implements MountMaterializer {
     private readonly builder: DockerImageBuilder,
     private readonly copier: DockerImageCopier,
     private readonly inspector: DockerImageInspector,
-    private readonly mountRoot: string,
+    private readonly volumeRoot: string,
+    private readonly contextRoot: string,
   ) {}
 
-  async materialize(mount: MountDef, logicalPath: string): Promise<MaterializedMount> {
-    const tag = mountTag(logicalPath)
-    const dockerfile = this.renderer.renderDockerfile(mount)
-    const emptyContext = join(this.mountRoot, '.context')
-    await mkdir(emptyContext, { recursive: true })
-    const image = await this.builder.buildDockerImage(dockerfile, tag, emptyContext, mount.IGNORE)
+  async materialize(
+    volumeId: VolumeId,
+    implementation: MountImplementation,
+    logicalPath: string,
+  ): Promise<MaterializedVolume> {
+    const tag = volumeTag(volumeId)
+    const dockerfile = this.renderer.renderDockerfile(implementation)
+    const image = await this.builder.buildDockerImage(
+      dockerfile,
+      tag,
+      this.contextRoot,
+      implementation.IGNORE,
+    )
     const workdir = await this.inspector.inspectImageWorkdir(image.tag)
     if (workdir === '/')
-      throw new Error(`Mount image must configure a non-root final WORKDIR: ${logicalPath}`)
+      throw new Error(
+        `Volume ${JSON.stringify(volumeId)} requested through mount ${canonicalMountPath(logicalPath)} must configure a non-root final WORKDIR`,
+      )
     const identity = `${image.digest}:${workdir}`
 
     let root = this.extracted.get(identity)
     if (!root) {
-      root = this.extractMount(image.tag, image.digest, workdir)
+      root = this.extractVolume(image.tag, image.digest, workdir)
       this.extracted.set(identity, root)
     }
 
-    return { root: await root, identity }
+    return { root: await root }
   }
 
-  private async extractMount(
+  private async extractVolume(
     imageTag: string,
     imageDigest: string,
     workdir: string,
   ): Promise<string> {
     const key = createHash('sha256').update(`${imageDigest}\0${workdir}`).digest('hex')
-    const root = join(this.mountRoot, key)
+    const root = join(this.volumeRoot, key)
     await mkdir(root, { recursive: true })
     await this.copier.copyFromImage(
       imageTag,
@@ -81,9 +92,7 @@ export async function validateSymlinks(root: string): Promise<void> {
   }
 }
 
-function mountTag(logicalPath: string): string {
-  const base = logicalPath
-    .replace(/[:/\\]+/g, '_')
-    .replace(/^[^a-zA-Z0-9]+/, '') || 'root'
-  return `${base}-mount`
+function volumeTag(volumeId: VolumeId): string {
+  const key = createHash('sha256').update(volumeId).digest('hex')
+  return `dagr-volume-${key}`
 }

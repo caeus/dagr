@@ -48,16 +48,22 @@ Supporting components use a descriptive `dagr.*.js` entry point instead.
 
 ## Mounting
 
-Published components can be mounted directly from GHCR. For example:
+Published components can be requested by a mount point:
 
-```js
-export default {
-  '/': {
-    FROM: 'ghcr.io/caeus/dagr-stacks-typescript:<tree-sha>',
-    steps: [],
-    IGNORE: [],
-  },
-}
+```yaml
+# stacks/ts/dagr.mount.yaml
+repo: github.com/caeus/dagr-stacks/typescript
+version: <tree-sha>
+```
+
+The consuming monorepo maps that request to an implementation:
+
+```yaml
+# .dagr/volumes.yaml
+"github.com/caeus/dagr-stacks/typescript":
+  FROM: ghcr.io/caeus/dagr-stacks-typescript:<tree-sha>
+  steps: []
+  IGNORE: []
 ```
 
 The image's final `WORKDIR` is `/stack`, so Dagr materializes the component contents directly.
@@ -86,8 +92,8 @@ export default stack({
 })
 ```
 
-The alias belongs to the consuming repository. The image tag is an explicit, reviewable build
-input. Source mounts remain possible when working directly from a repository checkout.
+The alias belongs to the consuming repository. Root `.dagr/config.js` decides the canonical volume
+ID, and the selected implementation remains an explicit, reviewable build input.
 
 ## Available components
 

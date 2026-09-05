@@ -32,6 +32,7 @@ nav:
   - Getting started: 01-getting-started.md
   - Concepts: 02-concepts.md
   - Authoring dagr.index.js: 03-authoring-dagr-index-js.md
+  - Filesystem composition: 03-filesystem-composition.md
   - Build-file environment and imports: 04-sandbox-and-imports.md
   - Dependencies and EXPORT: 05-deps-and-exports.md
   - CLI reference: 06-cli.md

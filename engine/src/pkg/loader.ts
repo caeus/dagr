@@ -6,7 +6,15 @@ import { parse as parseYaml } from 'yaml'
 import { BUILTIN_PREFIX, createBuiltinModules } from '#pkg/builtins.js'
 import { ROOT_MARKER } from '#pkg/namespace.js'
 import { createSandboxContext } from '#pkg/sandbox.js'
-import { IndexDef, type MountDef, type MountIndex, type PackageDef } from '#pkg/schema.js'
+import {
+  IndexDef,
+  type MountImplementation,
+  type PackageDef,
+  type VolumeId,
+} from '#pkg/schema.js'
+import { MountRequestLoader, canonicalMountPath } from '#pkg/mount-request.js'
+import { RootVolumeRegistry } from '#pkg/volume-registry.js'
+import { deepFreeze } from '#pkg/value.js'
 
 const PACKAGE_FILE = 'dagr.index.js'
 const IMPORT_FILE = /^dagr\..+\.(?:js|json|yaml|toml)$/
@@ -28,20 +36,20 @@ export interface ResolvedCopySource {
   readonly src: string
 }
 
-export interface MaterializedMount {
+export interface MaterializedVolume {
   readonly root: string
-  readonly identity: string
 }
 
-export interface MountMaterializer {
+export interface VolumeMaterializer {
   materialize(
-    mount: MountDef,
+    volumeId: VolumeId,
+    implementation: MountImplementation,
     logicalPath: string,
-  ): Promise<MaterializedMount>
+  ): Promise<MaterializedVolume>
 }
 
 interface MountTrace {
-  readonly identity: string
+  readonly volumeId: VolumeId
   readonly logicalPath: string
 }
 
@@ -61,13 +69,10 @@ interface LoadContext {
   readonly resolveImport: (specifier: string, context: LoadContext) => Promise<ResolvedImport>
 }
 
-function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
-  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return value
-  if (seen.has(value as object)) return value
-  seen.add(value as object)
-  Object.freeze(value)
-  for (const v of Object.values(value as object)) deepFreeze(v, seen)
-  return value
+interface TraversalState {
+  readonly sourceRoot: string
+  readonly logicalRoot: string
+  readonly trace: readonly MountTrace[]
 }
 
 function isOutside(root: string, path: string): boolean {
@@ -131,37 +136,68 @@ async function loadIndex(
   logicalPath: string,
   ctx: LoadContext,
 ): Promise<IndexDef | null> {
-  const path = await realpath(filePath)
+  const location = packageLocation(logicalPath)
+  let path: string
+  try {
+    path = await realpath(filePath)
+  } catch (error) {
+    if (isMissing(error)) throw error
+    throw new Error(`Cannot resolve Dagr index at ${location}`, { cause: error })
+  }
   if (isOutside(ctx.root, path))
-    throw new Error(`Dagr index must stay inside its source root, got: ${filePath}`)
+    throw new Error(`Dagr index at ${location} must stay inside its source root`)
 
-  const code = await readFile(path, 'utf-8')
+  let code: string
+  try {
+    code = await readFile(path, 'utf-8')
+  } catch (error) {
+    throw new Error(`Cannot read Dagr index at ${location}`, { cause: error })
+  }
   const dagr = Object.freeze(Object.assign(Object.create(null), {
-    location: packageLocation(logicalPath),
+    location,
   }))
-  const mod = new vm.SourceTextModule(code, {
-    context: ctx.vmContext,
-    identifier: path,
-    initializeImportMeta(meta) {
-      Object.defineProperty(meta, 'dagr', {
-        value: dagr,
-        enumerable: true,
-      })
-    },
-  })
-  ctx.moduleContexts.set(mod, ctx)
-  await mod.link((specifier, referencingModule) => link(
-    specifier,
-    ctx.moduleContexts.get(referencingModule) ?? ctx,
-  ))
-  await mod.evaluate()
+  let mod: vm.SourceTextModule
+  try {
+    mod = new vm.SourceTextModule(code, {
+      context: ctx.vmContext,
+      identifier: path,
+      initializeImportMeta(meta) {
+        Object.defineProperty(meta, 'dagr', {
+          value: dagr,
+          enumerable: true,
+        })
+      },
+    })
+    ctx.moduleContexts.set(mod, ctx)
+    await mod.link((specifier, referencingModule) => link(
+      specifier,
+      ctx.moduleContexts.get(referencingModule) ?? ctx,
+    ))
+    await mod.evaluate()
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`Cannot evaluate Dagr index at ${location}: ${detail}`, { cause: error })
+  }
   const defaultExport = (mod.namespace as Record<string, unknown>)['default']
-  const result = IndexDef.safeParse(defaultExport)
-  return result.success ? deepFreeze(result.data) : null
+  if (isLegacyMountIndex(defaultExport))
+    throw new Error(
+      `Invalid Dagr index at ${location}: the former { "/": mountImplementation } shape is not supported; use dagr.mount.yaml and root .dagr/volumes.yaml`,
+    )
+  let result: ReturnType<typeof IndexDef.safeParse>
+  try {
+    result = IndexDef.safeParse(defaultExport)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`Invalid Dagr index at ${location}: ${detail}`, { cause: error })
+  }
+  if (result.success) return deepFreeze(result.data)
+  throw new Error(
+    `Invalid Dagr index at ${location}: ${result.error.message}`,
+  )
 }
 
-function isMountIndex(index: IndexDef): index is MountIndex {
-  return Object.hasOwn(index, '/')
+function isLegacyMountIndex(value: unknown): boolean {
+  return value !== null && typeof value === 'object' && Object.hasOwn(value, '/')
 }
 
 export class RepositoryPackageLoader implements PackageLoader {
@@ -171,15 +207,18 @@ export class RepositoryPackageLoader implements PackageLoader {
   private readonly moduleCache = new Map<string, vm.Module>()
   private readonly moduleContexts = new WeakMap<vm.Module, LoadContext>()
   private readonly indexCache = new Map<string, Promise<IndexDef | null>>()
+  private readonly mountRequests = new MountRequestLoader()
+  private readonly volumes: RootVolumeRegistry
   private readonly packageCache = new Map<string, Promise<LoadedPackage | undefined>>()
-  private readonly mountCache = new Map<string, Promise<MaterializedMount>>()
+  private readonly volumeCache = new Map<VolumeId, Promise<MaterializedVolume>>()
   private allPackages?: Promise<ReadonlyMap<string, LoadedPackage>>
 
   constructor(
     root: string,
-    private readonly mountMaterializer?: MountMaterializer,
+    private readonly volumeMaterializer?: VolumeMaterializer,
   ) {
     this.canonicalRoot = realpath(root)
+    this.volumes = new RootVolumeRegistry(root)
   }
 
   loadPackage(logicalPath: string): Promise<LoadedPackage | undefined> {
@@ -220,20 +259,29 @@ export class RepositoryPackageLoader implements PackageLoader {
       packageDir = relativePath === '.' || relativePath === ''
         ? sourceRoot
         : resolve(sourceRoot, relativePath)
-      const index = await this.indexAt(packageDir, declarationPath, sourceRoot, logicalRoot, trace)
 
       if (i === packageParts.length - 1) {
-        if (!index || isMountIndex(index))
+        const index = await this.indexAt(
+          packageDir,
+          declarationPath,
+          sourceRoot,
+          logicalRoot,
+          trace,
+        )
+        if (!index)
           throw new Error(`Unknown package: ${packageLogicalPath}`)
         break
       }
-      if (!index || !isMountIndex(index))
+      const crossed = await this.crossMount(packageDir, declarationPath, {
+        sourceRoot,
+        logicalRoot,
+        trace,
+      })
+      if (!crossed)
         throw new Error(`Unknown package: ${packageLogicalPath}`)
-
-      const mounted = await this.materialize(index['/'], declarationPath, trace)
-      sourceRoot = await realpath(mounted.root)
-      logicalRoot = mountBoundary(declarationPath)
-      trace = mounted.trace
+      sourceRoot = crossed.sourceRoot
+      logicalRoot = crossed.logicalRoot
+      trace = crossed.trace
     }
 
     const parts = source.split(ROOT_MARKER)
@@ -246,22 +294,18 @@ export class RepositoryPackageLoader implements PackageLoader {
       const mountLogicalPath = logicalBase === '.'
         ? mountPath
         : joinSourceLogical(logicalBase, mountPath)
-      const index = await this.indexAt(
-        mountDir,
-        mountLogicalPath,
+      const crossed = await this.crossMount(mountDir, mountLogicalPath, {
         sourceRoot,
         logicalRoot,
         trace,
-      )
-      if (!index || !isMountIndex(index))
+      })
+      if (!crossed)
         throw new Error(`COPY source crosses a non-mount path: ${source}`)
-
-      const mounted = await this.materialize(index['/'], mountLogicalPath, trace)
-      sourceRoot = await realpath(mounted.root)
+      sourceRoot = crossed.sourceRoot
       baseDir = sourceRoot
-      logicalRoot = mountBoundary(mountLogicalPath)
+      logicalRoot = crossed.logicalRoot
       logicalBase = logicalRoot
-      trace = mounted.trace
+      trace = crossed.trace
     }
 
     const src = parts.at(-1)!
@@ -301,8 +345,8 @@ export class RepositoryPackageLoader implements PackageLoader {
         file,
         packageLogicalPath,
         this.context(sourceRoot, logicalRoot, trace),
-      ).catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return null
+      ).catch((error: unknown) => {
+        if (isMissing(error)) return null
         throw error
       })
       this.indexCache.set(key, index)
@@ -325,18 +369,21 @@ export class RepositoryPackageLoader implements PackageLoader {
       const dir = relativePath === '.' || relativePath === ''
         ? sourceRoot
         : resolve(sourceRoot, relativePath)
-      const index = await this.indexAt(dir, declarationPath, sourceRoot, logicalRoot, trace)
 
       if (i === parts.length - 1) {
-        if (!index || isMountIndex(index)) return undefined
+        const index = await this.indexAt(dir, declarationPath, sourceRoot, logicalRoot, trace)
+        if (!index) return undefined
         return Object.freeze({ definition: index, context: dir })
       }
-      if (!index || !isMountIndex(index)) return undefined
-
-      const mounted = await this.materialize(index['/'], declarationPath, trace)
-      sourceRoot = await realpath(mounted.root)
-      logicalRoot = mountBoundary(declarationPath)
-      trace = mounted.trace
+      const crossed = await this.crossMount(dir, declarationPath, {
+        sourceRoot,
+        logicalRoot,
+        trace,
+      })
+      if (!crossed) return undefined
+      sourceRoot = crossed.sourceRoot
+      logicalRoot = crossed.logicalRoot
+      trace = crossed.trace
     }
     return undefined
   }
@@ -356,20 +403,16 @@ export class RepositoryPackageLoader implements PackageLoader {
         ? sourceRoot
         : resolve(sourceRoot, mountPath)
       const declarationPath = joinSourceLogical(logicalRoot, mountPath)
-      const index = await this.indexAt(
-        declarationDir,
-        declarationPath,
+      const crossed = await this.crossMount(declarationDir, declarationPath, {
         sourceRoot,
         logicalRoot,
         trace,
-      )
-      if (!index || !isMountIndex(index))
+      })
+      if (!crossed)
         throw new Error(`Dagr import crosses a non-mount path: ${specifier}`)
-
-      const mounted = await this.materialize(index['/'], declarationPath, trace)
-      sourceRoot = await realpath(mounted.root)
-      logicalRoot = mountBoundary(declarationPath)
-      trace = mounted.trace
+      sourceRoot = crossed.sourceRoot
+      logicalRoot = crossed.logicalRoot
+      trace = crossed.trace
     }
 
     const filePath = parts.at(-1)!
@@ -388,27 +431,55 @@ export class RepositoryPackageLoader implements PackageLoader {
     return { path, context: this.context(sourceRoot, logicalRoot, trace) }
   }
 
-  private async materialize(
-    mount: MountDef,
+  private async crossMount(
+    dir: string,
     logicalPath: string,
-    trace: readonly MountTrace[],
-  ): Promise<{ readonly root: string; readonly trace: readonly MountTrace[] }> {
-    if (!this.mountMaterializer)
-      throw new Error(`Cannot load mount at ${logicalPath}: no mount materializer configured`)
+    state: TraversalState,
+  ): Promise<TraversalState | undefined> {
+    const request = await this.mountRequests.load(dir, logicalPath)
+    if (request === undefined) return undefined
 
-    let materialized = this.mountCache.get(logicalPath)
-    if (!materialized) {
-      materialized = this.mountMaterializer.materialize(mount, logicalPath)
-      this.mountCache.set(logicalPath, materialized)
-    }
-    const mounted = await materialized
-    if (trace.some(entry => entry.identity === mounted.identity))
+    const { id, implementation } = await this.volumes.resolve(request, logicalPath)
+    if (state.trace.some(entry => entry.volumeId === id))
       throw new Error(
-        `Circular mount: ${[...trace.map(entry => entry.logicalPath), logicalPath].join(' -> ')}`,
+        `Circular volume ${JSON.stringify(id)}: ${[
+          ...state.trace.map(entry => canonicalMountPath(entry.logicalPath)),
+          canonicalMountPath(logicalPath),
+        ].join(' -> ')}`,
       )
+    if (!this.volumeMaterializer)
+      throw new Error(
+        `Cannot materialize volume ${JSON.stringify(id)} requested through mount ${canonicalMountPath(logicalPath)}: no volume materializer configured`,
+      )
+
+    let materialized = this.volumeCache.get(id)
+    if (!materialized) {
+      materialized = this.volumeMaterializer.materialize(id, implementation, logicalPath)
+      this.volumeCache.set(id, materialized)
+    }
+    let mounted: MaterializedVolume
+    try {
+      mounted = await materialized
+    } catch (error) {
+      throw new Error(
+        `Failed to materialize volume ${JSON.stringify(id)} requested through mount ${canonicalMountPath(logicalPath)}`,
+        { cause: error },
+      )
+    }
+
+    let sourceRoot: string
+    try {
+      sourceRoot = await realpath(mounted.root)
+    } catch (error) {
+      throw new Error(
+        `Materialized volume ${JSON.stringify(id)} requested through mount ${canonicalMountPath(logicalPath)} has no readable root`,
+        { cause: error },
+      )
+    }
     return {
-      root: mounted.root,
-      trace: [...trace, { identity: mounted.identity, logicalPath }],
+      sourceRoot,
+      logicalRoot: mountBoundary(logicalPath),
+      trace: [...state.trace, { volumeId: id, logicalPath }],
     }
   }
 
@@ -428,7 +499,6 @@ export class RepositoryPackageLoader implements PackageLoader {
     trace: readonly MountTrace[],
   ): Promise<void> {
     const index = await this.indexAt(root, logicalRoot, sourceRoot, sourceLogicalRoot, trace)
-    if (index && isMountIndex(index)) return
     if (index) this.remember(logicalRoot, index, root, acc)
 
     const entries = await readDirectories(root)
@@ -452,9 +522,10 @@ export class RepositoryPackageLoader implements PackageLoader {
     acc: Map<string, LoadedPackage>,
     trace: readonly MountTrace[],
   ): Promise<void> {
+    const request = await this.mountRequests.load(dir, logicalPath)
     const index = await this.indexAt(dir, logicalPath, sourceRoot, sourceLogicalRoot, trace)
-    if (index && isMountIndex(index)) return
     if (index) this.remember(logicalPath, index, dir, acc)
+    if (request !== undefined) return
 
     const entries = await readDirectories(dir)
     await Promise.all(entries.map(entry => this.walk(
@@ -481,12 +552,17 @@ export class RepositoryPackageLoader implements PackageLoader {
 
 async function readDirectories(root: string): Promise<readonly string[]> {
   const entries = await readdir(root, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
-    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return []
+    if (isMissing(error)) return []
     throw error
   })
   return entries
     .filter(entry => entry.isDirectory() && !DISCOVERY_EXCLUDED_DIRECTORIES.has(entry.name))
     .map(entry => entry.name)
+}
+
+function isMissing(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException)?.code
+  return code === 'ENOENT' || code === 'ENOTDIR'
 }
 
 function validateLogicalPath(logicalPath: string): void {

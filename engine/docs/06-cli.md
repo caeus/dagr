@@ -51,7 +51,7 @@ dependencies:
 The output format is `//package:facet:target[dependency, ...]`.
 
 Discovery continues below source packages, including a package at the repository root. It skips
-`.git`. Mount declarations stay opaque and are not built or extracted by
+`.git`. Mount requests stay opaque and their volumes are not built or extracted by
 `dagr list`.
 
 The command is intentionally small and may evolve as Dagr's query needs become clearer.
@@ -73,7 +73,7 @@ dagr run ./examples/starter:ci:hello
 ```
 
 Discovery works exactly as it does for `dagr list`: it recurses through source directories, skips
-`.git`, and leaves mount declarations opaque — so mounted packages are not listed. When no package
+`.git`, and leaves mount requests opaque, so mounted packages are not listed. When no package
 lies at or under the working directory, the command prints nothing and exits `0`.
 
 ## `dagr show`

@@ -65,6 +65,29 @@ import stack from '//stacks/ts//dagr.stack.js'
 
 See [Build-file environment and imports](04-sandbox-and-imports.md) for the complete rules.
 
+## A volume mount fails
+
+Read the full cause chain. Dagr includes the canonical volume ID and the mount path once identity is
+known, so start with the named file or policy layer:
+
+- For `dagr.mount.yaml`, fix YAML syntax and keep its value JSON-compatible.
+- For `.dagr/config.js`, export a synchronous `identifyVolume(request)` that returns a string.
+  Imports from this file are not supported yet.
+- For an undefined ID, add that exact key to the root `.dagr/volumes.yaml` or correct the root
+  identity policy. Files with the same names inside mounted repositories do not override the root.
+- For an invalid implementation, use `FROM`, `steps`, and `IGNORE`, and make the built image finish
+  with a `WORKDIR` other than `/`.
+- For a materialization failure, inspect the retained Docker build or extraction cause.
+- For a circular volume, follow the printed mount trace and remove the recursive identity edge.
+
+An unused mount may have no implementation. It fails only when a target, import, or mounted `COPY`
+actually crosses that boundary.
+
+If Dagr reports the former `{ "/": mountImplementation }` shape, remove it from `dagr.index.js`.
+Put the request in `dagr.mount.yaml` and the implementation in the root `.dagr/volumes.yaml`.
+
+See [Filesystem composition](03-filesystem-composition.md) for the complete model.
+
 ## A target definition is rejected
 
 Each target needs this basic shape:
