@@ -78,7 +78,12 @@ describe('RootVolumeRegistry', () => {
       {
         name: 'non-string result',
         config: 'export const identifyVolume = () => ({ id: "example" })\n',
-        expected: /must return a string.*\/\/vendor\/foo; received object/,
+        expected: /must return a string synchronously.*\/\/vendor\/foo; received object/,
+      },
+      {
+        name: 'dynamic imports are unsupported',
+        config: 'export const identifyVolume = () => import("./helper.js")\n',
+        expected: /must return a string synchronously.*\/\/vendor\/foo; received promise/,
       },
     ] as const
 
@@ -99,6 +104,70 @@ describe('RootVolumeRegistry', () => {
         await rm(root, { recursive: true })
       }
     })
+  })
+
+  it('evaluates identity policy with minimal globals and a sandbox-owned frozen request', async () => {
+    const root = await rootWith({
+      '.dagr/config.js': `
+        let dynamicImportEscaped = false
+        try { await import('./forbidden.js') }
+        catch (error) {
+          try {
+            dynamicImportEscaped = Boolean(
+              error.constructor.constructor('return process')()
+            )
+          } catch {}
+        }
+
+        const exposed = [
+          ['Atomics', typeof Atomics],
+          ['Buffer', typeof Buffer],
+          ['Date', typeof Date],
+          ['FinalizationRegistry', typeof FinalizationRegistry],
+          ['Function', typeof Function],
+          ['Intl', typeof Intl],
+          ['SharedArrayBuffer', typeof SharedArrayBuffer],
+          ['WeakRef', typeof WeakRef],
+          ['WebAssembly', typeof WebAssembly],
+          ['console', typeof console],
+          ['eval', typeof eval],
+          ['fetch', typeof fetch],
+          ['process', typeof process],
+          ['require', typeof require],
+          ['setTimeout', typeof setTimeout],
+          ['Math.random', typeof Math.random],
+        ].filter(([, type]) => type !== 'undefined')
+
+        const escapes = request => [
+          () => request.constructor.constructor('return process')(),
+          () => globalThis.constructor.constructor('return process')(),
+          () => ({}).constructor.constructor('return process')(),
+          () => (async () => {}).constructor('return process')(),
+        ].some(attempt => {
+          try { return Boolean(attempt()) }
+          catch { return false }
+        })
+
+        export const identifyVolume = request => {
+          if (exposed.length) return 'exposed:' + exposed.map(([name]) => name).join(',')
+          if (dynamicImportEscaped || escapes(request)) return 'escaped'
+          if (!Object.isFrozen(request) || !Object.isFrozen(request.nested)) return 'mutable'
+          try { request.repo = 'mutated' } catch {}
+          return request.repo
+        }
+      `,
+      '.dagr/volumes.yaml': VALID_VOLUMES,
+    })
+
+    try {
+      const resolved = await new RootVolumeRegistry(root).resolve(
+        { repo: 'example', nested: { enabled: true } },
+        'vendor/foo',
+      )
+      assert.equal(resolved.id, 'example')
+    } finally {
+      await rm(root, { recursive: true })
+    }
   })
 
   it('reports malformed and invalid volume definitions with the volume ID and mount path', async t => {

@@ -103,6 +103,10 @@ materializer inspects the image's final `WORKDIR` and copies that directory into
 Re-entering the same volume ID through the active trace is a circular mount. Configuration found
 inside mounted repositories is never consulted.
 
+Root config uses a stricter profile of the shared VM sandbox than build files. It receives no
+host-provided globals, cannot import modules, and gets a frozen request reconstructed inside its VM
+realm. This prevents the request object's constructor chain from becoming a bridge back to Node.
+
 ## Target execution
 
 `buildRunner()` memoizes a `Promise<TargetResult>` by fully qualified target. Memoizing the promise

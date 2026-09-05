@@ -36,9 +36,12 @@ The root monorepo exports one `identifyVolume` function from `.dagr/config.js`:
 export const identifyVolume = request => request.repo
 ```
 
-The function receives the parsed request and must synchronously return a string. For the first
-implementation, `.dagr/config.js` runs in Dagr's restricted JavaScript environment and cannot
-import other files.
+The function receives the parsed request and must synchronously return a string. `.dagr/config.js`
+runs in a dedicated minimal sandbox. It has deterministic JavaScript primitives, but no `Buffer`,
+console, clock, randomness, network, process, filesystem, timers, WebAssembly, or dynamic code
+generation. Static and dynamic imports are rejected. Dagr recreates and deep-freezes the mount
+request inside that VM context before calling `identifyVolume`, so the request cannot carry host
+constructors across the boundary.
 
 The root decides which request differences matter. These requests:
 

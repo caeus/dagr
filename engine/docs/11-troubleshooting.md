@@ -72,7 +72,7 @@ known, so start with the named file or policy layer:
 
 - For `dagr.mount.yaml`, fix YAML syntax and keep its value JSON-compatible.
 - For `.dagr/config.js`, export a synchronous `identifyVolume(request)` that returns a string.
-  Imports from this file are not supported yet.
+  Static and dynamic imports from this file are deliberately unsupported.
 - For an undefined ID, add that exact key to the root `.dagr/volumes.yaml` or correct the root
   identity policy. Files with the same names inside mounted repositories do not override the root.
 - For an invalid implementation, use `FROM`, `steps`, and `IGNORE`, and make the built image finish

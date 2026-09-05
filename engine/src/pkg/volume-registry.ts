@@ -2,7 +2,10 @@ import vm from 'node:vm'
 import { readFile, realpath } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
-import { createSandboxContext } from '#pkg/sandbox.js'
+import {
+  createConfigSandboxContext,
+  createSandboxJsonParser,
+} from '#pkg/sandbox.js'
 import {
   Volumes,
   type MountImplementation,
@@ -21,6 +24,10 @@ export interface IdentifiedVolume {
 }
 
 type RuntimeIdentifyVolume = (request: MountRequest) => unknown
+type RuntimeIdentifyVolumeInvoker = (
+  identifyVolume: RuntimeIdentifyVolume,
+  request: MountRequest,
+) => unknown
 
 export class RootVolumeRegistry {
   private readonly canonicalRoot: Promise<string>
@@ -48,7 +55,7 @@ export class RootVolumeRegistry {
     }
     if (typeof id !== 'string')
       throw new Error(
-        `Root identifyVolume must return a string for mount ${mountPath}; received ${valueKind(id)}`,
+        `Root identifyVolume must return a string synchronously for mount ${mountPath}; received ${valueKind(id)}`,
       )
 
     const volumes = await this.loadVolumes().catch(error => {
@@ -83,13 +90,22 @@ export class RootVolumeRegistry {
       throw new Error(`Cannot read root ${CONFIG_FILE}`, { cause: error })
     }
 
-    const context = createSandboxContext()
+    const context = createConfigSandboxContext()
+    const rejectImport = vm.compileFunction(
+      `throw new Error(${JSON.stringify(`Root ${CONFIG_FILE} cannot import `)} + specifier)`,
+      ['specifier'],
+      { parsingContext: context },
+    ) as (specifier: string) => never
     let mod: vm.SourceTextModule
     try {
-      mod = new vm.SourceTextModule(code, { context, identifier: path })
-      await mod.link(specifier => {
-        throw new Error(`Root ${CONFIG_FILE} cannot import ${specifier}`)
+      mod = new vm.SourceTextModule(code, {
+        context,
+        identifier: path,
+        importModuleDynamically(specifier) {
+          return rejectImport(specifier)
+        },
       })
+      await mod.link(specifier => rejectImport(specifier))
       await mod.evaluate()
     } catch (error) {
       throw new Error(
@@ -101,7 +117,24 @@ export class RootVolumeRegistry {
     const identifyVolume = (mod.namespace as Record<string, unknown>)['identifyVolume']
     if (typeof identifyVolume !== 'function')
       throw new Error(`Root ${CONFIG_FILE} must export an identifyVolume function`)
-    return identifyVolume as RuntimeIdentifyVolume
+    const parseRequest = createSandboxJsonParser(context)
+    const invoke = vm.compileFunction(`
+      const result = identifyVolume(request)
+      if (result !== null && typeof result === 'object') {
+        try { Promise.prototype.then.call(result, undefined, () => undefined) }
+        catch {}
+      }
+      return result
+    `, ['identifyVolume', 'request'], {
+      parsingContext: context,
+    }) as RuntimeIdentifyVolumeInvoker
+    return request => {
+      const source = JSON.stringify(request)
+      return invoke(
+        identifyVolume as RuntimeIdentifyVolume,
+        parseRequest(source) as MountRequest,
+      )
+    }
   }
 
   private loadVolumes(): Promise<Volumes> {
@@ -143,6 +176,7 @@ export class RootVolumeRegistry {
 function valueKind(value: unknown): string {
   if (value === null) return 'null'
   if (Array.isArray(value)) return 'array'
+  if (Object.prototype.toString.call(value) === '[object Promise]') return 'promise'
   return typeof value
 }
 
