@@ -42,7 +42,7 @@ supported.
 
 ## Mount boundaries
 
-A second `//` crosses a mount declared by `dagr.index.js`:
+A second `//` crosses a mount requested by `dagr.mount.yaml`:
 
 ```js
 import toolchain from '//stacks/toolchain//dagr.stack.js'
@@ -53,6 +53,9 @@ mounts add another boundary marker.
 
 Mounts are materialized only when an explicit target or import crosses their boundary. `dagr list`
 does not materialize them.
+
+See [Filesystem composition](03-filesystem-composition.md) for how the root identifies and
+implements the requested volume.
 
 ## Shared helpers
 

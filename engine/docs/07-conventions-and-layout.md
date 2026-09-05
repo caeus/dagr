@@ -73,7 +73,7 @@ This produces:
 //services/web:ci:build
 ```
 
-`dagr list` currently stays within source directories and does not materialize mount declarations.
+`dagr list` currently stays within source directories and does not materialize requested volumes.
 Mount contents remain addressable when a command explicitly loads a target through that boundary.
 
 ## Shared stacks and helpers
@@ -92,12 +92,13 @@ a project-chosen alias such as `//stacks/toolchain//dagr.stack.js`; the second `
 boundary.
 
 See [Build-file environment and imports](04-sandbox-and-imports.md) for module rules and
-[Authoring `dagr.index.js`](03-authoring-dagr-index-js.md) for mounts and target definitions.
+[Authoring `dagr.index.js`](03-authoring-dagr-index-js.md) for target definitions, and
+[Filesystem composition](03-filesystem-composition.md) for volume mounts.
 
 ## Build-context ignores
 
-Discovery exclusions and Docker build-context ignores are different things. Dagr skips `.git`
-while discovering packages. A target controls its Docker context with
+Discovery exclusions and Docker build-context ignores are different things. Dagr skips `.dagr`
+and `.git` while discovering packages. A target controls its Docker context with
 `IGNORE`:
 
 ```js

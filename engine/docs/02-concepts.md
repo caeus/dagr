@@ -145,26 +145,26 @@ Without `EXPORT`, the result can stay internal to the build graph.
 
 ## Mounted package trees
 
-A `dagr.index.js` can also replace its directory with the final working directory of another built image instead of declaring facets:
+A `dagr.mount.yaml` requests a volume at the directory containing it:
 
-```js
-// stacks/tools/dagr.index.js
-export default {
-  '/': {
-    FROM: 'ghcr.io/acme/dagr-tools:1',
-    steps: [],
-    IGNORE: [],
-  },
-}
+```yaml
+# stacks/tools/dagr.mount.yaml
+repo: github.com/acme/dagr-tools
+version: "^3"
 ```
 
-If that image's final `WORKDIR` contains `c/dagr.index.js`, `//` marks the mount boundary in its package address:
+The root monorepo's `.dagr/config.js` maps that request to a global volume ID. Its
+`.dagr/volumes.yaml` maps the ID to an image recipe. Mounted repositories can request a volume,
+but only the root selects its identity and implementation.
+
+If that volume's final `WORKDIR` contains `c/dagr.index.js`, `//` marks the mount boundary in its package address:
 
 ```text
 //stacks/tools//c:ci:pack
 ```
 
-`/` is an alternate index kind, not a special facet. It cannot coexist with facets.
+`dagr.index.js` remains an ordinary target definition and may coexist with `dagr.mount.yaml` at
+the same attachment point.
 
 A mount is materialized only when a requested target or import crosses its boundary. `dagr list`
 leaves mounts opaque.
@@ -177,6 +177,9 @@ A package at the mounted `WORKDIR` root is addressed as:
 ```text
 //stacks/tools//:facet:target
 ```
+
+See [Filesystem composition](03-filesystem-composition.md) for the complete request, identity,
+implementation, and lazy-resolution model.
 
 ## Caching
 
@@ -201,7 +204,7 @@ depend on it.
 
 Build definitions can still use JavaScript, imported helpers, committed data, templates, loops, and dagr's YAML and TOML stringifiers. The intention is that the graph is calculated from committed source rather than ambient machine state.
 
-Definitions should therefore behave as pure functions of committed source. Pin mounted images when
-their contents affect reproducibility.
+Definitions should therefore behave as pure functions of committed source. Root-owned volume
+implementations should pin external inputs when their contents affect reproducibility.
 
 See [Build-file environment and imports](04-sandbox-and-imports.md) for the available APIs.

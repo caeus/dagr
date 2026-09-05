@@ -1,23 +1,25 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it } from 'node:test'
-import { DockerMountMaterializer, validateSymlinks } from '#runner/mount-materializer.js'
+import { DockerVolumeMaterializer, validateSymlinks } from '#runner/volume-materializer.js'
 import type { DockerfileRenderer } from '#runner/dockerfile-renderer.js'
 import type { DockerImageBuilder } from '#runner/docker-builder.js'
 import type { DockerImageCopier } from '#runner/docker-copier.js'
 import type { DockerImageInspector } from '#runner/docker-inspector.js'
 
-describe('DockerMountMaterializer', () => {
+describe('DockerVolumeMaterializer', () => {
   it('builds the recipe and extracts the final WORKDIR contents', async () => {
-    const mountRoot = await mkdtemp(join(tmpdir(), 'dagr-mounts-'))
+    const volumeRoot = await mkdtemp(join(tmpdir(), 'dagr-mounts-'))
+    const contextRoot = await mkdtemp(join(tmpdir(), 'dagr-context-'))
     const calls: Array<{ src: string; dest: string }> = []
     const renderer: DockerfileRenderer = { renderDockerfile: () => 'FROM tools\n' }
     const builder: DockerImageBuilder = {
       buildDockerImage: async (_content, tag, context, ignore) => {
-        assert.equal(tag, 'packages_tools-mount')
-        assert.equal(context, join(mountRoot, '.context'))
+        assert.equal(tag, `dagr-volume-${createHash('sha256').update('tools').digest('hex')}`)
+        assert.equal(context, contextRoot)
         assert.deepEqual(ignore, ['node_modules'])
         return { tag, digest: 'sha256:tools' }
       },
@@ -32,30 +34,35 @@ describe('DockerMountMaterializer', () => {
     }
 
     try {
-      const materializer = new DockerMountMaterializer(
+      const materializer = new DockerVolumeMaterializer(
         renderer,
         builder,
         copier,
         inspector,
-        mountRoot,
+        volumeRoot,
+        contextRoot,
       )
       const mounted = await materializer.materialize(
+        'tools',
         { FROM: 'tools', steps: [], IGNORE: ['node_modules'] },
         'packages/tools',
       )
 
-      assert.equal(mounted.identity, 'sha256:tools:/dagr')
       assert.equal(calls.length, 1)
       assert.deepEqual(calls[0], { src: '/dagr/.', dest: mounted.root })
     } finally {
-      await rm(mountRoot, { recursive: true })
+      await Promise.all([
+        rm(volumeRoot, { recursive: true }),
+        rm(contextRoot, { recursive: true }),
+      ])
     }
   })
 
   it('rejects an unset or root final WORKDIR', async () => {
-    const mountRoot = await mkdtemp(join(tmpdir(), 'dagr-mounts-'))
+    const volumeRoot = await mkdtemp(join(tmpdir(), 'dagr-mounts-'))
+    const contextRoot = await mkdtemp(join(tmpdir(), 'dagr-context-'))
     let copied = false
-    const materializer = new DockerMountMaterializer(
+    const materializer = new DockerVolumeMaterializer(
       { renderDockerfile: () => 'FROM tools\n' },
       {
         buildDockerImage: async (_content, tag) => ({ tag, digest: 'sha256:tools' }),
@@ -64,12 +71,14 @@ describe('DockerMountMaterializer', () => {
         copyFromImage: async () => { copied = true },
       },
       { inspectImageWorkdir: async () => '/' },
-      mountRoot,
+      volumeRoot,
+      contextRoot,
     )
 
     try {
       await assert.rejects(
         materializer.materialize(
+          'tools',
           { FROM: 'tools', steps: [], IGNORE: [] },
           'packages/tools',
         ),
@@ -77,7 +86,10 @@ describe('DockerMountMaterializer', () => {
       )
       assert.equal(copied, false)
     } finally {
-      await rm(mountRoot, { recursive: true })
+      await Promise.all([
+        rm(volumeRoot, { recursive: true }),
+        rm(contextRoot, { recursive: true }),
+      ])
     }
   })
 })

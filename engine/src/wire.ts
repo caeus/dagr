@@ -7,7 +7,7 @@ import { consoleReporter, type Reporter } from '#report/reporter.js'
 import { processRunner, type ProcessRunner } from '#sys/process-runner.js'
 import {
   RepositoryPackageLoader,
-  type MountMaterializer,
+  type VolumeMaterializer,
   type PackageLoader,
 } from '#pkg/loader.js'
 import type { HostPlatform } from '#pkg/schema.js'
@@ -18,7 +18,7 @@ import { buildDockerImage, type DockerImageBuilder } from '#runner/docker-builde
 import { extractFromImage, type DockerImageExtractor } from '#runner/docker-extractor.js'
 import { copyFromImage, type DockerImageCopier } from '#runner/docker-copier.js'
 import { inspectImageWorkdir, type DockerImageInspector } from '#runner/docker-inspector.js'
-import { DockerMountMaterializer } from '#runner/mount-materializer.js'
+import { DockerVolumeMaterializer } from '#runner/volume-materializer.js'
 import {
   CompositeCommandRunner,
   ListCommandRunner,
@@ -47,10 +47,10 @@ export function defaultModule(
   cmd: Cmd,
   stack: AsyncDisposeStack
 ) {
-  const mountRoot = env['MOUNT_ROOT'] ?? join(tmpdir(), `dagr-mounts-${process.pid}`)
-  const cleanMountRoot = env['CLEAN_MOUNT_ROOT'] === '1' || env['MOUNT_ROOT'] === undefined
-  if (cleanMountRoot && mountRoot !== '/')
-    stack.defer(() => rm(mountRoot, { recursive: true, force: true }))
+  const volumeRoot = env['MOUNT_ROOT'] ?? join(tmpdir(), `dagr-mounts-${process.pid}`)
+  const cleanVolumeRoot = env['CLEAN_MOUNT_ROOT'] === '1' || env['MOUNT_ROOT'] === undefined
+  if (cleanVolumeRoot && volumeRoot !== '/')
+    stack.defer(() => rm(volumeRoot, { recursive: true, force: true }))
 
   return Module({
     env: toValue(env),
@@ -63,7 +63,7 @@ export function defaultModule(
       ['env', 'root'],
       (env: NodeJS.ProcessEnv, root: string) => env['HOST_REPO_ROOT'] ?? root
     ),
-    mountRoot: toValue(mountRoot),
+    volumeRoot: toValue(volumeRoot),
     currentPackage: toFactory(['env', 'hostRoot'], workingPackageName),
     reporter: toValue(
       consoleReporter({
@@ -104,20 +104,21 @@ export function defaultModule(
         copyFromImage: (imageTag, copies) => copyFromImage(imageTag, copies, runner)
       })
     ),
-    mountMaterializer: toClass(
+    volumeMaterializer: toClass(
       [
         'dockerfileRenderer',
         'dockerImageBuilder',
         'dockerImageCopier',
         'dockerImageInspector',
-        'mountRoot'
+        'volumeRoot',
+        'root'
       ],
-      DockerMountMaterializer
+      DockerVolumeMaterializer
     ),
     packageLoader: toFactory(
-      ['root', 'mountMaterializer'],
-      (root: string, mountMaterializer: MountMaterializer): PackageLoader =>
-        new RepositoryPackageLoader(root, mountMaterializer)
+      ['root', 'volumeMaterializer'],
+      (root: string, volumeMaterializer: VolumeMaterializer): PackageLoader =>
+        new RepositoryPackageLoader(root, volumeMaterializer)
     ),
     hostPlatform: toFactory(
       ['env'],

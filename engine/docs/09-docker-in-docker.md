@@ -41,8 +41,8 @@ Applied to dagr:
 | Reading `dagr.index.js` files | `/repo` | Plain `fs` calls in the dagr process. |
 | `docker buildx build <context>` | `/repo/<package>` | The CLI reads and uploads the context itself. |
 | `docker cp <container>:<src> <package>` for `EXPORT` | `/repo/<package>` | The **CLI** writes through the existing repo mount. |
-| `docker cp <container>:<workdir>/. <mount>` for a mount | `/tmp/dagr-mounts/<identity>` | The **CLI** writes the archive to its own filesystem. |
-| Reading a materialized mount | `/tmp/dagr-mounts/<identity>` | Plain `fs` calls in the dagr process. |
+| `docker cp <container>:<workdir>/. <volume>` for a volume | `/tmp/dagr-mounts/<content-key>` | The **CLI** writes the archive to its own filesystem. |
+| Reading a materialized volume | `/tmp/dagr-mounts/<content-key>` | Plain `fs` calls in the dagr process. |
 
 `wire.ts` therefore gives both the target runner and exporter the container-side `root`:
 
@@ -56,9 +56,10 @@ Module({
 })
 ```
 
-For both `EXPORT` and mounts, dagr uses `docker create`, `docker cp`, and `docker rm`. Temporary
+For both `EXPORT` and volumes, dagr uses `docker create`, `docker cp`, and `docker rm`. Temporary
 containers are never started, so their entrypoints and commands do not run and images need no
-shell. Exported files go through `/repo`; mounted trees live in dagr's temporary filesystem.
+shell. Exported files go through `/repo`; materialized volume trees live in dagr's temporary
+filesystem.
 
 ## Consequences
 

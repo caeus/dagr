@@ -1,7 +1,10 @@
 # Authoring `dagr.index.js`
 
-A `dagr.index.js` file is an ES module whose **default export** describes either one package's
-facets and targets or a mounted package tree.
+A `dagr.index.js` file is an ES module whose **default export** describes one package's facets and
+targets. Filesystem composition is separate and uses `dagr.mount.yaml`.
+
+The former `{ '/': mountImplementation }` index shape is not accepted. Move the request to
+`dagr.mount.yaml` and the implementation to the root `.dagr/volumes.yaml`.
 
 ## The shape
 
@@ -55,41 +58,15 @@ mounted tree receives `//c`, regardless of whether that tree was mounted at `//t
 The value is read-only and never contains a physical checkout or temporary mount path, so the same
 source tree observes the same locations on every host and under every mounter.
 
-## `/`
+## Mounting volumes
 
-A mount replaces the directory containing its `dagr.index.js` with the resulting image's final
-`WORKDIR`:
+Filesystem composition is defined separately from targets. A directory's `dagr.mount.yaml`
+requests a volume, the root `.dagr/config.js` assigns its global ID, and the root
+`.dagr/volumes.yaml` selects its image recipe. The former `{ '/': mountImplementation }` index
+shape is rejected.
 
-```js
-export default {
-  '/': {
-    FROM: 'ghcr.io/acme/dagr-tools:1',
-    steps: [{ WORKDIR: '/dagr' }],
-    IGNORE: [],
-  },
-}
-```
-
-It cannot contain facets, `deps`, `run`, or `EXPORT`. The mounted image must declare a final
-`WORKDIR` other than `/`; that directory becomes the mounted source root. A mount has no source
-build context and cannot depend on targets.
-
-For example, a mount at `stacks/tools` whose final workdir contains `c/dagr.index.js` exposes
-`//stacks/tools//c:facet:target`. The `//` is a canonical image-boundary marker, not a filesystem
-path normalization accident. A `dagr.index.js` at the workdir root exposes
-`//stacks/tools//:facet:target`. Nested mounts add one `//` at every boundary.
-
-The same boundary syntax works in root-relative build-file imports. For example,
-`//stacks/tools//dagr.shared.js` materializes the mount at `stacks/tools` and imports the file
-from its final `WORKDIR`. Imports made by that module use the mounted tree as their `//` root.
-
-Targets loaded inside the mounted tree remain ordinary targets, including their `deps` and
-image recipes. They may be used as dependencies. If such a target declares `EXPORT` and is run
-directly, dagr rejects the export because its `//` package identity cannot map unambiguously onto
-a host filesystem path.
-
-`dagr list` does not materialize mounts. A mount is loaded when an explicit target or import crosses
-its boundary.
+See [Filesystem composition](03-filesystem-composition.md) for identity, lazy resolution, nested
+`//` traversal, root authority, implementation rules, and migration examples.
 
 ## `run(context)`
 
@@ -134,8 +111,8 @@ A source containing `//` deliberately crosses a mount boundary relative to the p
 { COPY: { src: 'tools//include/a.h', dest: '/include/a.h' } }
 ```
 
-Here `tools/dagr.index.js` must declare a mount. Dagr materializes the mounted image's final
-`WORKDIR`, passes it to BuildKit as a named build context, and copies `include/a.h` from that
+Here `tools/dagr.mount.yaml` must request a volume. Dagr materializes the volume's final `WORKDIR`,
+passes it to BuildKit as a named build context, and copies `include/a.h` from that
 context. Several copies from the same mount reuse one materialized context. Every path segment
 before a `//` must resolve to a mount.
 

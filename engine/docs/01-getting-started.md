@@ -27,7 +27,7 @@ The repository controls its Dagr version through the image pin in `.dagr/cli.sh`
 dagr list
 ```
 
-This recursively scans the repository, skipping `.git`. It does not materialize mounts.
+This recursively scans the repository, skipping `.dagr` and `.git`. It does not materialize mounts.
 
 ## Run a target
 
