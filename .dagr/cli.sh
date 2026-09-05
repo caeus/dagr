@@ -44,7 +44,7 @@ dagr_docker_run() {
   if [ "$image" = "$PIN" ]; then
     # The released engine still needs the former index mount shape to bootstrap this checkout.
     dagr_docker_run_container \
-      -v "$DAGR_DIR/bootstrap-typescript.index.js:/repo/engine/stacks/typescript/dagr.index.js:ro" \
+      -v "$DAGR_DIR/bootstrap-typescript:/repo/engine/stacks/typescript:ro" \
       "$image" "$@"
   else
     dagr_docker_run_container "$image" "$@"
