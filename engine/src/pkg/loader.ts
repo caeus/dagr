@@ -67,6 +67,7 @@ interface LoadContext {
   readonly cache: Map<string, vm.Module>
   readonly moduleContexts: WeakMap<vm.Module, LoadContext>
   readonly resolveImport: (specifier: string, context: LoadContext) => Promise<ResolvedImport>
+  readonly evaluateModule: <T>(work: () => Promise<T>) => Promise<T>
 }
 
 interface TraversalState {
@@ -169,11 +170,13 @@ async function loadIndex(
       },
     })
     ctx.moduleContexts.set(mod, ctx)
-    await mod.link((specifier, referencingModule) => link(
-      specifier,
-      ctx.moduleContexts.get(referencingModule) ?? ctx,
-    ))
-    await mod.evaluate()
+    await ctx.evaluateModule(async () => {
+      await mod.link((specifier, referencingModule) => link(
+        specifier,
+        ctx.moduleContexts.get(referencingModule) ?? ctx,
+      ))
+      await mod.evaluate()
+    })
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     throw new Error(`Cannot evaluate Dagr index at ${location}: ${detail}`, { cause: error })
@@ -206,6 +209,7 @@ export class RepositoryPackageLoader implements PackageLoader {
   private readonly builtins = createBuiltinModules(this.vmContext)
   private readonly moduleCache = new Map<string, vm.Module>()
   private readonly moduleContexts = new WeakMap<vm.Module, LoadContext>()
+  private moduleEvaluationQueue: Promise<void> = Promise.resolve()
   private readonly indexCache = new Map<string, Promise<IndexDef | null>>()
   private readonly mountRequests = new MountRequestLoader()
   private readonly volumes: RootVolumeRegistry
@@ -327,7 +331,20 @@ export class RepositoryPackageLoader implements PackageLoader {
       cache: this.moduleCache,
       moduleContexts: this.moduleContexts,
       resolveImport: (specifier, context) => this.resolveImport(specifier, context),
+      evaluateModule: work => this.evaluateModule(work),
     }
+  }
+
+  private evaluateModule<T>(work: () => Promise<T>): Promise<T> {
+    const result = this.moduleEvaluationQueue.then(
+      () => work(),
+      () => work(),
+    )
+    this.moduleEvaluationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
   }
 
   private async indexAt(
