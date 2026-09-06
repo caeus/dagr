@@ -23,7 +23,7 @@ fi
 PLATFORM_ENV=""
 if [ -n "$TARGET_PLATFORM" ]; then PLATFORM_ENV="-e DOCKER_DEFAULT_PLATFORM=$TARGET_PLATFORM"; fi
 
-dagr_docker_run_container() {
+dagr_docker_run() {
   docker run --rm --pull=missing \
     -v "$REPO_ROOT:/repo" \
     -v /var/run/docker.sock:/var/run/docker.sock \
@@ -36,19 +36,6 @@ dagr_docker_run_container() {
     $LIBC_ENV \
     $PLATFORM_ENV \
     "$@"
-}
-
-dagr_docker_run() {
-  image="$1"
-  shift
-  if [ "$image" = "$PIN" ]; then
-    # The released engine still needs the former index mount shape to bootstrap this checkout.
-    dagr_docker_run_container \
-      -v "$DAGR_DIR/bootstrap-typescript:/repo/engine/stacks/typescript:ro" \
-      "$image" "$@"
-  else
-    dagr_docker_run_container "$image" "$@"
-  fi
 }
 
 # DOGFEED=true rebuilds the engine from this working tree with the pinned
