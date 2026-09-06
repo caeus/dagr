@@ -83,9 +83,6 @@ known, so start with the named file or policy layer:
 An unused mount may have no implementation. It fails only when a target, import, or mounted `COPY`
 actually crosses that boundary.
 
-If Dagr reports the former `{ "/": mountImplementation }` shape, remove it from `dagr.index.js`.
-Put the request in `dagr.mount.yaml` and the implementation in the root `.dagr/volumes.yaml`.
-
 See [Filesystem composition](03-filesystem-composition.md) for the complete model.
 
 ## A target definition is rejected
