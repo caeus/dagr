@@ -119,6 +119,13 @@ Follow [Getting started](docs/01-getting-started.md) for the first run or
   format.
 - [CLI reference](docs/06-cli.md) covers commands, output, and exit status.
 
+## AI agents
+
+Dagr publishes an [Agent Skill](../.agents/skills/dagr/) with on-demand instructions for authoring,
+debugging, and developing Dagr, plus an [`llms.txt`](docs/llms.txt) index of the canonical docs.
+Compatible agents can install or load the skill instead of relying on model training data about
+Dagr.
+
 ## Development
 
 ```sh
