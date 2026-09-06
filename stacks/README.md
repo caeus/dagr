@@ -95,6 +95,13 @@ export default stack({
 The alias belongs to the consuming repository. Root `.dagr/config.js` decides the canonical volume
 ID, and the selected implementation remains an explicit, reviewable build input.
 
+## AI agents
+
+The repository includes a focused Agent Skill for authoring and extending stacks, including the DI
+modeling conventions used by the composable TypeScript stack:
+
+- [`dagr-stacks` Agent Skill](../.agents/skills/dagr-stacks/SKILL.md)
+
 ## Available components
 
 | Component | Description |
