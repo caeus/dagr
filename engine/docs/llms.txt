@@ -1,0 +1,34 @@
+# dagr
+
+> Programmable monorepo builds using JavaScript and Docker. Dagr lets repositories calculate their build graph in ordinary JavaScript, executes only the reachable targets, and uses Docker images for reusable target results and caching.
+
+## Start here
+
+- [Overview](https://caeus.github.io/dagr/): Product overview, core model, examples, inspection commands, and development entry points.
+- [Why Dagr?](https://caeus.github.io/dagr/00-why-dagr/): Design goals, fit, tradeoffs, and why the graph is programmable.
+- [Getting started](https://caeus.github.io/dagr/01-getting-started/): First setup and first target.
+- [Concepts](https://caeus.github.io/dagr/02-concepts/): Packages, facets, targets, fully-qualified target addresses, execution, mounts, caching, and determinism.
+
+## Authoring
+
+- [Authoring dagr.index.js](https://caeus.github.io/dagr/03-authoring-dagr-index-js/): Target shape, recipes, steps, COPY, IGNORE, generated contents, host information, and package location.
+- [Filesystem composition](https://caeus.github.io/dagr/03-filesystem-composition/): dagr.mount.yaml, root volume identity and implementation, mount boundaries, lazy resolution, and mounted package trees.
+- [Build-file environment and imports](https://caeus.github.io/dagr/04-sandbox-and-imports/): Restricted JavaScript environment, supported imports, built-ins, shared helpers, and determinism.
+- [Dependencies and EXPORT](https://caeus.github.io/dagr/05-deps-and-exports/): Address shorthands, ctx.images keys, cycles, host exports, replacement and merge semantics, and non-transitive exports.
+- [Conventions and layout](https://caeus.github.io/dagr/07-conventions-and-layout/): Recommended repository organization and reusable helper patterns.
+- [Adopting Dagr in a new monorepo](https://caeus.github.io/dagr/10-adopting-in-a-new-monorepo/): Practical adoption workflow for an existing repository.
+
+## CLI and debugging
+
+- [CLI reference](https://caeus.github.io/dagr/06-cli/): dagr run, list, pkg ls, show, command output, and exit behavior.
+- [Troubleshooting](https://caeus.github.io/dagr/11-troubleshooting/): Missing packages and targets, imports, mounts, rejected definitions, exports, caching, and Docker failures.
+
+## Source and contributor material
+
+- [GitHub repository](https://github.com/caeus/dagr): Engine, stacks, documentation, examples, and build definitions.
+- [Engine internals](https://github.com/caeus/dagr/blob/main/engine/docs/08-internals.md): Current engine structure, discovery, loading, execution, Docker integration, mounts, exports, and dependency composition.
+- [Docker-in-Docker notes](https://github.com/caeus/dagr/blob/main/engine/docs/09-docker-in-docker.md): Runtime and Docker socket behavior for contributors and debugging.
+
+## Agent skill
+
+- [Dagr Agent Skill](https://github.com/caeus/dagr/tree/main/.agents/skills/dagr): On-demand instructions and references for AI coding agents working with Dagr or developing Dagr itself.
