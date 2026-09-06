@@ -148,20 +148,6 @@ vendor/foo/
 `//vendor/foo:ci:test` addresses the local target definition. `//vendor/foo//:ci:test` crosses the
 mount and addresses a target at the volume root. Neither file defines or overrides the other.
 
-## Migrating the former index mount shape
-
-The former index shape has been removed:
-
-```js
-export default {
-  '/': { FROM: '...', steps: [], IGNORE: [] },
-}
-```
-
-Move the request to `dagr.mount.yaml`, move the implementation to the root `.dagr/volumes.yaml`,
-and add or update the root `.dagr/config.js`. Dagr reports this migration directly if it encounters
-an index whose default export still owns `/`.
-
 ## Failures
 
 Errors identify the layer that failed and retain their underlying cause:
