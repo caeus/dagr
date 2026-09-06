@@ -62,6 +62,7 @@ inner:
         materialize: async id => ({ root: roots[id]! }),
       }
       const packages = await new RepositoryPackageLoader(root, materializer).loadAllPackages()
+      assert.equal(packages.size, packageNames.length)
 
       for (const name of packageNames) {
         const run = packages.get(`packages/${name}`)?.definition['ci']?.['test']?.run({
