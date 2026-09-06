@@ -3,9 +3,6 @@
 A `dagr.index.js` file is an ES module whose **default export** describes one package's facets and
 targets. Filesystem composition is separate and uses `dagr.mount.yaml`.
 
-The former `{ '/': mountImplementation }` index shape is not accepted. Move the request to
-`dagr.mount.yaml` and the implementation to the root `.dagr/volumes.yaml`.
-
 ## The shape
 
 ```js
@@ -62,11 +59,10 @@ source tree observes the same locations on every host and under every mounter.
 
 Filesystem composition is defined separately from targets. A directory's `dagr.mount.yaml`
 requests a volume, the root `.dagr/config.js` assigns its global ID, and the root
-`.dagr/volumes.yaml` selects its image recipe. The former `{ '/': mountImplementation }` index
-shape is rejected.
+`.dagr/volumes.yaml` selects its image recipe.
 
 See [Filesystem composition](03-filesystem-composition.md) for identity, lazy resolution, nested
-`//` traversal, root authority, implementation rules, and migration examples.
+`//` traversal, root authority, and implementation rules.
 
 ## `run(context)`
 
