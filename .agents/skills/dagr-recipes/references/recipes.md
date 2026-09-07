@@ -12,7 +12,7 @@ Canonical source material:
 
 Each top-level directory under `recipes/` is independently consumable. A recipe contains everything required when mounted or published. Repository-only tests belong under `recipes/tests/`.
 
-A build-stack recipe exposes `dagr.stack.js`. Supporting recipes may expose another descriptive entry point such as `dagr.di.js`.
+A build recipe exposes `dagr.recipe.js`. Supporting recipes may expose another descriptive entry point such as `dagr.di.js`.
 
 ## What the TypeScript stack owns
 
