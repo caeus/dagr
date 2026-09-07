@@ -53,19 +53,21 @@ jobs:
             "$IMAGE:$RELEASE_SHA-amd64" \
             "$IMAGE:$RELEASE_SHA-arm64"
 
-      - name: Advance dogfood pin
+      - name: Advance engine pins
         env:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           sed -i "s|^PIN=\"ghcr.io/caeus/dagr:[^\"]*\"$|PIN=\"ghcr.io/caeus/dagr:$RELEASE_SHA\"|" .dagr/cli.sh
+          sed -i "s|^IMAGE=\"ghcr.io/caeus/dagr:[^\"]*\"$|IMAGE=\"ghcr.io/caeus/dagr:$RELEASE_SHA\"|" engine/examples/starter/.dagr/cli.sh
           grep -qx "PIN=\"ghcr.io/caeus/dagr:$RELEASE_SHA\"" .dagr/cli.sh
+          grep -qx "IMAGE=\"ghcr.io/caeus/dagr:$RELEASE_SHA\"" engine/examples/starter/.dagr/cli.sh
 
-          if git diff --quiet -- .dagr/cli.sh; then
+          if git diff --quiet -- .dagr/cli.sh engine/examples/starter/.dagr/cli.sh; then
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .dagr/cli.sh
-          git commit -m "chore: advance dogfood engine to $RELEASE_SHA"
+          git add .dagr/cli.sh engine/examples/starter/.dagr/cli.sh
+          git commit -m "chore: advance engine pins to $RELEASE_SHA"
           git push origin HEAD:main
