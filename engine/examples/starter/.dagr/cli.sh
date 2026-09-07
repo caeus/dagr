@@ -3,7 +3,7 @@ set -e
 
 DAGR_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$DAGR_DIR/.." && pwd)"
-IMAGE="ghcr.io/caeus/dagr:1f16025d16e0579dab7454a5acd7e33db360dc57"
+IMAGE="ghcr.io/caeus/dagr:592561506bbf8eb17e9abe9c8bd6352ef49e7d5f"
 TARGET_PLATFORM="${DOCKER_DEFAULT_PLATFORM:-}"
 unset DOCKER_DEFAULT_PLATFORM
 
