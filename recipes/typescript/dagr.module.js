@@ -405,7 +405,20 @@ const workspaceModule = () => di.module({
   ),
 })
 
-export const workspaceKey = (workspace, key) => `${workspace}/${key}`
+const workspaceSymbols = new Map()
+
+export function workspaceKey(workspace, key) {
+  if (typeof key !== 'symbol') return `${workspace}/${key}`
+  let symbols = workspaceSymbols.get(workspace)
+  if (symbols === undefined) {
+    symbols = new Map()
+    workspaceSymbols.set(workspace, symbols)
+  }
+  if (!symbols.has(key)) {
+    symbols.set(key, Symbol(`${workspace}/${key.description ?? ''}`))
+  }
+  return symbols.get(key)
+}
 
 const workspaceDependency = (workspace, dependency) => typeof dependency === 'object'
   ? { tag: workspaceKey(workspace, dependency.tag) }
