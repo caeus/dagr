@@ -12,7 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        recipe: [rdk, typescript]
+        include:
+          - recipe: rdk
+            image: dagr-rdk
+          - recipe: typescript
+            image: dagr-recipes-typescript
     steps:
       - name: Check out main
         uses: actions/checkout@v4
@@ -35,7 +39,7 @@ jobs:
 
       - name: Build and push platform images with dagr
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/dagr-recipes-${{ matrix.recipe }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
           SOURCE: https://github.com/${{ github.repository }}
           RECIPE: ${{ matrix.recipe }}
           TREE_SHA: ${{ steps.recipe.outputs.tree_sha }}
@@ -53,7 +57,7 @@ jobs:
 
       - name: Publish multi-platform manifest
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/dagr-recipes-${{ matrix.recipe }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
           TREE_SHA: ${{ steps.recipe.outputs.tree_sha }}
         run: |
           docker buildx imagetools create \
