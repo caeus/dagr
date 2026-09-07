@@ -1,18 +1,18 @@
-"github.com/caeus/dagr-components/typescript":
+"github.com/caeus/dagr-recipes/typescript":
   FROM: alpine:3.22
   steps:
     - COPY:
-        src: components/typescript/
+        src: recipes/typescript/
         dest: /src/
     - WORKDIR: /src
   IGNORE:
     - .git
 
-"github.com/caeus/dagr-components/di":
+"github.com/caeus/dagr-recipes/rdk":
   FROM: alpine:3.22
   steps:
     - COPY:
-        src: components/di/
+        src: recipes/rdk/
         dest: /src/
     - WORKDIR: /src
   IGNORE:

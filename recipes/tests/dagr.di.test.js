@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import di, { toClass, toFun, toValue } from '../di/dagr.di.js'
+import di, { toClass, toFun, toValue } from '../rdk/dagr.di.js'
 
 describe('di', () => {
   it('compiles every binding eagerly and once', () => {
@@ -47,7 +47,7 @@ describe('di', () => {
   })
 
   it('merges modules loaded through separate JavaScript module instances', async () => {
-    const foreignDi = (await import('../di/dagr.di.js?foreign-module')).default
+    const foreignDi = (await import('../rdk/dagr.di.js?foreign-module')).default
     const left = di.module({ name: toValue('left') })
     const right = foreignDi.module({
       name: foreignDi.toValue('right'),

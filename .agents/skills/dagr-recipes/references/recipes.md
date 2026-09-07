@@ -1,18 +1,18 @@
-# Dagr component architecture
+# Dagr recipe architecture
 
-Use this reference when authoring, extending, reviewing, or debugging reusable components under `components/`.
+Use this reference when authoring, extending, reviewing, or debugging reusable recipes under `recipes/`.
 
 Canonical source material:
 
-- `components/README.md`
-- `components/typescript/README.md`
-- `components/di/README.md`
+- `recipes/README.md`
+- `recipes/typescript/README.md`
+- `recipes/rdk/README.md`
 
-## Component boundaries
+## Recipe boundaries
 
-Each top-level directory under `components/` is independently consumable. A component contains everything required when mounted or published. Repository-only tests belong under `components/tests/`.
+Each top-level directory under `recipes/` is independently consumable. A recipe contains everything required when mounted or published. Repository-only tests belong under `recipes/tests/`.
 
-A build stack exposes `dagr.stack.js`. Supporting components may expose another descriptive entry point such as `dagr.di.js`.
+A build-stack recipe exposes `dagr.stack.js`. Supporting recipes may expose another descriptive entry point such as `dagr.di.js`.
 
 ## What the TypeScript stack owns
 
@@ -49,7 +49,7 @@ const stack = typescript({
 export default stack({ location, version, deps, metadata })
 ```
 
-Every `.with(...)` value is an ordinary DI module merged into the same graph. The final root is `index`; target selection happens later in Dagr.
+Every `.with(...)` value is an ordinary DI module merged into the same RDK graph. The final root is `index`; target selection happens later in Dagr.
 
 ## Package managers
 
@@ -75,16 +75,16 @@ Exactly one coherent product model should own product semantics. Capabilities ca
 
 ## Publication and mounting
 
-Published component images are immutable filesystem images and finish at `WORKDIR /component`. Root `.dagr/config.js` owns volume identity; `.dagr/volumes.yaml` selects the implementation for workspace development.
+Published recipe images are immutable filesystem images and finish at `WORKDIR /recipe`. Root `.dagr/config.js` owns volume identity; `.dagr/volumes.yaml` selects the implementation for workspace development.
 
-Consumers choose local mount aliases. Component code must not assume a particular alias.
+Consumers choose local mount aliases. Recipe code must not assume a particular alias.
 
 ## Validation
 
 Start with:
 
 ```sh
-dagr run //components:ci:test
+dagr run //recipes:ci:test
 ```
 
-Then build the relevant image target when component contents, mounts, or publication change.
+Then build the relevant image target when recipe contents, mounts, or publication change.

@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const component = resolve(root, 'typescript')
-const di = resolve(root, 'di')
+const recipe = resolve(root, 'typescript')
+const di = resolve(root, 'rdk')
 
 export async function loadTypeScript() {
   const cache = new Map()
@@ -46,14 +46,14 @@ export async function loadTypeScript() {
       if (specifier.startsWith('//di//')) {
         return load(resolve(di, specifier.slice('//di//'.length)))
       }
-      return load(resolve(component, specifier.slice(2)))
+      return load(resolve(recipe, specifier.slice(2)))
     })
     linking.set(canonical, linked)
     await linked
     return module
   }
 
-  const module = await load(resolve(component, 'dagr.stack.js'))
+  const module = await load(resolve(recipe, 'dagr.stack.js'))
   await module.evaluate()
   return module.namespace
 }
