@@ -1,13 +1,14 @@
 import bundledVersions from '//dagr.versions.yaml'
 import di from '//di//dagr.di.js'
 import { writeJson, writeText, writeYaml } from '//dagr.file_utils.js'
-import { pnpmfile } from '//dagr.utils.js'
 import { RECOMMENDED_IGNORE } from '//dagr.dockerignore.js'
 import { configFacet, devFacet, facetOf, target } from '//dagr.features.js'
 import { typescriptModule } from '//dagr.module.js'
+import { packageManagers, resolvePackageManager } from '//dagr.package-managers.js'
 
 export * from '//dagr.features.js'
 export { typescriptModule, workspaceKey } from '//dagr.module.js'
+export { packageManagers }
 export { di }
 
 function writeProjectedFile(path, value) {
@@ -31,9 +32,37 @@ const collectNamed = (kind, contributions, valueOf = contribution => contributio
   return values
 }
 
+const packageIdentity = (location, scope) => {
+  if (!location.startsWith('//')) {
+    throw new Error(`Expected a logical package location, got ${JSON.stringify(location)}`)
+  }
+  const path = location.slice(2)
+  const relativePath = path.startsWith('packages/') ? path.slice('packages/'.length) : path
+  if (!relativePath) throw new Error(`Cannot infer a project name from ${location}`)
+  const slug = relativePath.replaceAll('/', '-')
+  return { name: `@${scope}/${slug}`, slug }
+}
+
+const installPackageJson = (packageJson, localDeps, scope) => {
+  let result = { ...packageJson }
+  for (const dependency of localDeps) {
+    const { name, slug } = packageIdentity(dependency.pkg, scope)
+    const field = dependency.at === 'dev' ? 'devDependencies' : 'dependencies'
+    result = {
+      ...result,
+      [field]: {
+        ...(result[field] ?? {}),
+        [name]: `file:./${slug}.tgz`,
+      },
+    }
+  }
+  return result
+}
+
 function createStack(options, features, declaration) {
   const {
-    base = '//packages/base:ci:node-pnpm',
+    base,
+    packageManager,
     scope = 'internal',
     versions = {},
     conventions = {},
@@ -46,10 +75,11 @@ function createStack(options, features, declaration) {
   const dagrRuntime = Object.freeze({
     base,
     ignore,
+    installPackageJson: packageJson => installPackageJson(packageJson, localDeps, scope),
     localDeps: Object.freeze(localDeps),
+    packageManager,
     packTarget,
     packTargets: Object.freeze(localDeps.map(packTarget)),
-    pnpmfile,
     scope,
     writeJson,
     writeProjectedFile,
@@ -122,7 +152,7 @@ function createStack(options, features, declaration) {
     [{ tag: facetsTag }, 'dev:sync/name', 'dev:sync/slug'],
     (facetContributions, name, slug) => transform(
       collectNamed('facet', facetContributions, facet => facet.targets),
-      { location, name, slug, calculations, features },
+      { location, name, slug, calculations, features, packageManager: packageManager.name },
     ),
   )
 
@@ -154,5 +184,9 @@ function builder(options, features) {
 }
 
 export default function typescript(options = {}) {
-  return builder(options, di.module({}))
+  if (!options.base) throw new Error('typescript() requires a base target')
+  return builder({
+    ...options,
+    packageManager: resolvePackageManager(options.packageManager),
+  }, di.module({}))
 }

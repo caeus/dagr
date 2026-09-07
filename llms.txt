@@ -1,0 +1,20 @@
+# dagr repository
+
+> Dagr is a programmable monorepo build system. This repository contains the execution engine and independently consumable calculation components.
+
+## Areas
+
+- [Engine](https://github.com/caeus/dagr/tree/main/engine): CLI, graph loading, execution, Docker integration, mounts, docs, and examples.
+- [Reusable components](https://github.com/caeus/dagr/tree/main/components): TypeScript build stack, DI calculation primitive, component tests, mounting, and publication.
+
+## Documentation
+
+- [Engine LLM index](https://github.com/caeus/dagr/blob/main/engine/docs/llms.txt)
+- [Components LLM index](https://github.com/caeus/dagr/blob/main/components/llms.txt)
+- [Repository README](https://github.com/caeus/dagr/blob/main/README.md)
+
+## Agent guidance
+
+- [Dagr Agent Skill](https://github.com/caeus/dagr/tree/main/.agents/skills/dagr)
+- [Dagr Components Agent Skill](https://github.com/caeus/dagr/tree/main/.agents/skills/dagr-components)
+- [Repository AGENTS.md](https://github.com/caeus/dagr/blob/main/AGENTS.md)
