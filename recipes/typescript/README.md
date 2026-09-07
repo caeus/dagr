@@ -10,7 +10,7 @@ import typescript, {
   prettier,
   typedoc,
   vitest,
-} from '//recipes/ts//dagr.stack.js'
+} from '//recipes/ts//dagr.recipe.js'
 import versions from '//config/dagr.versions.yaml'
 
 const stack = typescript({
@@ -138,7 +138,7 @@ Features are ordinary DI modules. A feature can add semantic settings, generated
 validations, or targets without a separate plugin registry:
 
 ```js
-import { ciFacet, di, target } from '//recipes/ts//dagr.stack.js'
+import { ciFacet, di, target } from '//recipes/ts//dagr.recipe.js'
 
 export const health = () => di.module({
   healthTarget: di.toFun(
