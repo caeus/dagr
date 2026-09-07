@@ -32,7 +32,7 @@ The alias is local to the consuming repository and is not part of the recipe ide
 The repository builds immutable recipe filesystem images:
 
 - `ghcr.io/caeus/dagr-rdk`
-- `ghcr.io/caeus/dagr-recipes-typescript`
+- `ghcr.io/caeus/dagr-ts-recipes`
 
 Published images finish with `WORKDIR /recipe`, allowing Dagr to materialize the recipe contents directly.
 Consumers should pin immutable tree-SHA versions for reproducible builds.
