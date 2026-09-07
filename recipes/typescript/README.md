@@ -1,6 +1,6 @@
 # Composable TypeScript stack
 
-This component calculates generated TypeScript/tool configuration and executable Dagr targets from
+This recipe calculates generated TypeScript/tool configuration and executable Dagr targets from
 project facts. Consumers mount this directory and choose the product/capabilities they need.
 
 ```js
@@ -10,7 +10,7 @@ import typescript, {
   prettier,
   typedoc,
   vitest,
-} from '//components/ts//dagr.stack.js'
+} from '//recipes/ts//dagr.stack.js'
 import versions from '//config/dagr.versions.yaml'
 
 const stack = typescript({
@@ -49,7 +49,7 @@ allowances. npm needs no equivalent generated file.
 
 ## Calculation model
 
-The stack is one synchronous DI calculation DAG:
+The stack is one synchronous DI calculation DAG supplied by the RDK:
 
 ```text
 external facts + conventions + features
@@ -138,7 +138,7 @@ Features are ordinary DI modules. A feature can add semantic settings, generated
 validations, or targets without a separate plugin registry:
 
 ```js
-import { ciFacet, di, target } from '//components/ts//dagr.stack.js'
+import { ciFacet, di, target } from '//recipes/ts//dagr.stack.js'
 
 export const health = () => di.module({
   healthTarget: di.toFun(
@@ -152,5 +152,5 @@ export const health = () => di.module({
 })
 ```
 
-The mount alias (`//components/ts` above) belongs to the consuming repository. The published component
+The mount alias (`//recipes/ts` above) belongs to the consuming repository. The published recipe
 itself does not depend on that alias.

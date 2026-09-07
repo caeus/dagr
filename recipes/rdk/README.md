@@ -1,9 +1,9 @@
-# DI
+# Recipe Development Kit (RDK)
 
-A tiny synchronous dependency-injection graph for inline JavaScript composition and settings calculation.
+A tiny synchronous dependency-injection graph for inline JavaScript composition and settings calculation. It is the low-level machinery used to author and compose Dagr recipes.
 
 ```js
-import di, { toClass, toFun, toValue } from '//components/di//dagr.di.js'
+import di, { toClass, toFun, toValue } from '//recipes/rdk//dagr.di.js'
 
 class Greeter {
   greet(name) { return `Hello, ${name}` }
@@ -26,7 +26,7 @@ const container = module.shake(['greeting']).compile()
 container.greeting
 ```
 
-The import path above uses an example consumer-owned mount alias. Consumers may mount the component elsewhere.
+The import path above uses an example consumer-owned mount alias. Consumers may mount the recipe elsewhere.
 
 Providers can carry tags. A `{ tag }` dependency collects every matching binding into a frozen record at that argument position:
 

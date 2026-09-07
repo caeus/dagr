@@ -1,26 +1,26 @@
 ---
-name: dagr-components
-description: Work with Dagr reusable components and the DI-based settings calculation model under components/. Use when modifying the TypeScript stack, package-manager behavior, generated configuration, targets, facets, mounts, publication, or the inline DI component.
+name: dagr-recipes
+description: Work with Dagr reusable recipes and the RDK-based settings calculation model under recipes/. Use when modifying the TypeScript stack, package-manager behavior, generated configuration, targets, facets, mounts, publication, or the inline Recipe Development Kit.
 ---
 
-# Dagr components
+# Dagr recipes
 
-Use this skill for reusable components under `components/`, especially the composable TypeScript stack and its synchronous DI calculation DAG.
+Use this skill for reusable recipes under `recipes/`, especially the composable TypeScript stack and its synchronous RDK calculation DAG.
 
 ## First orient yourself
 
-1. Read `components/README.md` and the nearest component `README.md`.
+1. Read `recipes/README.md` and the nearest recipe `README.md`.
 2. Identify whether the change affects an external fact, convention, semantic calculation, tool-specific field, generated file, target, facet, or publication boundary.
-3. Inspect the existing DI dependency path before adding a new setting.
+3. Inspect the existing RDK dependency path before adding a new setting.
 4. Read the relevant reference:
-   - [Component architecture](references/components.md)
-   - [How components use DI](references/di.md)
+   - [Recipe architecture](references/recipes.md)
+   - [How recipes use RDK](references/rdk.md)
 
 ## Core model
 
-`components/` is the independently consumable publication boundary. `typescript` is a stack; `di` is a supporting component.
+`recipes/` is the independently consumable publication boundary. `typescript` is a stack recipe; `rdk` is the supporting Recipe Development Kit.
 
-The TypeScript stack calculates a complete Dagr index from project facts and developer intent. Generated files and targets are outputs. One native synchronous DI DAG owns the calculation:
+The TypeScript stack calculates a complete Dagr index from project facts and developer intent. Generated files and targets are outputs. One native synchronous DI DAG supplied by the RDK owns the calculation:
 
 ```js
 module.shake(['index']).compile().index
@@ -55,7 +55,7 @@ When changing structure or public behavior, keep `README.md`, `AGENTS.md`, `llms
 Validate with:
 
 ```sh
-dagr run //components:ci:test
-dagr run //components:ci:image-di
-dagr run //components:ci:image-typescript
+dagr run //recipes:ci:test
+dagr run //recipes:ci:image-rdk
+dagr run //recipes:ci:image-typescript
 ```

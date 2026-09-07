@@ -1,11 +1,11 @@
-# How Dagr components use DI
+# How Dagr recipes use RDK
 
-The DI component at `components/di/dagr.di.js` is a tiny synchronous calculation graph, not a runtime service locator.
+The RDK recipe at `recipes/rdk/dagr.di.js` is a tiny synchronous calculation graph, not a runtime service locator.
 
 ## Primitive operations
 
 ```js
-import di, { toFun, toValue } from '//components/di//dagr.di.js'
+import di, { toFun, toValue } from '//recipes/rdk//dagr.di.js'
 
 const module = di.module({
   fact: toValue('input'),
@@ -81,4 +81,4 @@ Likewise, package-manager selection is one explicit stack fact. Targets ask the 
 
 ## Determinism
 
-Keep factories synchronous and deterministic. Do not design DI nodes around network access, environment variables, timers, mutable ambient state, or asynchronous resolution. Promises are ordinary values and are not awaited by `compile()`.
+Keep factories synchronous and deterministic. Do not design RDK nodes around network access, environment variables, timers, mutable ambient state, or asynchronous resolution. Promises are ordinary values and are not awaited by `compile()`.
