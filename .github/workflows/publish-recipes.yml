@@ -16,7 +16,7 @@ jobs:
           - recipe: rdk
             image: dagr-rdk
           - recipe: typescript
-            image: dagr-recipes-typescript
+            image: dagr-ts-recipes
     steps:
       - name: Check out main
         uses: actions/checkout@v4
