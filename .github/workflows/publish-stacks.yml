@@ -36,12 +36,18 @@ jobs:
       - name: Build and push platform images with dagr
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/dagr-stacks-${{ matrix.stack }}
+          SOURCE: https://github.com/${{ github.repository }}
           STACK: ${{ matrix.stack }}
           TREE_SHA: ${{ steps.stack.outputs.tree_sha }}
         run: |
           for arch in amd64 arm64; do
             DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run "//stacks:ci:image-$STACK"
-            docker tag "stacks-ci-image-$STACK" "$IMAGE:$TREE_SHA-$arch"
+            printf 'FROM %s\n' "stacks-ci-image-$STACK" | docker build \
+              --platform "linux/$arch" \
+              --label "org.opencontainers.image.source=$SOURCE" \
+              --tag "$IMAGE:$TREE_SHA-$arch" \
+              -
+            test "$(docker image inspect "$IMAGE:$TREE_SHA-$arch" --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')" = "$SOURCE"
             docker push "$IMAGE:$TREE_SHA-$arch"
           done
 
