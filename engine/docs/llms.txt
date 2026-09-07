@@ -25,10 +25,12 @@
 
 ## Source and contributor material
 
-- [GitHub repository](https://github.com/caeus/dagr): Engine, stacks, documentation, examples, and build definitions.
+- [GitHub repository](https://github.com/caeus/dagr): Engine, reusable components, documentation, examples, and build definitions.
+- [Reusable components](https://github.com/caeus/dagr/tree/main/components): TypeScript stack and DI-based settings calculation components.
 - [Engine internals](https://github.com/caeus/dagr/blob/main/engine/docs/08-internals.md): Current engine structure, discovery, loading, execution, Docker integration, mounts, exports, and dependency composition.
 - [Docker-in-Docker notes](https://github.com/caeus/dagr/blob/main/engine/docs/09-docker-in-docker.md): Runtime and Docker socket behavior for contributors and debugging.
 
-## Agent skill
+## Agent skills
 
-- [Dagr Agent Skill](https://github.com/caeus/dagr/tree/main/.agents/skills/dagr): On-demand instructions and references for AI coding agents working with Dagr or developing Dagr itself.
+- [Dagr Agent Skill](https://github.com/caeus/dagr/tree/main/.agents/skills/dagr): Instructions for AI coding agents working on the engine.
+- [Dagr Components Agent Skill](https://github.com/caeus/dagr/tree/main/.agents/skills/dagr-components): Instructions for reusable components and the TypeScript calculation stack.

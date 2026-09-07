@@ -67,6 +67,15 @@ const mergeRecords = (label, records) => {
 const copySource = directory => ({ COPY: { src: directory, dest: `/repo/${directory}` } })
 const copyAssets = assets => assets.map(path => ({ COPY: { src: path, dest: `/repo/${path}` } }))
 
+const packageManagerConfigSteps = (workspace, runtime) => runtime.packageManager
+  .configFiles(workspace)
+  .map(({ path, format, value }) => {
+    if (format === 'yaml') return runtime.writeYaml(`/repo/${path}`, value)
+    if (format === 'text') return runtime.writeText(`/repo/${path}`, value)
+    if (format === 'json') return runtime.writeJson(`/repo/${path}`, value)
+    throw new Error(`Unknown package-manager config format ${JSON.stringify(format)}`)
+  })
+
 const configurationTarget = (name, workspace, runtime) => target(name, {
   deps: [runtime.base],
   run: ({ images }) => ({
@@ -88,13 +97,9 @@ const installTarget = (name, workspace, runtime) => target(`install-${name}`, {
         COPY: { from: images[runtime.packTarget(dependency)], src: '/out', dest: '/repo' },
       })),
       { WORKDIR: '/repo' },
-      runtime.writeText('/repo/.pnpmfile.cjs', runtime.pnpmfile(runtime.scope)),
-      ...(workspace.allowBuilds.length > 0
-        ? [runtime.writeYaml('/repo/pnpm-workspace.yaml', {
-            allowBuilds: Object.fromEntries(workspace.allowBuilds.map(pkg => [pkg, true])),
-          })]
-        : []),
-      { RUN: 'pnpm install --prod=false' },
+      runtime.writeJson('/repo/package.json', runtime.installPackageJson(workspace.packageJson)),
+      ...packageManagerConfigSteps(workspace, runtime),
+      { RUN: runtime.packageManager.install() },
     ],
     IGNORE: runtime.ignore,
   }),
@@ -109,7 +114,7 @@ const commandTarget = (name, command, workspace, runtime, dependencies, { assets
         copySource(workspace.semantics.sourceLayout.directory),
         ...(assets ? copyAssets(workspace.buildAssets) : []),
         { WORKDIR: '/repo' },
-        { RUN: command },
+        { RUN: runtime.packageManager.exec(command) },
       ],
       IGNORE: runtime.ignore,
       ...(output ? { EXPORT: output } : {}),
@@ -170,7 +175,7 @@ const packTarget = (name, workspace, runtime, dependencies, { dependencyFacet } 
         })),
         { WORKDIR: '/repo' },
         runtime.writeJson('/repo/package.json', workspace.packageJson),
-        { RUN: `mkdir -p /tmp/pack /out && pnpm pack --pack-destination /tmp/pack && mv /tmp/pack/*.tgz /out/${workspace.slug}.tgz` },
+        { RUN: runtime.packageManager.pack(workspace.slug) },
       ],
       IGNORE: runtime.ignore,
     }),
@@ -186,13 +191,9 @@ const hostInstallTarget = (name, workspace, runtime) => target(name, {
         COPY: { from: images[runtime.packTarget(dependency)], src: '/out', dest: '/repo' },
       })),
       { WORKDIR: '/repo' },
-      runtime.writeText('/repo/.pnpmfile.cjs', runtime.pnpmfile(runtime.scope)),
-      ...(workspace.allowBuilds.length > 0
-        ? [runtime.writeYaml('/repo/pnpm-workspace.yaml', {
-            allowBuilds: Object.fromEntries(workspace.allowBuilds.map(pkg => [pkg, true])),
-          })]
-        : []),
-      { RUN: `pnpm install --prod=false --os ${host.os} --cpu ${host.arch}` },
+      runtime.writeJson('/repo/package.json', runtime.installPackageJson(workspace.packageJson)),
+      ...packageManagerConfigSteps(workspace, runtime),
+      { RUN: runtime.packageManager.install({ host }) },
     ],
     IGNORE: runtime.ignore,
     EXPORT: { '/repo/node_modules': 'node_modules' },
@@ -239,8 +240,8 @@ export function library({
     productAllowBuilds: di.toFun([], () => [], ['allowBuilds']),
     libraryVersionDefaults: versionDefaults({ '@types/node': '26.2.0' }),
     buildAssets: di.toFun(['buildAssetInputs'], assets => assets),
-    ...commandTargets('libraryTypecheck', 'typecheck', 'pnpm exec tsc --noEmit'),
-    ...commandTargets('libraryBuild', 'build', 'pnpm exec tsc', {
+    ...commandTargets('libraryTypecheck', 'typecheck', 'tsc --noEmit'),
+    ...commandTargets('libraryBuild', 'build', 'tsc', {
       assets: true,
       dependencies: true,
     }),
@@ -295,7 +296,7 @@ export function cloudflareWorker({ language = 'ES2022' } = {}) {
       wrangler: '4.0.0',
     }),
     buildAssets: di.toFun(['buildAssetInputs'], assets => assets),
-    ...commandTargets('cloudflareTypecheck', 'typecheck', 'pnpm exec tsc --noEmit'),
+    ...commandTargets('cloudflareTypecheck', 'typecheck', 'tsc --noEmit'),
   }
   return di.module({
     ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, di.toValue(inputs[key])])),
@@ -391,8 +392,8 @@ export default defineConfig({
       config => config === undefined ? {} : { 'vite.config.ts': config },
       ['generatedFiles'],
     ),
-    ...commandTargets('viteTypecheck', 'typecheck', 'pnpm exec tsc --noEmit'),
-    ...commandTargets('viteBuild', 'build', 'pnpm exec vite build', {
+    ...commandTargets('viteTypecheck', 'typecheck', 'tsc --noEmit'),
+    ...commandTargets('viteBuild', 'build', 'vite build', {
       assets: true,
       dependencies: true,
     }),
@@ -485,7 +486,7 @@ export function biome({ formatter = true, linter = true } = {}) {
       config => config === undefined ? {} : { 'biome.json': config },
       ['generatedFiles'],
     ),
-    ...commandTargets('biomeLint', 'lint', 'pnpm exec biome check .', {
+    ...commandTargets('biomeLint', 'lint', 'biome check .', {
       buildDependency: true,
       enabled: 'ci:lint/biomeLinterIntent',
     }),
@@ -565,7 +566,7 @@ export default defineConfig({ test: {
       ['generatedFiles'],
     ),
     vitestAllowBuilds: di.toFun([], () => ['esbuild'], ['allowBuilds']),
-    ...commandTargets('vitestTest', 'test', 'pnpm exec vitest run', {
+    ...commandTargets('vitestTest', 'test', 'vitest run', {
       buildDependency: true,
     }),
   }
@@ -671,8 +672,7 @@ export function eslint({ prettier: enforceFormatting = false, explicitReturnType
         ? `import js from '@eslint/js'
 import parser from '@typescript-eslint/parser'
 import plugin from '@typescript-eslint/eslint-plugin'
-${formatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}
-export default [
+${formatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}export default [
   js.configs.recommended,
   {
     files: ${JSON.stringify(files)},
@@ -696,7 +696,7 @@ export default [
       config => config === undefined ? {} : { 'eslint.config.mjs': config },
       ['generatedFiles'],
     ),
-    ...commandTargets('eslintLint', 'lint', 'pnpm exec eslint .', {
+    ...commandTargets('eslintLint', 'lint', 'eslint .', {
       buildDependency: true,
     }),
   }
@@ -748,7 +748,7 @@ export function typedoc({ title } = {}) {
       config => config === undefined ? {} : { 'typedoc.json': config },
       ['generatedFiles'],
     ),
-    ...commandTargets('typedocDocs', 'docs', 'pnpm exec typedoc', {
+    ...commandTargets('typedocDocs', 'docs', 'typedoc', {
       export: { '/repo/docs/': 'docs/' },
     }),
   }

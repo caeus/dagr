@@ -94,7 +94,7 @@ const dagr = di.module({
         FROM: images['ci:build'],
         steps: [
           runtime.writeText('/repo/rollup.config.js', ROLLUP_CONFIG),
-          { RUN: 'mkdir -p dist && pnpm exec rollup --config rollup.config.js' },
+          { RUN: runtime.packageManager.exec('rollup --config rollup.config.js') },
         ],
         IGNORE: runtime.ignore,
         EXPORT: { '/repo/dist/dagr.js': 'dist/dagr.js' },
@@ -136,6 +136,7 @@ const dagr = di.module({
 
 const stack = typescript({
   base: '//engine:ci:node-pnpm',
+  packageManager: 'pnpm',
   scope: 'internal',
   versions,
   conventions: { outputDirectory: 'build' },

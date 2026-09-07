@@ -23,9 +23,9 @@ jobs:
             //engine:ci:test \
             //engine:ci:bundlecheck \
             //engine:ci:image \
-            //stacks:ci:test \
-            //stacks:ci:image-di \
-            //stacks:ci:image-typescript
+            //components:ci:test \
+            //components:ci:image-di \
+            //components:ci:image-typescript
 
       - name: Smoke-test self-built image
         run: |
@@ -42,4 +42,4 @@ jobs:
             engine-ci-image list)"
           printf '%s\n' "$LIST_OUTPUT"
           printf '%s\n' "$LIST_OUTPUT" | grep -q '^//engine:'
-          printf '%s\n' "$LIST_OUTPUT" | grep -q '^//stacks:'
+          printf '%s\n' "$LIST_OUTPUT" | grep -q '^//components:'

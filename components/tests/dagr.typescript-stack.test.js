@@ -3,17 +3,19 @@ import { describe, it } from 'node:test'
 
 import { loadTypeScript } from './dagr.typescript-loader.js'
 
+const versions = {
+  '@tsconfig/strictest': '2',
+  'typescript': '6',
+  'vitest': '3',
+}
+
 describe('mountable TypeScript stack', () => {
   it('loads with dagr import rules and composes executable targets', async () => {
     const stack = await loadTypeScript()
-    const versions = {
-      '@tsconfig/strictest': '2',
-      'typescript': '6',
-      'vitest': '3',
-    }
     let calculations
     const project = stack.default({
       base: 'base',
+      packageManager: 'pnpm',
       versions,
       conventions: { sourceDirectory: 'source' },
       transform(index, context) {
@@ -58,7 +60,7 @@ describe('mountable TypeScript stack', () => {
         run: () => ({ FROM: 'scratch', steps: [], IGNORE: [] }),
       }), [qualityFacet.targets]),
     })
-    const extended = stack.default({ base: 'base', versions })
+    const extended = stack.default({ base: 'base', packageManager: 'pnpm', versions })
       .with(stack.library())
       .with(health)
     assert.equal(extended({ location: '//example' }).quality.health.name, 'health')
@@ -75,13 +77,61 @@ describe('mountable TypeScript stack', () => {
         run: () => ({ FROM: 'scratch', steps: [], IGNORE: [] }),
       }), [stack.ciFacet.targets]),
     })
-    const conflicting = stack.default({ base: 'base', versions })
+    const conflicting = stack.default({ base: 'base', packageManager: 'pnpm', versions })
       .with(stack.library())
       .with(first)
       .with(second)
     assert.throws(
       () => conflicting({ location: '//example', version: '1.0.0' }),
       /target "same" has more than one owner/,
+    )
+  })
+
+  it('uses the selected package manager for install, exec, and pack', async () => {
+    const stack = await loadTypeScript()
+    const project = stack.default({ base: 'base', packageManager: 'npm', versions })
+      .with(stack.library())
+    const index = project({
+      location: '//packages/example',
+      deps: [{ pkg: '//packages/core', at: 'prod' }],
+    })
+
+    const install = index.ci['install-typecheck'].run({
+      images: {
+        'config:typecheck': 'config-image',
+        '//packages/core:ci:pack': 'core-pack-image',
+      },
+    })
+    assert.equal(install.steps.at(-1).RUN, 'npm install --include=dev')
+    assert.equal(install.steps.some(step => step.RUN?.includes('pnpm')), false)
+
+    const packageStep = install.steps.find(step => step.RUN?.endsWith('> /repo/package.json'))
+    const encoded = packageStep.RUN.match(/^echo "([^"]+)"/)[1]
+    const packageJson = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'))
+    assert.equal(packageJson.dependencies['@internal/core'], 'file:./core.tgz')
+
+    const typecheck = index.ci.typecheck.run({ images: { 'install-typecheck': 'install-image' } })
+    assert.equal(typecheck.steps.at(-1).RUN, 'npm exec -- tsc --noEmit')
+
+    const pack = index.ci.pack.run({
+      images: {
+        build: 'build-image',
+        '//packages/core:ci:pack': 'core-pack-image',
+      },
+    })
+    assert.match(pack.steps.at(-1).RUN, /npm pack --pack-destination \/tmp\/pack/)
+  })
+
+  it('requires an explicit base target and package manager', async () => {
+    const stack = await loadTypeScript()
+    assert.throws(() => stack.default({ packageManager: 'npm' }), /requires a base target/)
+    assert.throws(
+      () => stack.default({ base: 'base' }),
+      /Unknown TypeScript package manager undefined/,
+    )
+    assert.throws(
+      () => stack.default({ base: 'base', packageManager: 'yarn' }),
+      /expected npm or pnpm/,
     )
   })
 })

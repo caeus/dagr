@@ -1,4 +1,4 @@
-name: Publish stacks
+name: Publish components
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        stack: [di, typescript]
+        component: [di, typescript]
     steps:
       - name: Check out main
         uses: actions/checkout@v4
@@ -28,21 +28,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - id: stack
+      - id: component
         env:
-          STACK: ${{ matrix.stack }}
-        run: echo "tree_sha=$(git rev-parse HEAD:stacks/$STACK)" >> "$GITHUB_OUTPUT"
+          COMPONENT: ${{ matrix.component }}
+        run: echo "tree_sha=$(git rev-parse HEAD:components/$COMPONENT)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push platform images with dagr
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/dagr-stacks-${{ matrix.stack }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/dagr-components-${{ matrix.component }}
           SOURCE: https://github.com/${{ github.repository }}
-          STACK: ${{ matrix.stack }}
-          TREE_SHA: ${{ steps.stack.outputs.tree_sha }}
+          COMPONENT: ${{ matrix.component }}
+          TREE_SHA: ${{ steps.component.outputs.tree_sha }}
         run: |
           for arch in amd64 arm64; do
-            DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run "//stacks:ci:image-$STACK"
-            printf 'FROM %s\n' "stacks-ci-image-$STACK" | docker build \
+            DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run "//components:ci:image-$COMPONENT"
+            printf 'FROM %s\n' "components-ci-image-$COMPONENT" | docker build \
               --platform "linux/$arch" \
               --label "org.opencontainers.image.source=$SOURCE" \
               --tag "$IMAGE:$TREE_SHA-$arch" \
@@ -53,8 +53,8 @@ jobs:
 
       - name: Publish multi-platform manifest
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/dagr-stacks-${{ matrix.stack }}
-          TREE_SHA: ${{ steps.stack.outputs.tree_sha }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/dagr-components-${{ matrix.component }}
+          TREE_SHA: ${{ steps.component.outputs.tree_sha }}
         run: |
           docker buildx imagetools create \
             --tag "$IMAGE:$TREE_SHA" \

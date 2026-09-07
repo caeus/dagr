@@ -17,7 +17,7 @@ async function filesBelow(path) {
 describe('mountable component boundaries', () => {
   it('do not expose repository test harnesses', async () => {
     const files = (await Promise.all(
-      ['di', 'ts-library', 'typescript'].map(component => filesBelow(resolve(root, component))),
+      ['di', 'typescript'].map(component => filesBelow(resolve(root, component))),
     )).flat()
     const leaked = files
       .map(file => file.slice(root.length + 1))

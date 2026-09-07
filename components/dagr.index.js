@@ -1,12 +1,12 @@
 const ignore = ['.git', 'node_modules']
 
-const stackImage = directory => ({
+const componentImage = directory => ({
   deps: [],
   run: () => ({
     FROM: 'scratch',
     steps: [
-      { COPY: { src: directory, dest: '/stack' } },
-      { WORKDIR: '/stack' },
+      { COPY: { src: directory, dest: '/component' } },
+      { WORKDIR: '/component' },
     ],
     IGNORE: ignore,
   }),
@@ -26,7 +26,7 @@ export default {
         IGNORE: ignore,
       }),
     },
-    'image-di': stackImage('di'),
-    'image-typescript': stackImage('typescript'),
+    'image-di': componentImage('di'),
+    'image-typescript': componentImage('typescript'),
   },
 }
