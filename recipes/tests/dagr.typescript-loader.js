@@ -53,7 +53,7 @@ export async function loadTypeScript() {
     return module
   }
 
-  const module = await load(resolve(recipe, 'dagr.stack.js'))
+  const module = await load(resolve(recipe, 'dagr.recipe.js'))
   await module.evaluate()
   return module.namespace
 }

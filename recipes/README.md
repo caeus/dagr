@@ -17,12 +17,12 @@ semantic settings, generated files, targets, facets, and the final Dagr index ar
 Each top-level recipe directory is independently mountable and publishable. Everything needed at runtime lives
 inside that recipe directory. Repository-only tests live in [`tests/`](tests/).
 
-A stack recipe exposes `dagr.stack.js`. Supporting recipes can expose another descriptive `dagr.*.js` entry point.
+Recipes expose `dagr.recipe.js`. Supporting recipes can expose another descriptive `dagr.*.js` entry point.
 
-Consumers choose their own mount aliases. A mounted TypeScript stack might therefore be imported as:
+Consumers choose their own mount aliases. A mounted TypeScript recipe might therefore be imported as:
 
 ```js
-import typescript from '//recipes/ts//dagr.stack.js'
+import typescript from '//recipes/ts//dagr.recipe.js'
 ```
 
 The alias is local to the consuming repository and is not part of the recipe identity.
