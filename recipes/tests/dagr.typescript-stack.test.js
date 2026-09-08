@@ -122,6 +122,28 @@ describe('mountable TypeScript stack', () => {
     assert.match(pack.steps.at(-1).RUN, /npm pack --pack-destination \/tmp\/pack/)
   })
 
+  it('uses Yarn 4 package-manager semantics', async () => {
+    const stack = await loadTypeScript()
+    const yarn = stack.packageManagers.yarn
+
+    assert.equal(yarn.install({ host: { os: 'darwin', arch: 'arm64' } }), 'yarn install --immutable')
+    assert.equal(yarn.exec('tsc --noEmit'), 'yarn exec tsc --noEmit')
+    assert.equal(yarn.pack('example'), 'mkdir -p /out && yarn pack --out /out/example.tgz')
+    assert.deepEqual(yarn.configFiles({ allowBuilds: [] }), [{
+      path: '.yarnrc.yml',
+      format: 'yaml',
+      value: {
+        nodeLinker: 'node-modules',
+        supportedArchitectures: {
+          os: ['current', 'darwin', 'linux', 'win32'],
+          cpu: ['current', 'x64', 'arm64'],
+          libc: ['current', 'glibc', 'musl'],
+        },
+        npmRegistryServer: 'https://registry.npmjs.org',
+      },
+    }])
+  })
+
   it('requires an explicit base target and package manager', async () => {
     const stack = await loadTypeScript()
     assert.throws(() => stack.default({ packageManager: 'npm' }), /requires a base target/)
@@ -130,8 +152,8 @@ describe('mountable TypeScript stack', () => {
       /Unknown TypeScript package manager undefined/,
     )
     assert.throws(
-      () => stack.default({ base: 'base', packageManager: 'yarn' }),
-      /expected npm or pnpm/,
+      () => stack.default({ base: 'base', packageManager: 'bun' }),
+      /expected npm, pnpm, or yarn/,
     )
   })
 })
