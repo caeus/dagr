@@ -25,12 +25,32 @@ const pnpm = manager({
       }],
 })
 
-export const packageManagers = Object.freeze({ npm, pnpm })
+const yarn = manager({
+  name: 'yarn',
+  install: () => 'yarn install --immutable',
+  exec: command => `yarn exec ${command}`,
+  pack: slug => `mkdir -p /out && yarn pack --out /out/${slug}.tgz`,
+  configFiles: () => [{
+    path: '.yarnrc.yml',
+    format: 'yaml',
+    value: {
+      nodeLinker: 'node-modules',
+      supportedArchitectures: {
+        os: ['current', 'darwin', 'linux', 'win32'],
+        cpu: ['current', 'x64', 'arm64'],
+        libc: ['current', 'glibc', 'musl'],
+      },
+      npmRegistryServer: 'https://registry.npmjs.org',
+    },
+  }],
+})
+
+export const packageManagers = Object.freeze({ npm, pnpm, yarn })
 
 export function resolvePackageManager(name) {
   const value = packageManagers[name]
   if (value === undefined) {
-    throw new Error(`Unknown TypeScript package manager ${JSON.stringify(name)}; expected npm or pnpm`)
+    throw new Error(`Unknown TypeScript package manager ${JSON.stringify(name)}; expected npm, pnpm, or yarn`)
   }
   return value
 }
