@@ -49,7 +49,7 @@ allowances. npm needs no equivalent generated file.
 
 ## Calculation model
 
-The stack is one synchronous DI calculation DAG supplied by the RDK:
+The stack is one synchronous calculation graph supplied by the RDK:
 
 ```text
 external facts + conventions + features
@@ -65,10 +65,10 @@ external facts + conventions + features
 ```
 
 `typescript()` owns common policy and target machinery. Every `.with(...)` value is an ordinary
-`di.module()` merged into that graph. The final result is resolved with:
+RDK graph merged into that calculation. The final result is resolved with:
 
 ```js
-module.shake(['index']).compile().index
+graph.shake(['index']).compile().index
 ```
 
 Generated files and targets are outputs, not canonical project truth. When several tools need to
@@ -98,7 +98,7 @@ Exactly one product feature should own the package's product semantics:
 
 ## Capabilities
 
-Capabilities are independently composable DI modules:
+Capabilities are independently composable RDK graphs:
 
 - `prettier()` adds formatting policy and generated Prettier configuration.
 - `biome()` adds Biome policy/configuration and `ci:lint`.
@@ -106,7 +106,7 @@ Capabilities are independently composable DI modules:
 - `eslint()` adds ESLint policy/configuration and `ci:lint`.
 - `typedoc()` adds TypeDoc configuration and `ci:docs`.
 
-Open-ended contributions use DI tags for collections such as tool packages, generated files,
+Open-ended contributions use tags for collections such as tool packages, generated files,
 validations, build dependencies, rule sets, targets, and facets. Behavioral settings use named
 bindings so ownership and dependency paths remain inspectable.
 
@@ -134,14 +134,14 @@ generated files, scripts, or registry policy in the declaration.
 
 ## Extending the stack
 
-Features are ordinary DI modules. A feature can add semantic settings, generated files, packages,
+Features are ordinary RDK graphs. A feature can add semantic settings, generated files, packages,
 validations, or targets without a separate plugin registry:
 
 ```js
-import { ciFacet, di, target } from '//recipes/ts//dagr.recipe.js'
+import { ciFacet, rdk, target } from '//recipes/ts//dagr.recipe.js'
 
-export const health = () => di.module({
-  healthTarget: di.toFun(
+export const health = () => rdk.graph({
+  healthTarget: rdk.derive(
     [],
     () => target('health', {
       deps: [],

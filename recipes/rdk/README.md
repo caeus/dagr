@@ -1,28 +1,28 @@
 # Recipe Development Kit (RDK)
 
-A tiny synchronous dependency-injection graph for inline JavaScript composition and settings calculation. It is the low-level machinery used to author and compose Dagr recipes.
+A tiny synchronous dependency graph for inline JavaScript composition and settings calculation. It is the low-level machinery used to author and compose Dagr recipes.
 
 ```js
-import di, { toClass, toFun, toValue } from '//recipes/rdk//dagr.di.js'
+import rdk, { construct, derive, value } from '//recipes/rdk//dagr.rdk.js'
 
 class Greeter {
   greet(name) { return `Hello, ${name}` }
 }
 
-const module0 = di.module({
-  unused: toValue(42),
-  name: toValue('caeus'),
-  greeter: toClass([], Greeter),
-  greeting: toFun(['name', 'greeter'], (name, greeter) => greeter.greet(name)),
+const graph0 = rdk.graph({
+  unused: value(42),
+  name: value('caeus'),
+  greeter: construct([], Greeter),
+  greeting: derive(['name', 'greeter'], (name, greeter) => greeter.greet(name)),
 })
 
-const module1 = di.module({ name: toValue('caeus!') })
-const module = module0.merge(module1)
+const graph1 = rdk.graph({ name: value('caeus!') })
+const graph = graph0.merge(graph1)
 
-module.definitionOf('name')
-module.keys()
+graph.definitionOf('name')
+graph.keys()
 
-const container = module.shake(['greeting']).compile()
+const container = graph.shake(['greeting']).compile()
 container.greeting
 ```
 
@@ -34,21 +34,21 @@ Providers can carry tags. A `{ tag }` dependency collects every matching binding
 const handler = Symbol('handler')
 const symbolicHandler = Symbol('symbolicHandler')
 
-const module = di.module({
-  json: toValue(input => JSON.parse(input), [handler]),
-  [symbolicHandler]: toFun([], () => value => value, new Set([handler])),
-  handlers: toFun([{ tag: handler }], handlers => handlers),
+const graph = rdk.graph({
+  json: value(input => JSON.parse(input), [handler]),
+  [symbolicHandler]: derive([], () => value => value, new Set([handler])),
+  handlers: derive([{ tag: handler }], handlers => handlers),
 })
 
-const handlers = module.shake(['handlers']).compile().handlers
+const handlers = graph.shake(['handlers']).compile().handlers
 handlers.json('{"ready":true}')
 handlers[symbolicHandler]('text')
 ```
 
-`toValue(value, tags)`, `toFun(deps, factory, tags)`, and `toClass(deps, Class, tags)` accept tags as an array or set of property keys. Direct dependencies remain property keys. Tag selectors and direct dependencies can be mixed in any order.
+`value(input, tags)`, `derive(deps, factory, tags)`, and `construct(deps, Class, tags)` accept tags as an array or set of property keys. Direct dependencies remain property keys. Tag selectors and direct dependencies can be mixed in any order.
 
-Tag collection is module-wide and unordered. No matches produce a frozen `{}`. `shake` retains all matching bindings and their transitive dependencies. A provider depending on its own tag is a cycle. Since `merge` replaces the complete definition, it replaces that binding's tags too.
+Tag collection is graph-wide and unordered. No matches produce a frozen `{}`. `shake` retains all matching bindings and their transitive dependencies. A provider depending on its own tag is a cycle. Since `merge` replaces the complete definition, it replaces that binding's tags too.
 
-Modules are immutable. `merge` is right-biased, like object spread: definitions in the argument override definitions in the receiver. `shake` returns a new module containing the requested roots and their transitive dependencies.
+Graphs are immutable. `merge` is right-biased, like object spread: definitions in the argument override definitions in the receiver. `shake` returns a new graph containing the requested roots and their transitive dependencies.
 
-`compile()` takes no arguments and eagerly initializes every binding in the module exactly once. Shake first when bindings should be excluded from initialization. Missing and circular dependencies are rejected. Promises are ordinary values: compilation never awaits or unwraps them.
+`compile()` takes no arguments and eagerly initializes every binding in the graph exactly once. Shake first when bindings should be excluded from initialization. Missing and circular dependencies are rejected. Promises are ordinary values: compilation never awaits or unwraps them.

@@ -1,33 +1,33 @@
 # How Dagr recipes use RDK
 
-The RDK recipe at `recipes/rdk/dagr.di.js` is a tiny synchronous calculation graph, not a runtime service locator.
+The RDK recipe at `recipes/rdk/dagr.rdk.js` is a tiny synchronous calculation graph.
 
 ## Primitive operations
 
 ```js
-import di, { toFun, toValue } from '//recipes/rdk//dagr.di.js'
+import rdk, { derive, value } from '//recipes/rdk//dagr.rdk.js'
 
-const module = di.module({
-  fact: toValue('input'),
-  derived: toFun(['fact'], fact => `${fact}!`),
+const graph = rdk.graph({
+  fact: value('input'),
+  derived: derive(['fact'], fact => `${fact}!`),
 })
 
-const result = module.shake(['derived']).compile().derived
+const result = graph.shake(['derived']).compile().derived
 ```
 
-- `toValue(value, tags?)` provides a known fact or contribution.
-- `toFun(deps, factory, tags?)` derives a value from explicit dependencies.
-- `toClass(deps, Class, tags?)` constructs a class when needed.
-- `module.merge(other)` returns a new right-biased module.
-- `module.shake(roots)` retains only requested roots and transitive dependencies.
-- `module.compile()` synchronously initializes retained bindings once.
+- `value(input, tags?)` provides a known fact or contribution.
+- `derive(deps, factory, tags?)` derives a value from explicit dependencies.
+- `construct(deps, Class, tags?)` constructs a class when needed.
+- `graph.merge(other)` returns a new right-biased graph.
+- `graph.shake(roots)` retains only requested roots and transitive dependencies.
+- `graph.compile()` synchronously initializes retained bindings once.
 
 ## One graph
 
 The TypeScript stack intentionally has one calculation graph:
 
 ```js
-module.shake(['index']).compile().index
+graph.shake(['index']).compile().index
 ```
 
 Features merge into that graph. Do not add another registry or evaluator for calculations, features, targets, or generated manifests.

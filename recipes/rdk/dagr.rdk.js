@@ -108,12 +108,12 @@ function definition(deps, factory, tags = []) {
 
 /**
  * @template T
- * @param {T} value
+ * @param {T} input
  * @param {Tags} [tags]
  * @returns {Definition<T>}
  */
-export function toValue(value, tags = []) {
-  return definition([], () => value, tags)
+export function value(input, tags = []) {
+  return definition([], () => input, tags)
 }
 
 /**
@@ -123,7 +123,7 @@ export function toValue(value, tags = []) {
  * @param {Tags} [tags]
  * @returns {Definition<T>}
  */
-export function toFun(deps, factory, tags = []) {
+export function derive(deps, factory, tags = []) {
   return definition(deps, factory, tags)
 }
 
@@ -134,7 +134,7 @@ export function toFun(deps, factory, tags = []) {
  * @param {Tags} [tags]
  * @returns {Definition<T>}
  */
-export function toClass(deps, Class, tags = []) {
+export function construct(deps, Class, tags = []) {
   if (typeof Class !== 'function') {
     throw new TypeError('Binding class must be a constructor')
   }
@@ -142,14 +142,14 @@ export function toClass(deps, Class, tags = []) {
 }
 
 /**
- * Copies and freezes user-provided definitions at the module boundary.
+ * Copies and freezes user-provided definitions at the graph boundary.
  *
  * @param {Bindings} bindings
  * @returns {Map<string | symbol, Definition<unknown>>}
  */
 function normalize(bindings) {
   if (bindings === null || typeof bindings !== 'object' || Array.isArray(bindings)) {
-    throw new TypeError('Module bindings must be an object')
+    throw new TypeError('Graph bindings must be an object')
   }
 
   return new Map(
@@ -164,7 +164,7 @@ function normalize(bindings) {
 }
 
 /** An immutable dependency graph that can be transformed and compiled. */
-class Module {
+class Graph {
   /** @type {Map<string | symbol, Definition<unknown>>} */
   #bindings
 
@@ -188,13 +188,13 @@ class Module {
   }
 
   /**
-   * Returns a module where definitions from `other` override definitions from this module.
+   * Returns a graph where definitions from `other` override definitions from this graph.
    *
    * @param {{
    *   keys: () => IterableIterator<PropertyKey>,
    *   definitionOf: (name: PropertyKey) => Definition<unknown> | undefined
    * }} other
-   * @returns {Module}
+   * @returns {Graph}
    */
   merge(other) {
     if (
@@ -203,27 +203,27 @@ class Module {
       || typeof other.keys !== 'function'
       || typeof other.definitionOf !== 'function'
     ) {
-      throw new TypeError('Can only merge another DI module')
+      throw new TypeError('Can only merge another graph')
     }
     const merged = new Map(this.#bindings)
     for (const name of other.keys()) {
       const binding = other.definitionOf(name)
       if (binding === undefined) {
-        throw new TypeError(`DI module has no definition for ${bindingName(name)}`)
+        throw new TypeError(`Graph has no definition for ${bindingName(name)}`)
       }
       merged.set(
         normalizeBindingKey(name),
         definition(binding.deps, binding.factory, binding.tags ?? []),
       )
     }
-    return new Module(merged)
+    return new Graph(merged)
   }
 
   /**
    * Retains each root and its transitive dependencies.
    *
    * @param {readonly PropertyKey[]} roots
-   * @returns {Module}
+   * @returns {Graph}
    */
   shake(roots) {
     if (!Array.isArray(roots) || roots.some(root => !isPropertyKey(root))) {
@@ -262,7 +262,7 @@ class Module {
     }
 
     for (const root of roots) visit(root)
-    return new Module(new Map([...this.#bindings].filter(([name]) => retained.has(name))))
+    return new Graph(new Map([...this.#bindings].filter(([name]) => retained.has(name))))
   }
 
   /**
@@ -314,9 +314,9 @@ class Module {
           }
           return Object.freeze(record)
         })
-        const value = binding.factory(...dependencies)
-        values.set(name, value)
-        return value
+        const result = binding.factory(...dependencies)
+        values.set(name, result)
+        return result
       } finally {
         resolving.pop()
       }
@@ -326,9 +326,9 @@ class Module {
 
     /** @type {Record<PropertyKey, unknown>} */
     const container = Object.create(null)
-    for (const [name, value] of values) {
+    for (const [name, result] of values) {
       Object.defineProperty(container, name, {
-        value,
+        value: result,
         enumerable: true,
         writable: false,
         configurable: false,
@@ -340,10 +340,10 @@ class Module {
 
 /**
  * @param {Bindings} bindings
- * @returns {Module}
+ * @returns {Graph}
  */
-export function module(bindings) {
-  return new Module(normalize(bindings))
+export function graph(bindings) {
+  return new Graph(normalize(bindings))
 }
 
-export default Object.freeze({ module, toValue, toFun, toClass })
+export default Object.freeze({ graph, value, derive, construct })

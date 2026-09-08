@@ -54,8 +54,8 @@ describe('mountable TypeScript stack', () => {
     assert.equal(index.publish.pack.run({ images: { 'ci:build': 'build-image' } }).FROM, 'build-image')
 
     const qualityFacet = stack.facet('quality')
-    const health = stack.di.module({
-      healthTarget: stack.di.toFun([], () => stack.target('health', {
+    const health = stack.rdk.graph({
+      healthTarget: stack.rdk.derive([], () => stack.target('health', {
         deps: [],
         run: () => ({ FROM: 'scratch', steps: [], IGNORE: [] }),
       }), [qualityFacet.targets]),
@@ -65,14 +65,14 @@ describe('mountable TypeScript stack', () => {
       .with(health)
     assert.equal(extended({ location: '//example' }).quality.health.name, 'health')
 
-    const first = stack.di.module({
-      firstTarget: stack.di.toFun([], () => stack.target('same', {
+    const first = stack.rdk.graph({
+      firstTarget: stack.rdk.derive([], () => stack.target('same', {
         deps: [],
         run: () => ({ FROM: 'scratch', steps: [], IGNORE: [] }),
       }), [stack.ciFacet.targets]),
     })
-    const second = stack.di.module({
-      secondTarget: stack.di.toFun([], () => stack.target('same', {
+    const second = stack.rdk.graph({
+      secondTarget: stack.rdk.derive([], () => stack.target('same', {
         deps: [],
         run: () => ({ FROM: 'scratch', steps: [], IGNORE: [] }),
       }), [stack.ciFacet.targets]),
