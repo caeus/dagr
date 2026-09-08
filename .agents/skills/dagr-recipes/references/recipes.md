@@ -12,7 +12,7 @@ Canonical source material:
 
 Each top-level directory under `recipes/` is independently consumable. A recipe contains everything required when mounted or published. Repository-only tests belong under `recipes/tests/`.
 
-A build recipe exposes `dagr.recipe.js`. Supporting recipes may expose another descriptive entry point such as `dagr.di.js`.
+A build recipe exposes `dagr.recipe.js`. The RDK exposes `dagr.rdk.js`.
 
 ## What the TypeScript stack owns
 
@@ -49,7 +49,7 @@ const stack = typescript({
 export default stack({ location, version, deps, metadata })
 ```
 
-Every `.with(...)` value is an ordinary DI module merged into the same RDK graph. The final root is `index`; target selection happens later in Dagr.
+Every `.with(...)` value is an ordinary RDK graph merged into the same calculation. The final root is `index`; target selection happens later in Dagr.
 
 ## Package managers
 

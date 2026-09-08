@@ -1,4 +1,4 @@
-import di from '//di//dagr.di.js'
+import rdk from '//rdk//dagr.rdk.js'
 import { facetOf } from '//dagr.features.js'
 
 const DEFAULT_CONVENTIONS = Object.freeze({
@@ -23,10 +23,10 @@ function conventionModule(overrides = {}) {
   if (unknown.length > 0) {
     throw new Error(`Unknown TypeScript convention${unknown.length === 1 ? '' : 's'} ${unknown.join(', ')}`)
   }
-  return di.module(Object.fromEntries(
+  return rdk.graph(Object.fromEntries(
     Object.entries(DEFAULT_CONVENTIONS).map(([name, fallback]) => [
       name,
-      di.toValue(Object.hasOwn(overrides, name) ? overrides[name] : fallback),
+      rdk.value(Object.hasOwn(overrides, name) ? overrides[name] : fallback),
     ]),
   ))
 }
@@ -110,40 +110,40 @@ const mergeVersionCatalogs = catalogs => {
 }
 
 function aggregateModule() {
-  return di.module({
-    featureToolPackages: di.toFun(
+  return rdk.graph({
+    featureToolPackages: rdk.derive(
       [{ tag: 'toolPackages' }],
       contributions => unique(contributionValues(contributions)),
     ),
-    featureRuntimePackages: di.toFun(
+    featureRuntimePackages: rdk.derive(
       [{ tag: 'runtimePackages' }],
       contributions => unique(contributionValues(contributions)),
     ),
-    featureAmbientTypes: di.toFun(
+    featureAmbientTypes: rdk.derive(
       [{ tag: 'ambientTypes' }],
       contributions => unique(contributionValues(contributions)),
     ),
-    featureGeneratedFiles: di.toFun(
+    featureGeneratedFiles: rdk.derive(
       [{ tag: 'generatedFiles' }],
       contributions => mergeObjects('generated file', contributionValues(contributions)),
     ),
-    featureAllowBuilds: di.toFun(
+    featureAllowBuilds: rdk.derive(
       [{ tag: 'allowBuilds' }],
       contributions => unique(contributionValues(contributions)),
     ),
-    featureVersionDefaults: di.toFun(
+    featureVersionDefaults: rdk.derive(
       [{ tag: 'versionDefaults' }],
       contributions => mergeVersionCatalogs(contributionValues(contributions)),
     ),
-    featureValidations: di.toFun(
+    featureValidations: rdk.derive(
       [{ tag: 'validations' }],
       contributions => contributionValues(contributions),
     ),
   })
 }
 
-const coreModule = () => di.module({
-  versions: di.toFun(
+const coreModule = () => rdk.graph({
+  versions: rdk.derive(
     ['stackVersionDefaults', 'featureVersionDefaults', 'configuredVersions'],
     (stackDefaults, featureDefaults, configured) => ({
       ...stackDefaults,
@@ -151,15 +151,15 @@ const coreModule = () => di.module({
       ...configured,
     }),
   ),
-  name: di.toFun(['location', 'scope'], projectName),
-  slug: di.toFun(['name'], name => name.slice(name.indexOf('/') + 1)),
-  validatedMetadata: di.toFun(['name', 'metadata', 'metadataFields'], validateMetadata),
-  sourceLayout: di.toFun(
+  name: rdk.derive(['location', 'scope'], projectName),
+  slug: rdk.derive(['name'], name => name.slice(name.indexOf('/') + 1)),
+  validatedMetadata: rdk.derive(['name', 'metadata', 'metadataFields'], validateMetadata),
+  sourceLayout: rdk.derive(
     ['sourceDirectory', 'entryFile'],
     (directory, entry) => ({ directory, entry }),
   ),
-  sourceEntry: di.toFun(['sourceLayout'], layout => `${layout.directory}/${layout.entry}`),
-  outputLayout: di.toFun(
+  sourceEntry: rdk.derive(['sourceLayout'], layout => `${layout.directory}/${layout.entry}`),
+  outputLayout: rdk.derive(
     ['productKind', 'outputDirectory', 'entryFile'],
     (product, directory, entry) => {
       if (product === 'worker') return undefined
@@ -172,19 +172,19 @@ const coreModule = () => di.module({
       }
     },
   ),
-  distributionIntent: di.toFun(
+  distributionIntent: rdk.derive(
     ['intent', 'distributionIntents'],
     (intent, intents) => intents.includes(intent),
   ),
-  emissionIntent: di.toFun(
+  emissionIntent: rdk.derive(
     ['productKind', 'intent', 'emissionIntents'],
     (product, intent, intents) => product === 'library' && intents.includes(intent),
   ),
-  testSourcesIncluded: di.toFun(
+  testSourcesIncluded: rdk.derive(
     ['productKind', 'intent', 'testSourceIntents'],
     (product, intent, intents) => product !== 'library' || intents.includes(intent),
   ),
-  sourceSet: di.toFun(
+  sourceSet: rdk.derive(
     ['productKind', 'sourceLayout', 'testSourcesIncluded'],
     (product, layout, includeTests) => ({
       include: [`${layout.directory}/**/${product === 'web' ? '*' : '*.ts'}`],
@@ -193,19 +193,19 @@ const coreModule = () => di.module({
         : [`${layout.directory}/**/*.test.ts`, `${layout.directory}/**/*.spec.ts`],
     }),
   ),
-  runtimeEntry: di.toFun(
+  runtimeEntry: rdk.derive(
     ['productKind', 'distributionIntent', 'sourceEntry', 'outputLayout'],
     (product, distribution, source, output) => product === 'library'
       ? `./${distribution ? output.runtimeFile : source}`
       : undefined,
   ),
-  declarationEntry: di.toFun(
+  declarationEntry: rdk.derive(
     ['productKind', 'distributionIntent', 'sourceEntry', 'outputLayout'],
     (product, distribution, source, output) => product === 'library'
       ? `./${distribution ? output.declarationFile : source}`
       : undefined,
   ),
-  emittedArtifacts: di.toFun(
+  emittedArtifacts: rdk.derive(
     ['productKind', 'distributionIntent', 'outputLayout'],
     (product, distribution, output) => {
       if (product === 'web') return [output.directory]
@@ -213,61 +213,61 @@ const coreModule = () => di.module({
       return []
     },
   ),
-  publishable: di.toFun(
+  publishable: rdk.derive(
     ['intent', 'publicationIntentName'],
     (intent, publication) => intent === publication,
   ),
-  sourceMapEmission: di.toFun(
+  sourceMapEmission: rdk.derive(
     ['sourceMapIntent', 'emissionIntent'],
     (requested, emitting) => requested && emitting,
   ),
-  ambientTypes: di.toFun(['featureAmbientTypes'], types => types),
+  ambientTypes: rdk.derive(['featureAmbientTypes'], types => types),
 })
 
-const packageModule = () => di.module({
-  dependencyEntries: di.toFun(
+const packageModule = () => rdk.graph({
+  dependencyEntries: rdk.derive(
     ['name', 'scope', 'deps', 'versions', 'dependencyLocations', 'featureRuntimePackages'],
     dependencyEntries,
   ),
-  toolDependencyEntries: di.toFun(['name', 'versions', 'featureToolPackages'], (name, versions, packages) =>
+  toolDependencyEntries: rdk.derive(['name', 'versions', 'featureToolPackages'], (name, versions, packages) =>
     packages.map(pkg => {
       if (versions[pkg] === undefined) throw new Error(`${name}: no version configured for stack dependency ${pkg}`)
       return [pkg, versions[pkg]]
     })),
-  'packageJson.name': di.toFun(['name'], value => value),
-  'packageJson.version': di.toFun(['version'], value => value),
-  'packageJson.type': di.toFun(
+  'packageJson.name': rdk.derive(['name'], value => value),
+  'packageJson.version': rdk.derive(['version'], value => value),
+  'packageJson.type': rdk.derive(
     ['javascriptModuleFormat'],
     format => format === 'esm' ? 'module' : 'commonjs',
   ),
-  'packageJson.private': di.toFun(['publishable'], value => !value),
-  'packageJson.main': di.toFun(['runtimeEntry'], value => value),
-  'packageJson.types': di.toFun(['declarationEntry'], value => value),
-  'packageJson.exports': di.toFun(
+  'packageJson.private': rdk.derive(['publishable'], value => !value),
+  'packageJson.main': rdk.derive(['runtimeEntry'], value => value),
+  'packageJson.types': rdk.derive(['declarationEntry'], value => value),
+  'packageJson.exports': rdk.derive(
     ['runtimeEntry', 'declarationEntry'],
     (runtime, declarations) => runtime === undefined
       ? undefined
       : { '.': { types: declarations, import: runtime } },
   ),
-  'packageJson.files': di.toFun(
+  'packageJson.files': rdk.derive(
     ['productKind', 'distributionIntent', 'emittedArtifacts'],
     (product, distribution, artifacts) => product === 'library' && distribution ? artifacts : undefined,
   ),
-  'packageJson.imports': di.toFun(
+  'packageJson.imports': rdk.derive(
     ['importAlias'],
     alias => alias === undefined ? undefined : { [alias.specifier]: alias.runtimePath },
   ),
-  'packageJson.dependencies': di.toFun(
+  'packageJson.dependencies': rdk.derive(
     ['dependencyEntries'],
     entries => Object.fromEntries(entries.prod),
   ),
-  'packageJson.devDependencies': di.toFun(
+  'packageJson.devDependencies': rdk.derive(
     ['intent', 'developmentIntents', 'dependencyEntries', 'toolDependencyEntries'],
     (intent, intents, dependencies, tools) => intents.includes(intent)
       ? Object.fromEntries([...tools, ...dependencies.dev])
       : undefined,
   ),
-  packageJson: di.toFun(
+  packageJson: rdk.derive(
     [
       'validatedMetadata',
       'packageJson.name',
@@ -294,53 +294,53 @@ const packageModule = () => di.module({
   ),
 })
 
-const tsconfigModule = () => di.module({
-  'tsconfig.extends': di.toFun([], () => '@tsconfig/strictest/tsconfig.json'),
-  'tsconfig.include': di.toFun(['sourceSet'], value => value.include),
-  'tsconfig.exclude': di.toFun(['sourceSet'], value => value.exclude),
-  'tsconfig.compilerOptions.rootDir': di.toFun(['sourceLayout'], value => value.directory),
-  'tsconfig.compilerOptions.outDir': di.toFun(
+const tsconfigModule = () => rdk.graph({
+  'tsconfig.extends': rdk.derive([], () => '@tsconfig/strictest/tsconfig.json'),
+  'tsconfig.include': rdk.derive(['sourceSet'], value => value.include),
+  'tsconfig.exclude': rdk.derive(['sourceSet'], value => value.exclude),
+  'tsconfig.compilerOptions.rootDir': rdk.derive(['sourceLayout'], value => value.directory),
+  'tsconfig.compilerOptions.outDir': rdk.derive(
     ['emissionIntent', 'outputLayout'],
     (emit, output) => emit ? output.directory : undefined,
   ),
-  'tsconfig.compilerOptions.target': di.toFun(['languageTarget'], value => value),
-  'tsconfig.compilerOptions.lib': di.toFun(['standardLibraries'], value => value),
-  'tsconfig.compilerOptions.module': di.toFun(['moduleKind'], value => value),
-  'tsconfig.compilerOptions.moduleResolution': di.toFun(['moduleResolutionKind'], value => value),
-  'tsconfig.compilerOptions.noEmit': di.toFun(['emissionIntent'], emit => !emit),
-  'tsconfig.compilerOptions.declaration': di.toFun(
+  'tsconfig.compilerOptions.target': rdk.derive(['languageTarget'], value => value),
+  'tsconfig.compilerOptions.lib': rdk.derive(['standardLibraries'], value => value),
+  'tsconfig.compilerOptions.module': rdk.derive(['moduleKind'], value => value),
+  'tsconfig.compilerOptions.moduleResolution': rdk.derive(['moduleResolutionKind'], value => value),
+  'tsconfig.compilerOptions.noEmit': rdk.derive(['emissionIntent'], emit => !emit),
+  'tsconfig.compilerOptions.declaration': rdk.derive(
     ['productKind', 'emissionIntent'],
     (product, emit) => product === 'library' && emit ? true : undefined,
   ),
-  'tsconfig.compilerOptions.sourceMap': di.toFun(
+  'tsconfig.compilerOptions.sourceMap': rdk.derive(
     ['sourceMapEmission'],
     value => value ? true : undefined,
   ),
-  'tsconfig.compilerOptions.inlineSources': di.toFun(
+  'tsconfig.compilerOptions.inlineSources': rdk.derive(
     ['sourceMapEmission'],
     value => value ? true : undefined,
   ),
-  'tsconfig.compilerOptions.types': di.toFun(
+  'tsconfig.compilerOptions.types': rdk.derive(
     ['ambientTypes'],
     value => value.length > 0 ? value : undefined,
   ),
-  'tsconfig.compilerOptions.paths': di.toFun(
+  'tsconfig.compilerOptions.paths': rdk.derive(
     ['importAlias'],
     alias => alias === undefined ? undefined : { [alias.specifier]: [alias.sourcePath] },
   ),
-  'tsconfig.compilerOptions.allowImportingTsExtensions': di.toFun(
+  'tsconfig.compilerOptions.allowImportingTsExtensions': rdk.derive(
     ['productKind'],
     product => product === 'web' ? true : undefined,
   ),
-  'tsconfig.compilerOptions.moduleDetection': di.toFun(
+  'tsconfig.compilerOptions.moduleDetection': rdk.derive(
     ['productKind'],
     product => product === 'web' ? 'force' : undefined,
   ),
-  'tsconfig.compilerOptions.jsx': di.toFun(
+  'tsconfig.compilerOptions.jsx': rdk.derive(
     ['productKind'],
     product => product === 'web' ? 'react-jsx' : undefined,
   ),
-  compilerOptions: di.toFun(
+  compilerOptions: rdk.derive(
     [
       'tsconfig.compilerOptions.rootDir',
       'tsconfig.compilerOptions.outDir',
@@ -367,7 +367,7 @@ const tsconfigModule = () => di.module({
       ['moduleDetection', moduleDetection], ['jsx', jsx],
     ]),
   ),
-  tsconfig: di.toFun(
+  tsconfig: rdk.derive(
     ['tsconfig.extends', 'tsconfig.include', 'tsconfig.exclude', 'compilerOptions'],
     (extendsConfig, include, exclude, compilerOptions) => present([
       ['extends', extendsConfig], ['include', include], ['exclude', exclude], ['compilerOptions', compilerOptions],
@@ -375,14 +375,14 @@ const tsconfigModule = () => di.module({
   ),
 })
 
-const workspaceModule = () => di.module({
-  files: di.toFun(
+const workspaceModule = () => rdk.graph({
+  files: rdk.derive(
     ['packageJson', 'tsconfig', 'featureGeneratedFiles'],
     (packageJson, tsconfig, generated) => ({ 'package.json': packageJson, 'tsconfig.json': tsconfig, ...generated }),
   ),
-  allowBuilds: di.toFun(['featureAllowBuilds'], value => value),
-  output: di.toFun(['outputLayout'], value => value),
-  workspace: di.toFun(
+  allowBuilds: rdk.derive(['featureAllowBuilds'], value => value),
+  output: rdk.derive(['outputLayout'], value => value),
+  workspace: rdk.derive(
     [
       'intent', 'name', 'slug', 'packageJson', 'tsconfig', 'files', 'output',
       'allowBuilds', 'buildAssets', 'sourceLayout', 'sourceSet', 'runtimeEntry',
@@ -424,10 +424,10 @@ const workspaceDependency = (workspace, dependency) => typeof dependency === 'ob
   ? { tag: workspaceKey(workspace, dependency.tag) }
   : workspaceKey(workspace, dependency)
 
-function qualifyWorkspace(workspace, module) {
-  return di.module(Object.fromEntries([...module.keys()].map(name => {
-    const definition = module.definitionOf(name)
-    return [workspaceKey(workspace, name), di.toFun(
+function qualifyWorkspace(workspace, graph) {
+  return rdk.graph(Object.fromEntries([...graph.keys()].map(name => {
+    const definition = graph.definitionOf(name)
+    return [workspaceKey(workspace, name), rdk.derive(
       definition.deps.map(dependency => workspaceDependency(workspace, dependency)),
       definition.factory,
       definition.tags.map(tag => workspaceKey(workspace, tag)),
@@ -435,8 +435,8 @@ function qualifyWorkspace(workspace, module) {
   })))
 }
 
-const valueModule = values => di.module(Object.fromEntries(
-  Reflect.ownKeys(values).map(name => [name, di.toValue(values[name])]),
+const valueModule = values => rdk.graph(Object.fromEntries(
+  Reflect.ownKeys(values).map(name => [name, rdk.value(values[name])]),
 ))
 
 const workspaceTemplate = (inputs, intent, features, conventions) => valueModule({ ...inputs, intent })
@@ -484,9 +484,9 @@ export function typescriptModule({
     const entries = facetOf(definition) ? targetEntries : settingEntries
     entries.push([name, definition])
   }
-  const featureSettings = di.module(Object.fromEntries(settingEntries))
-  const targets = di.module({ '#dagrRuntime': di.toValue(dagrRuntime) })
-    .merge(di.module(Object.fromEntries(targetEntries)))
+  const featureSettings = rdk.graph(Object.fromEntries(settingEntries))
+  const targets = rdk.graph({ '#dagrRuntime': rdk.value(dagrRuntime) })
+    .merge(rdk.graph(Object.fromEntries(targetEntries)))
 
   const workspaces = new Set(['dev:sync', 'config:dev'])
   for (const name of targets.keys()) {
@@ -497,12 +497,12 @@ export function typescriptModule({
     }
   }
 
-  let module = targets
+  let graph = targets
   for (const workspace of workspaces) {
-    module = module.merge(qualifyWorkspace(
+    graph = graph.merge(qualifyWorkspace(
       workspace,
       workspaceTemplate(inputs, intentForWorkspace(workspace), featureSettings, conventions),
     ))
   }
-  return module
+  return graph
 }

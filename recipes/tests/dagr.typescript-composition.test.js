@@ -6,7 +6,7 @@ import { loadTypeScript } from './dagr.typescript-loader.js'
 const {
   biome,
   cloudflareWorker,
-  di,
+  rdk,
   eslint,
   library,
   prettier,
@@ -48,27 +48,27 @@ const versions = {
   'wrangler': '4',
 }
 
-const withWorkspaces = module => {
-  const nodes = Object.freeze(Object.fromEntries([...module.keys()].map(name => [
+const withWorkspaces = calculation => {
+  const nodes = Object.freeze(Object.fromEntries([...calculation.keys()].map(name => [
     name,
-    module.definitionOf(name),
+    calculation.definitionOf(name),
   ])))
   return Object.freeze({
-    module,
+    calculation,
     graph: Object.freeze({ nodes }),
     workspace: name => {
       const key = workspaceKey(name, 'workspace')
-      return module.shake([key]).compile()[key]
+      return calculation.shake([key]).compile()[key]
     },
   })
 }
 
 const mergeFeatures = features => features.reduce(
-  (module, feature) => module.merge(feature),
-  di.module({}),
+  (graph, feature) => graph.merge(feature),
+  rdk.graph({}),
 )
 
-const moduleFor = features => withWorkspaces(typescriptModule({
+const graphFor = features => withWorkspaces(typescriptModule({
   location: '//packages/example',
   scope: 'internal',
   version: '1.2.3',
@@ -79,7 +79,7 @@ const moduleFor = features => withWorkspaces(typescriptModule({
 }))
 
 describe('composable TypeScript workspaces', () => {
-  it('merges feature definitions into one native DI module', () => {
+  it('merges feature definitions into one native RDK graph', () => {
     const features = [
       library({ runtime: 'node' }),
       prettier(),
@@ -87,7 +87,7 @@ describe('composable TypeScript workspaces', () => {
       eslint({ prettier: true }),
       typedoc(),
     ]
-    const { graph, workspace } = moduleFor(features)
+    const { graph, workspace } = graphFor(features)
 
     assert.equal(features[0].role, undefined)
     assert.equal(features[0].execution, undefined)
@@ -155,7 +155,7 @@ describe('composable TypeScript workspaces', () => {
   })
 
   it('gets capability policy and fallback versions only from active features', () => {
-    const module = typescriptModule({
+    const calculation = typescriptModule({
       location: '//packages/example',
       scope: 'internal',
       version: '1.2.3',
@@ -168,7 +168,7 @@ describe('composable TypeScript workspaces', () => {
       versions: { vitest: 'repository-choice' },
       features: mergeFeatures([library({ runtime: 'node' }), vitest()]),
     })
-    const { graph, workspace } = withWorkspaces(module)
+    const { graph, workspace } = withWorkspaces(calculation)
     const dev = workspace('dev:sync')
 
     assert.ok(graph.nodes['dev:sync/vitestIntents'])
@@ -225,7 +225,7 @@ describe('composable TypeScript workspaces', () => {
   })
 
   it('derives Wyr-style library workspaces from intent and target', () => {
-    const { workspace } = moduleFor([
+    const { workspace } = graphFor([
       library({ runtime: 'node', language: 'ES2023', sourceMaps: true, assets: ['README.md', 'LICENSE'] }),
       prettier({ semi: true, trailingComma: 'all' }),
       vitest({ globals: true, typecheck: true }),
@@ -266,8 +266,8 @@ describe('composable TypeScript workspaces', () => {
   })
 
   it('projects one import alias to source and runtime destinations', () => {
-    const aliases = di.module({
-      importAlias: di.toFun(
+    const aliases = rdk.graph({
+      importAlias: rdk.derive(
         ['sourceDirectory', 'outputDirectory'],
         (source, output) => ({
           specifier: '#*',
@@ -276,7 +276,7 @@ describe('composable TypeScript workspaces', () => {
         }),
       ),
     })
-    const { workspace } = moduleFor([library({ runtime: 'node' }), aliases])
+    const { workspace } = graphFor([library({ runtime: 'node' }), aliases])
     const build = workspace('ci:build')
 
     assert.deepEqual(build.tsconfig.compilerOptions.paths, { '#*': ['./src/*'] })
@@ -284,7 +284,7 @@ describe('composable TypeScript workspaces', () => {
   })
 
   it('derives worker policy instead of accepting raw tsconfig', () => {
-    const { workspace } = moduleFor([cloudflareWorker(), prettier()])
+    const { workspace } = graphFor([cloudflareWorker(), prettier()])
     const dev = workspace('dev:sync')
 
     assert.equal(dev.packageJson.imports['#/*'], './src/*')
@@ -295,7 +295,7 @@ describe('composable TypeScript workspaces', () => {
   })
 
   it('derives the Vite React runtime, browser compiler, and test environment', () => {
-    const { graph, workspace } = moduleFor([
+    const { graph, workspace } = graphFor([
       viteReact(),
       prettier(),
       eslint(),
@@ -316,7 +316,7 @@ describe('composable TypeScript workspaces', () => {
   })
 
   it('lets an ordinary feature contribute Biome settings, files, packages, and targets', () => {
-    const { graph, workspace } = moduleFor([library(), biome()])
+    const { graph, workspace } = graphFor([library(), biome()])
     const dev = workspace('dev:sync')
 
     assert.ok(graph.nodes['dev:sync/biomeConfig'])
@@ -332,24 +332,24 @@ describe('composable TypeScript workspaces', () => {
   })
 
   it('lets features extend ESLint rules through settings and fails without ESLint', () => {
-    const companyRules = di.module({
+    const companyRules = rdk.graph({
       companyEslintRequirement: requires('eslint.enabled'),
-      companyEslintRules: di.toValue(
+      companyEslintRules: rdk.value(
         { '@typescript-eslint/consistent-type-imports': 'error' },
         ['eslint.ruleSets'],
       ),
     })
 
-    const lint = moduleFor([library(), eslint(), companyRules]).workspace('ci:lint')
+    const lint = graphFor([library(), eslint(), companyRules]).workspace('ci:lint')
     assert.match(lint.files['eslint.config.mjs'], /consistent-type-imports/)
     assert.throws(
-      () => moduleFor([library(), companyRules]).workspace('dev:sync'),
+      () => graphFor([library(), companyRules]).workspace('dev:sync'),
       /Missing binding "dev:sync\/eslint.enabled" required by "dev:sync\/companyEslintRequirement"/,
     )
   })
 
   it('rejects derived package fields disguised as metadata', () => {
-    const module = typescriptModule({
+    const calculation = typescriptModule({
       location: '//packages/example',
       scope: 'internal',
       version: '1.2.3',
@@ -357,7 +357,7 @@ describe('composable TypeScript workspaces', () => {
       versions,
       features: mergeFeatures([library()]),
     })
-    const { workspace } = withWorkspaces(module)
+    const { workspace } = withWorkspaces(calculation)
     assert.throws(() => workspace('dev:sync'), /cannot configure non-metadata field private/)
   })
 })

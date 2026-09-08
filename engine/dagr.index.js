@@ -1,4 +1,4 @@
-import typescript, { ciFacet, di, library, target } from '//engine/stacks/typescript//dagr.recipe.js'
+import typescript, { ciFacet, library, rdk, target } from '//engine/stacks/typescript//dagr.recipe.js'
 
 const ROLLUP_CONFIG = `import commonjs from '@rollup/plugin-commonjs'
 import { nodeResolve } from '@rollup/plugin-node-resolve'
@@ -38,10 +38,10 @@ const versions = {
   zod: '4.4.3',
 }
 
-const dagr = di.module({
-  name: di.toValue('@caeus/dagr'),
+const dagr = rdk.graph({
+  name: rdk.value('@caeus/dagr'),
 
-  nodePnpmTarget: di.toValue(target('node-pnpm', {
+  nodePnpmTarget: rdk.value(target('node-pnpm', {
     deps: [],
     run: () => ({
       FROM: 'node:22-alpine',
@@ -53,7 +53,7 @@ const dagr = di.module({
     }),
   }), [ciFacet.targets]),
 
-  importAlias: di.toFun(
+  importAlias: rdk.derive(
     ['sourceDirectory', 'outputDirectory'],
     (source, output) => ({
       specifier: '#*',
@@ -61,17 +61,17 @@ const dagr = di.module({
       runtimePath: `./${output}/*`,
     }),
   ),
-  'tsconfig.compilerOptions.declaration': di.toValue(false),
+  'tsconfig.compilerOptions.declaration': rdk.value(false),
 
-  dagrToolPackages: di.toValue([
+  dagrToolPackages: rdk.value([
     '@rollup/plugin-commonjs',
     '@rollup/plugin-node-resolve',
     'rollup',
     'tsx',
   ], ['toolPackages']),
-  dagrAllowBuilds: di.toValue(['esbuild'], ['allowBuilds']),
+  dagrAllowBuilds: rdk.value(['esbuild'], ['allowBuilds']),
 
-  testTarget: di.toFun(
+  testTarget: rdk.derive(
     ['#dagrRuntime'],
     runtime => target('test', {
       deps: ['ci:build'],
@@ -86,7 +86,7 @@ const dagr = di.module({
     [ciFacet.targets],
   ),
 
-  bundleTarget: di.toFun(
+  bundleTarget: rdk.derive(
     ['#dagrRuntime'],
     runtime => target('bundle', {
       deps: ['ci:build'],
@@ -103,7 +103,7 @@ const dagr = di.module({
     [ciFacet.targets],
   ),
 
-  bundlecheckTarget: di.toFun(
+  bundlecheckTarget: rdk.derive(
     ['#dagrRuntime'],
     runtime => target('bundlecheck', {
       deps: ['ci:bundle'],
@@ -118,7 +118,7 @@ const dagr = di.module({
     [ciFacet.targets],
   ),
 
-  imageTarget: di.toValue(target('image', {
+  imageTarget: rdk.value(target('image', {
     deps: ['ci:bundlecheck'],
     run: ({ images }) => ({
       FROM: 'node:22-alpine',

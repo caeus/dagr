@@ -5,7 +5,7 @@ description: Work with Dagr reusable recipes and the RDK-based settings calculat
 
 # Dagr recipes
 
-Use this skill for reusable recipes under `recipes/`, especially the composable TypeScript stack and its synchronous RDK calculation DAG.
+Use this skill for reusable recipes under `recipes/`, especially the composable TypeScript stack and its synchronous RDK calculation graph.
 
 ## First orient yourself
 
@@ -20,13 +20,13 @@ Use this skill for reusable recipes under `recipes/`, especially the composable 
 
 `recipes/` is the independently consumable publication boundary. `typescript` is a stack recipe; `rdk` is the supporting Recipe Development Kit.
 
-The TypeScript stack calculates a complete Dagr index from project facts and developer intent. Generated files and targets are outputs. One native synchronous DI DAG supplied by the RDK owns the calculation:
+The TypeScript stack calculates a complete Dagr index from project facts and developer intent. Generated files and targets are outputs. One native synchronous graph supplied by the RDK owns the calculation:
 
 ```js
-module.shake(['index']).compile().index
+graph.shake(['index']).compile().index
 ```
 
-Features are ordinary DI modules merged into that graph. Do not introduce a second calculation graph, feature registry, target registry, or manifest evaluator.
+Features are ordinary RDK graphs merged into that calculation. Do not introduce a second calculation graph, feature registry, target registry, or manifest evaluator.
 
 ## Modeling rules
 

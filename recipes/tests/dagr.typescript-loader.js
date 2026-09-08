@@ -5,7 +5,7 @@ import vm from 'node:vm'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const recipe = resolve(root, 'typescript')
-const di = resolve(root, 'rdk')
+const rdk = resolve(root, 'rdk')
 
 export async function loadTypeScript() {
   const cache = new Map()
@@ -43,8 +43,8 @@ export async function loadTypeScript() {
       if (!specifier.startsWith('//')) {
         throw new Error(`Dagr imports must start with //, got: ${specifier}`)
       }
-      if (specifier.startsWith('//di//')) {
-        return load(resolve(di, specifier.slice('//di//'.length)))
+      if (specifier.startsWith('//rdk//')) {
+        return load(resolve(rdk, specifier.slice('//rdk//'.length)))
       }
       return load(resolve(recipe, specifier.slice(2)))
     })

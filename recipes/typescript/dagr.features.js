@@ -1,4 +1,4 @@
-import di from '//di//dagr.di.js'
+import rdk from '//rdk//dagr.rdk.js'
 
 const facetsByName = new Map()
 const facetsByTargetTag = new Map()
@@ -23,12 +23,12 @@ export function facetOf(definition) {
   return facets[0]
 }
 
-const versionDefaults = entries => di.toValue(
+const versionDefaults = entries => rdk.value(
   Object.freeze({ ...entries }),
   ['versionDefaults'],
 )
 
-export const requires = (...dependencies) => di.toFun(
+export const requires = (...dependencies) => rdk.derive(
   dependencies,
   () => true,
   ['validations'],
@@ -134,17 +134,17 @@ const commandTargets = (prefix, name, command, {
     return isEnabled ? factory(...values) : undefined
   }
   return {
-    [`${prefix}ConfigTarget`]: di.toFun(
+    [`${prefix}ConfigTarget`]: rdk.derive(
       [...enabledDeps, `config:${name}/workspace`, '#dagrRuntime'],
       enabledFactory((workspace, runtime) => configurationTarget(name, workspace, runtime)),
       [configFacet.targets],
     ),
-    [`${prefix}InstallTarget`]: di.toFun(
+    [`${prefix}InstallTarget`]: rdk.derive(
       [...enabledDeps, `config:${name}/workspace`, '#dagrRuntime'],
       enabledFactory((workspace, runtime) => installTarget(name, workspace, runtime)),
       [ciFacet.targets],
     ),
-    [`${prefix}Target`]: di.toFun(
+    [`${prefix}Target`]: rdk.derive(
       [
         ...enabledDeps,
         ...(dependencies ? [{ tag: 'buildDependencies' }] : []),
@@ -217,40 +217,40 @@ export function library({
     buildAssetInputs: Object.freeze([...assets]),
   }
   const settings = {
-    moduleKind: di.toFun(['runtimeKind'], runtime => runtime === 'node' ? 'NodeNext' : 'ESNext'),
-    moduleResolutionKind: di.toFun(
+    moduleKind: rdk.derive(['runtimeKind'], runtime => runtime === 'node' ? 'NodeNext' : 'ESNext'),
+    moduleResolutionKind: rdk.derive(
       ['runtimeKind'],
       runtime => runtime === 'node' ? 'NodeNext' : 'Bundler',
     ),
-    standardLibraries: di.toFun(['languageTarget'], target => [target]),
-    baseAmbientTypes: di.toFun(
+    standardLibraries: rdk.derive(['languageTarget'], target => [target]),
+    baseAmbientTypes: rdk.derive(
       ['runtimeKind'],
       runtime => runtime === 'node' ? ['node'] : [],
       ['ambientTypes'],
     ),
-    importAlias: di.toFun([], () => undefined),
-    productToolPackages: di.toFun(
+    importAlias: rdk.derive([], () => undefined),
+    productToolPackages: rdk.derive(
       ['intent', 'developmentIntents', 'runtimeKind'],
       (intent, intents, runtime) => hasIntent(intents, intent)
         ? ['@tsconfig/strictest', ...(runtime === 'node' ? ['@types/node'] : []), 'typescript']
         : [],
       ['toolPackages'],
     ),
-    productRuntimePackages: di.toFun([], () => [], ['runtimePackages']),
-    productAllowBuilds: di.toFun([], () => [], ['allowBuilds']),
+    productRuntimePackages: rdk.derive([], () => [], ['runtimePackages']),
+    productAllowBuilds: rdk.derive([], () => [], ['allowBuilds']),
     libraryVersionDefaults: versionDefaults({ '@types/node': '26.2.0' }),
-    buildAssets: di.toFun(['buildAssetInputs'], assets => assets),
+    buildAssets: rdk.derive(['buildAssetInputs'], assets => assets),
     ...commandTargets('libraryTypecheck', 'typecheck', 'tsc --noEmit'),
     ...commandTargets('libraryBuild', 'build', 'tsc', {
       assets: true,
       dependencies: true,
     }),
-    libraryCiPackTarget: di.toFun(
+    libraryCiPackTarget: rdk.derive(
       ['libraryBuildTarget', 'ci:pack/workspace', '#dagrRuntime'],
       (build, workspace, runtime) => packTarget('pack', workspace, runtime, { build }),
       [ciFacet.targets],
     ),
-    libraryPublishPackTarget: di.toFun(
+    libraryPublishPackTarget: rdk.derive(
       ['libraryBuildTarget', 'publish:pack/workspace', '#dagrRuntime'],
       (build, workspace, runtime) => packTarget('pack', workspace, runtime, { build }, {
         dependencyFacet: ciFacet.name,
@@ -258,8 +258,8 @@ export function library({
       [publishFacet.targets],
     ),
   }
-  return di.module({
-    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, di.toValue(inputs[key])])),
+  return rdk.graph({
+    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, rdk.value(inputs[key])])),
     ...settings,
   })
 }
@@ -273,11 +273,11 @@ export function cloudflareWorker({ language = 'ES2022' } = {}) {
     buildAssetInputs: Object.freeze([]),
   }
   const settings = {
-    moduleKind: di.toFun([], () => 'NodeNext'),
-    moduleResolutionKind: di.toFun([], () => 'NodeNext'),
-    standardLibraries: di.toFun(['languageTarget'], target => [target]),
-    baseAmbientTypes: di.toFun([], () => ['@cloudflare/workers-types'], ['ambientTypes']),
-    importAlias: di.toFun(
+    moduleKind: rdk.derive([], () => 'NodeNext'),
+    moduleResolutionKind: rdk.derive([], () => 'NodeNext'),
+    standardLibraries: rdk.derive(['languageTarget'], target => [target]),
+    baseAmbientTypes: rdk.derive([], () => ['@cloudflare/workers-types'], ['ambientTypes']),
+    importAlias: rdk.derive(
       ['sourceDirectory'],
       directory => ({
         specifier: '#/*',
@@ -285,21 +285,21 @@ export function cloudflareWorker({ language = 'ES2022' } = {}) {
         runtimePath: `./${directory}/*`,
       }),
     ),
-    productToolPackages: di.toFun(['intent', 'developmentIntents'], (intent, intents) =>
+    productToolPackages: rdk.derive(['intent', 'developmentIntents'], (intent, intents) =>
       hasIntent(intents, intent)
         ? ['@tsconfig/strictest', '@cloudflare/workers-types', 'typescript', 'wrangler']
         : [], ['toolPackages']),
-    productRuntimePackages: di.toFun([], () => [], ['runtimePackages']),
-    productAllowBuilds: di.toFun([], () => ['sharp', 'workerd'], ['allowBuilds']),
+    productRuntimePackages: rdk.derive([], () => [], ['runtimePackages']),
+    productAllowBuilds: rdk.derive([], () => ['sharp', 'workerd'], ['allowBuilds']),
     cloudflareVersionDefaults: versionDefaults({
       '@cloudflare/workers-types': '4.20250620.0',
       wrangler: '4.0.0',
     }),
-    buildAssets: di.toFun(['buildAssetInputs'], assets => assets),
+    buildAssets: rdk.derive(['buildAssetInputs'], assets => assets),
     ...commandTargets('cloudflareTypecheck', 'typecheck', 'tsc --noEmit'),
   }
-  return di.module({
-    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, di.toValue(inputs[key])])),
+  return rdk.graph({
+    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, rdk.value(inputs[key])])),
     ...settings,
   })
 }
@@ -325,11 +325,11 @@ export function viteReact({ language = 'ES2020' } = {}) {
     buildAssetInputs: Object.freeze(['index.html', 'public']),
   }
   const settings = {
-    moduleKind: di.toFun([], () => 'ESNext'),
-    moduleResolutionKind: di.toFun([], () => 'Bundler'),
-    standardLibraries: di.toFun(['languageTarget'], target => [target, 'DOM', 'DOM.Iterable']),
-    baseAmbientTypes: di.toFun([], () => [], ['ambientTypes']),
-    importAlias: di.toFun(
+    moduleKind: rdk.derive([], () => 'ESNext'),
+    moduleResolutionKind: rdk.derive([], () => 'Bundler'),
+    standardLibraries: rdk.derive(['languageTarget'], target => [target, 'DOM', 'DOM.Iterable']),
+    baseAmbientTypes: rdk.derive([], () => [], ['ambientTypes']),
+    importAlias: rdk.derive(
       ['sourceDirectory'],
       directory => ({
         specifier: '#/*',
@@ -337,12 +337,12 @@ export function viteReact({ language = 'ES2020' } = {}) {
         runtimePath: `./${directory}/*`,
       }),
     ),
-    productToolPackages: di.toFun(['intent', 'developmentIntents'], (intent, intents) =>
+    productToolPackages: rdk.derive(['intent', 'developmentIntents'], (intent, intents) =>
       hasIntent(intents, intent)
         ? ['@tsconfig/strictest', '@types/node', '@types/react', '@types/react-dom', 'typescript', 'vite']
         : [], ['toolPackages']),
-    productRuntimePackages: di.toFun([], () => viteRuntimePackages, ['runtimePackages']),
-    productAllowBuilds: di.toFun([], () => ['esbuild'], ['allowBuilds']),
+    productRuntimePackages: rdk.derive([], () => viteRuntimePackages, ['runtimePackages']),
+    productAllowBuilds: rdk.derive([], () => ['esbuild'], ['allowBuilds']),
     viteVersionDefaults: versionDefaults({
       '@tailwindcss/vite': '4.3.3',
       '@types/node': '26.2.0',
@@ -358,16 +358,16 @@ export function viteReact({ language = 'ES2020' } = {}) {
       tailwindcss: '4.3.3',
       vite: '5.3.1',
     }),
-    buildAssets: di.toFun(['buildAssetInputs'], assets => assets),
-    viteIntents: di.toFun([], () => Object.freeze(['dev', 'test', 'build'])),
-    'vite.plugins': di.toFun([], () => ['react', 'tailwindcss']),
-    'vite.resolve.alias': di.toFun(
+    buildAssets: rdk.derive(['buildAssetInputs'], assets => assets),
+    viteIntents: rdk.derive([], () => Object.freeze(['dev', 'test', 'build'])),
+    'vite.plugins': rdk.derive([], () => ['react', 'tailwindcss']),
+    'vite.resolve.alias': rdk.derive(
       ['importAlias'],
       alias => ({
         [alias.specifier.replace(/\*$/, '')]: alias.sourcePath.replace(/\*$/, ''),
       }),
     ),
-    viteConfig: di.toFun(
+    viteConfig: rdk.derive(
       ['intent', 'viteIntents', 'vite.plugins', 'vite.resolve.alias'],
       (intent, intents, plugins, aliases) => {
         if (!hasIntent(intents, intent)) return undefined
@@ -387,7 +387,7 @@ export default defineConfig({
 `
       },
     ),
-    viteGeneratedFiles: di.toFun(
+    viteGeneratedFiles: rdk.derive(
       ['viteConfig'],
       config => config === undefined ? {} : { 'vite.config.ts': config },
       ['generatedFiles'],
@@ -397,14 +397,14 @@ export default defineConfig({
       assets: true,
       dependencies: true,
     }),
-    viteDevInstallTarget: di.toFun(
+    viteDevInstallTarget: rdk.derive(
       ['config:dev/workspace', '#dagrRuntime'],
       (workspace, runtime) => hostInstallTarget('install', workspace, runtime),
       [devFacet.targets],
     ),
   }
-  return di.module({
-    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, di.toValue(inputs[key])])),
+  return rdk.graph({
+    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, rdk.value(inputs[key])])),
     ...settings,
   })
 }
@@ -424,17 +424,17 @@ export function prettier({
     formatTrailingCommas: trailingComma,
   }
   const settings = {
-    prettierIntents: di.toFun([], () => Object.freeze(['dev', 'lint'])),
+    prettierIntents: rdk.derive([], () => Object.freeze(['dev', 'lint'])),
     prettierVersionDefaults: versionDefaults({ prettier: '3.3.3' }),
-    prettierToolPackages: di.toFun(['intent', 'prettierIntents'], (intent, intents) =>
+    prettierToolPackages: rdk.derive(['intent', 'prettierIntents'], (intent, intents) =>
       hasIntent(intents, intent) ? ['prettier'] : [], ['toolPackages']),
-    'prettier.$schema': di.toFun([], () => 'https://json.schemastore.org/prettierrc'),
-    'prettier.semi': di.toFun(['formatSemicolons'], value => value),
-    'prettier.tabWidth': di.toFun(['formatTabWidth'], value => value),
-    'prettier.singleQuote': di.toFun(['formatSingleQuotes'], value => value),
-    'prettier.printWidth': di.toFun(['formatPrintWidth'], value => value),
-    'prettier.trailingComma': di.toFun(['formatTrailingCommas'], value => value),
-    prettierConfig: di.toFun(
+    'prettier.$schema': rdk.derive([], () => 'https://json.schemastore.org/prettierrc'),
+    'prettier.semi': rdk.derive(['formatSemicolons'], value => value),
+    'prettier.tabWidth': rdk.derive(['formatTabWidth'], value => value),
+    'prettier.singleQuote': rdk.derive(['formatSingleQuotes'], value => value),
+    'prettier.printWidth': rdk.derive(['formatPrintWidth'], value => value),
+    'prettier.trailingComma': rdk.derive(['formatTrailingCommas'], value => value),
+    prettierConfig: rdk.derive(
       [
         'intent',
         'prettierIntents',
@@ -450,38 +450,38 @@ export function prettier({
           ? { $schema: schema, semi: semicolons, tabWidth: width, singleQuote: quotes, printWidth, trailingComma: commas }
           : undefined,
     ),
-    prettierGeneratedFiles: di.toFun(
+    prettierGeneratedFiles: rdk.derive(
       ['prettierConfig'],
       config => config === undefined ? {} : { '.prettierrc.json': config },
       ['generatedFiles'],
     ),
   }
-  return di.module({
-    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, di.toValue(inputs[key])])),
+  return rdk.graph({
+    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, rdk.value(inputs[key])])),
     ...settings,
   })
 }
 
 export function biome({ formatter = true, linter = true } = {}) {
-  return di.module({
-    biomeFormatterIntent: di.toValue(formatter),
-    biomeLinterIntent: di.toValue(linter),
-    biomeIntents: di.toValue(Object.freeze(['dev', 'lint'])),
+  return rdk.graph({
+    biomeFormatterIntent: rdk.value(formatter),
+    biomeLinterIntent: rdk.value(linter),
+    biomeIntents: rdk.value(Object.freeze(['dev', 'lint'])),
     biomeVersionDefaults: versionDefaults({ '@biomejs/biome': '2.5.10' }),
-    biomeToolPackages: di.toFun(
+    biomeToolPackages: rdk.derive(
       ['intent', 'biomeIntents'],
       (intent, intents) => hasIntent(intents, intent) ? ['@biomejs/biome'] : [],
       ['toolPackages'],
     ),
-    'biome.formatter.enabled': di.toFun(['biomeFormatterIntent'], enabled => enabled),
-    'biome.linter.enabled': di.toFun(['biomeLinterIntent'], enabled => enabled),
-    biomeConfig: di.toFun(
+    'biome.formatter.enabled': rdk.derive(['biomeFormatterIntent'], enabled => enabled),
+    'biome.linter.enabled': rdk.derive(['biomeLinterIntent'], enabled => enabled),
+    biomeConfig: rdk.derive(
       ['intent', 'biomeIntents', 'biome.formatter.enabled', 'biome.linter.enabled'],
       (intent, intents, formatterEnabled, linterEnabled) => hasIntent(intents, intent)
         ? { formatter: { enabled: formatterEnabled }, linter: { enabled: linterEnabled } }
         : undefined,
     ),
-    biomeGeneratedFiles: di.toFun(
+    biomeGeneratedFiles: rdk.derive(
       ['biomeConfig'],
       config => config === undefined ? {} : { 'biome.json': config },
       ['generatedFiles'],
@@ -500,33 +500,33 @@ export function vitest({ environment = 'node', globals = false, typecheck = fals
     testTypecheckIntent: typecheck,
   }
   const settings = {
-    vitestIntents: di.toFun([], () => Object.freeze(['dev', 'test'])),
-    vitestDependencyIntents: di.toFun([], () => Object.freeze(['dev', 'test', 'lint'])),
-    vitestTypeIntents: di.toFun([], () => Object.freeze(['dev', 'test', 'lint'])),
+    vitestIntents: rdk.derive([], () => Object.freeze(['dev', 'test'])),
+    vitestDependencyIntents: rdk.derive([], () => Object.freeze(['dev', 'test', 'lint'])),
+    vitestTypeIntents: rdk.derive([], () => Object.freeze(['dev', 'test', 'lint'])),
     vitestVersionDefaults: versionDefaults({
       jsdom: '30.0.1',
       vitest: '3.2.7',
     }),
     ...(environment === 'jsdom' ? { vitestViteRequirement: requires('viteConfig') } : {}),
-    vitestToolPackages: di.toFun(['intent', 'vitestDependencyIntents', 'testEnvironment'], (intent, intents, env) =>
+    vitestToolPackages: rdk.derive(['intent', 'vitestDependencyIntents', 'testEnvironment'], (intent, intents, env) =>
       hasIntent(intents, intent) ? ['vitest', ...(env === 'jsdom' ? ['jsdom'] : [])] : [], ['toolPackages']),
-    vitestAmbientTypes: di.toFun(
+    vitestAmbientTypes: rdk.derive(
       ['intent', 'vitestTypeIntents', 'testGlobalsIntent'],
       (intent, intents, globals) => globals && hasIntent(intents, intent) ? ['vitest/globals'] : [],
       ['ambientTypes'],
     ),
-    'vitest.test.environment': di.toFun(['testEnvironment'], value => value),
-    'vitest.test.globals': di.toFun(['testGlobalsIntent'], value => value),
-    'vitest.test.typecheck.enabled': di.toFun(['testTypecheckIntent'], value => value),
-    'vitest.test.exclude': di.toFun(
+    'vitest.test.environment': rdk.derive(['testEnvironment'], value => value),
+    'vitest.test.globals': rdk.derive(['testGlobalsIntent'], value => value),
+    'vitest.test.typecheck.enabled': rdk.derive(['testTypecheckIntent'], value => value),
+    'vitest.test.exclude': rdk.derive(
       ['testEnvironment'],
       env => env === 'jsdom' ? ['...configDefaults.exclude', 'e2e/**'] : undefined,
     ),
-    'vitest.test.root': di.toFun(
+    'vitest.test.root': rdk.derive(
       ['testEnvironment'],
       env => env === 'jsdom' ? './' : undefined,
     ),
-    vitestConfig: di.toFun(
+    vitestConfig: rdk.derive(
       [
         'intent',
         'vitestIntents',
@@ -560,18 +560,18 @@ export default defineConfig({ test: {
 `
       },
     ),
-    vitestGeneratedFiles: di.toFun(
+    vitestGeneratedFiles: rdk.derive(
       ['vitestConfig'],
       config => config === undefined ? {} : { 'vitest.config.ts': config },
       ['generatedFiles'],
     ),
-    vitestAllowBuilds: di.toFun([], () => ['esbuild'], ['allowBuilds']),
+    vitestAllowBuilds: rdk.derive([], () => ['esbuild'], ['allowBuilds']),
     ...commandTargets('vitestTest', 'test', 'vitest run', {
       buildDependency: true,
     }),
   }
-  return di.module({
-    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, di.toValue(inputs[key])])),
+  return rdk.graph({
+    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, rdk.value(inputs[key])])),
     ...settings,
   })
 }
@@ -582,7 +582,7 @@ export function eslint({ prettier: enforceFormatting = false, explicitReturnType
     lintExplicitReturnTypesIntent: explicitReturnTypes,
   }
   const settings = {
-    eslintIntents: di.toFun([], () => Object.freeze(['dev', 'lint'])),
+    eslintIntents: rdk.derive([], () => Object.freeze(['dev', 'lint'])),
     eslintVersionDefaults: versionDefaults({
       '@eslint/js': '9.12.0',
       '@typescript-eslint/eslint-plugin': '8.66.0',
@@ -591,8 +591,8 @@ export function eslint({ prettier: enforceFormatting = false, explicitReturnType
       'eslint-plugin-prettier': '5.2.1',
       prettier: '3.3.3',
     }),
-    'eslint.enabled': di.toFun([], () => true),
-    eslintToolPackages: di.toFun(
+    'eslint.enabled': rdk.derive([], () => true),
+    eslintToolPackages: rdk.derive(
       ['intent', 'eslintIntents', 'lintFormattingIntent'],
       (intent, intents, formatting) => hasIntent(intents, intent)
         ? [
@@ -605,13 +605,13 @@ export function eslint({ prettier: enforceFormatting = false, explicitReturnType
         : [],
       ['toolPackages'],
     ),
-    'eslint.languageOptions.parser': di.toFun([], () => '@typescript-eslint/parser'),
-    'eslint.languageOptions.parserOptions.project': di.toFun([], () => './tsconfig.json'),
-    'eslint.files': di.toFun(
+    'eslint.languageOptions.parser': rdk.derive([], () => '@typescript-eslint/parser'),
+    'eslint.languageOptions.parserOptions.project': rdk.derive([], () => './tsconfig.json'),
+    'eslint.files': rdk.derive(
       ['sourceLayout'],
       layout => [`${layout.directory}/**/*.ts`, `${layout.directory}/**/*.tsx`],
     ),
-    'eslint.testFiles': di.toFun(
+    'eslint.testFiles': rdk.derive(
       ['sourceLayout'],
       layout => [
         `${layout.directory}/**/*.test.ts`,
@@ -620,20 +620,20 @@ export function eslint({ prettier: enforceFormatting = false, explicitReturnType
         `${layout.directory}/**/*.spec.tsx`,
       ],
     ),
-    'eslint.rules.no-undef': di.toFun([], () => 'off'),
-    'eslint.rules.no-redeclare': di.toFun([], () => 'off'),
-    'eslint.rules.no-dupe-class-members': di.toFun([], () => 'off'),
-    'eslint.rules.@typescript-eslint/no-empty-object-type': di.toFun([], () => 'off'),
-    'eslint.rules.@typescript-eslint/no-unused-vars': di.toFun([], () => 'error'),
-    'eslint.rules.@typescript-eslint/explicit-function-return-type': di.toFun(
+    'eslint.rules.no-undef': rdk.derive([], () => 'off'),
+    'eslint.rules.no-redeclare': rdk.derive([], () => 'off'),
+    'eslint.rules.no-dupe-class-members': rdk.derive([], () => 'off'),
+    'eslint.rules.@typescript-eslint/no-empty-object-type': rdk.derive([], () => 'off'),
+    'eslint.rules.@typescript-eslint/no-unused-vars': rdk.derive([], () => 'error'),
+    'eslint.rules.@typescript-eslint/explicit-function-return-type': rdk.derive(
       ['lintExplicitReturnTypesIntent'],
       enabled => enabled ? 'error' : undefined,
     ),
-    'eslint.rules.prettier/prettier': di.toFun(
+    'eslint.rules.prettier/prettier': rdk.derive(
       ['lintFormattingIntent'],
       enabled => enabled ? 'error' : undefined,
     ),
-    eslintRules: di.toFun(
+    eslintRules: rdk.derive(
       [
         'eslint.rules.no-undef',
         'eslint.rules.no-redeclare',
@@ -658,7 +658,7 @@ export function eslint({ prettier: enforceFormatting = false, explicitReturnType
           ...Reflect.ownKeys(extensions).map(name => extensions[name]),
         ]),
     ),
-    eslintConfig: di.toFun(
+    eslintConfig: rdk.derive(
       [
         'intent',
         'eslintIntents',
@@ -691,7 +691,7 @@ ${formatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}export def
 `
         : undefined,
     ),
-    eslintGeneratedFiles: di.toFun(
+    eslintGeneratedFiles: rdk.derive(
       ['eslintConfig'],
       config => config === undefined ? {} : { 'eslint.config.mjs': config },
       ['generatedFiles'],
@@ -700,8 +700,8 @@ ${formatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}export def
       buildDependency: true,
     }),
   }
-  return di.module({
-    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, di.toValue(inputs[key])])),
+  return rdk.graph({
+    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, rdk.value(inputs[key])])),
     ...settings,
   })
 }
@@ -709,24 +709,24 @@ ${formatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}export def
 export function typedoc({ title } = {}) {
   const inputs = { documentationTitle: title }
   const settings = {
-    typedocIntents: di.toFun([], () => Object.freeze(['dev', 'docs'])),
+    typedocIntents: rdk.derive([], () => Object.freeze(['dev', 'docs'])),
     typedocVersionDefaults: versionDefaults({ typedoc: '0.28.13' }),
-    typedocToolPackages: di.toFun(['intent', 'typedocIntents'], (intent, intents) =>
+    typedocToolPackages: rdk.derive(['intent', 'typedocIntents'], (intent, intents) =>
       hasIntent(intents, intent) ? ['typedoc'] : [], ['toolPackages']),
-    'typedoc.entryPoints': di.toFun(['sourceEntry'], entry => [entry]),
-    'typedoc.name': di.toFun(
+    'typedoc.entryPoints': rdk.derive(['sourceEntry'], entry => [entry]),
+    'typedoc.name': rdk.derive(
       ['documentationTitle', 'name'],
       (title, name) => title ?? name,
     ),
-    'typedoc.includeVersion': di.toFun([], () => true),
-    'typedoc.excludeExternals': di.toFun([], () => true),
-    'typedoc.excludePrivate': di.toFun([], () => true),
-    'typedoc.excludeProtected': di.toFun([], () => true),
-    'typedoc.exclude': di.toFun(
+    'typedoc.includeVersion': rdk.derive([], () => true),
+    'typedoc.excludeExternals': rdk.derive([], () => true),
+    'typedoc.excludePrivate': rdk.derive([], () => true),
+    'typedoc.excludeProtected': rdk.derive([], () => true),
+    'typedoc.exclude': rdk.derive(
       ['sourceSet'],
       sources => sources.exclude ?? [],
     ),
-    typedocConfig: di.toFun(
+    typedocConfig: rdk.derive(
       [
         'intent',
         'typedocIntents',
@@ -743,7 +743,7 @@ export function typedoc({ title } = {}) {
         ? { entryPoints, name, includeVersion, excludeExternals, excludePrivate, excludeProtected, exclude }
         : undefined,
     ),
-    typedocGeneratedFiles: di.toFun(
+    typedocGeneratedFiles: rdk.derive(
       ['typedocConfig'],
       config => config === undefined ? {} : { 'typedoc.json': config },
       ['generatedFiles'],
@@ -752,8 +752,8 @@ export function typedoc({ title } = {}) {
       export: { '/repo/docs/': 'docs/' },
     }),
   }
-  return di.module({
-    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, di.toValue(inputs[key])])),
+  return rdk.graph({
+    ...Object.fromEntries(Reflect.ownKeys(inputs).map(key => [key, rdk.value(inputs[key])])),
     ...settings,
   })
 }

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import di, { toClass, toFun, toValue } from '../rdk/dagr.di.js'
+import rdk, { construct, derive, value } from '../rdk/dagr.rdk.js'
 
-describe('di', () => {
+describe('rdk graph', () => {
   it('compiles every binding eagerly and once', () => {
     let initialized = 0
     class Greeter {
@@ -12,11 +12,11 @@ describe('di', () => {
       }
     }
 
-    const container = di.module({
-      unused: toFun([], () => ++initialized),
-      name: toValue('caeus'),
-      greeter: toClass([], Greeter),
-      greeting: toFun(['name', 'greeter'], (name, greeter) => greeter.greet(name)),
+    const container = rdk.graph({
+      unused: derive([], () => ++initialized),
+      name: value('caeus'),
+      greeter: construct([], Greeter),
+      greeting: derive(['name', 'greeter'], (name, greeter) => greeter.greet(name)),
     }).compile()
 
     assert.equal(initialized, 1)
@@ -26,10 +26,10 @@ describe('di', () => {
 
   it('shakes bindings before compilation', () => {
     let initialized = false
-    const shaken = di.module({
-      unused: toFun([], () => { initialized = true }),
-      name: toValue('caeus'),
-      greeting: toFun(['name'], name => `hello ${name}`),
+    const shaken = rdk.graph({
+      unused: derive([], () => { initialized = true }),
+      name: value('caeus'),
+      greeting: derive(['name'], name => `hello ${name}`),
     }).shake(['greeting'])
 
     assert.deepEqual([...shaken.keys()], ['name', 'greeting'])
@@ -38,20 +38,20 @@ describe('di', () => {
   })
 
   it('merges with right-biased overrides', () => {
-    const left = di.module({ name: toValue('left'), answer: toValue(42) })
-    const right = di.module({ name: toValue('right') })
+    const left = rdk.graph({ name: value('left'), answer: value(42) })
+    const right = rdk.graph({ name: value('right') })
     const merged = left.merge(right)
 
     assert.equal(merged.compile().name, 'right')
     assert.equal(merged.compile().answer, 42)
   })
 
-  it('merges modules loaded through separate JavaScript module instances', async () => {
-    const foreignDi = (await import('../rdk/dagr.di.js?foreign-module')).default
-    const left = di.module({ name: toValue('left') })
-    const right = foreignDi.module({
-      name: foreignDi.toValue('right'),
-      answer: foreignDi.toValue(42),
+  it('merges graphs loaded through separate JavaScript module instances', async () => {
+    const foreignRdk = (await import('../rdk/dagr.rdk.js?foreign-graph')).default
+    const left = rdk.graph({ name: value('left') })
+    const right = foreignRdk.graph({
+      name: foreignRdk.value('right'),
+      answer: foreignRdk.value(42),
     })
 
     const merged = left.merge(right).compile()
@@ -61,8 +61,8 @@ describe('di', () => {
   })
 
   it('exposes immutable definitions', () => {
-    const module = di.module({ answer: toValue(42) })
-    const binding = module.definitionOf('answer')
+    const graph = rdk.graph({ answer: value(42) })
+    const binding = graph.definitionOf('answer')
 
     assert.deepEqual(binding.deps, [])
     assert.deepEqual(binding.tags, [])
@@ -75,11 +75,11 @@ describe('di', () => {
   it('injects every tagged binding as a record', () => {
     const handler = Symbol('handler')
     const symbolic = Symbol('symbolic')
-    const container = di.module({
-      first: toValue(1, [handler]),
-      [symbolic]: toValue(2, new Set([handler])),
-      ignored: toValue(3),
-      handlers: toFun([{ tag: handler }], handlers => handlers),
+    const container = rdk.graph({
+      first: value(1, [handler]),
+      [symbolic]: value(2, new Set([handler])),
+      ignored: value(3),
+      handlers: derive([{ tag: handler }], handlers => handlers),
     }).compile()
 
     assert.deepEqual(Reflect.ownKeys(container.handlers), ['first', symbolic])
@@ -89,8 +89,8 @@ describe('di', () => {
   })
 
   it('injects an empty record when no binding has the tag', () => {
-    const container = di.module({
-      bindings: toFun([{ tag: 'missing' }], bindings => bindings),
+    const container = rdk.graph({
+      bindings: derive([{ tag: 'missing' }], bindings => bindings),
     }).compile()
 
     assert.deepEqual(container.bindings, {})
@@ -99,10 +99,10 @@ describe('di', () => {
 
   it('preserves dependency positions when direct and tagged dependencies mix', () => {
     const prefix = Symbol('prefix')
-    const container = di.module({
-      [prefix]: toValue('item:'),
-      first: toValue(1, ['item']),
-      result: toFun(
+    const container = rdk.graph({
+      [prefix]: value('item:'),
+      first: value(1, ['item']),
+      result: derive(
         [prefix, { tag: 'item' }],
         (prefixValue, items) => `${prefixValue}${items.first}`,
       ),
@@ -114,12 +114,12 @@ describe('di', () => {
 
   it('shakes tagged bindings and their transitive dependencies', () => {
     const symbolic = Symbol('symbolic')
-    const shaken = di.module({
-      prefix: toValue('item:'),
-      first: toFun(['prefix'], prefix => `${prefix}first`, ['item']),
-      [symbolic]: toValue(2, ['item']),
-      ignored: toValue(3),
-      items: toFun([{ tag: 'item' }], items => items),
+    const shaken = rdk.graph({
+      prefix: value('item:'),
+      first: derive(['prefix'], prefix => `${prefix}first`, ['item']),
+      [symbolic]: value(2, ['item']),
+      ignored: value(3),
+      items: derive([{ tag: 'item' }], items => items),
     }).shake(['items'])
 
     assert.deepEqual([...shaken.keys()], ['prefix', 'first', 'items', symbolic])
@@ -127,23 +127,23 @@ describe('di', () => {
   })
 
   it('replaces tags when a binding is overridden', () => {
-    const base = di.module({
-      value: toValue(1, ['item']),
-      items: toFun([{ tag: 'item' }], items => items),
+    const base = rdk.graph({
+      value: value(1, ['item']),
+      items: derive([{ tag: 'item' }], items => items),
     })
-    const merged = base.merge(di.module({ value: toValue(2) }))
+    const merged = base.merge(rdk.graph({ value: value(2) }))
 
     assert.deepEqual(merged.shake(['items']).compile().items, {})
   })
 
   it('rejects cycles introduced by tag dependencies', () => {
-    const value = Symbol('value')
-    const module = di.module({
-      [value]: toFun([{ tag: 'loop' }], values => values, ['loop']),
+    const binding = Symbol('value')
+    const graph = rdk.graph({
+      [binding]: derive([{ tag: 'loop' }], values => values, ['loop']),
     })
 
     assert.throws(
-      () => module.compile(),
+      () => graph.compile(),
       /Circular dependency: Symbol\(value\) -> Symbol\(value\)/,
     )
   })
@@ -152,7 +152,7 @@ describe('di', () => {
     const tag = Symbol('tag')
     const selector = { tag }
     const tags = [tag]
-    const binding = toFun([selector], values => values, tags)
+    const binding = derive([selector], values => values, tags)
 
     selector.tag = 'changed'
     tags[0] = 'changed'
@@ -163,26 +163,26 @@ describe('di', () => {
   })
 
   it('rejects missing bindings', () => {
-    const module = di.module({ greeting: toFun(['name'], name => `hello ${name}`) })
-    assert.throws(() => module.compile(), /Missing binding "name" required by "greeting"/)
+    const graph = rdk.graph({ greeting: derive(['name'], name => `hello ${name}`) })
+    assert.throws(() => graph.compile(), /Missing binding "name" required by "greeting"/)
   })
 
   it('rejects circular dependencies', () => {
-    const module = di.module({
-      a: toFun(['b'], b => b),
-      b: toFun(['a'], a => a),
+    const graph = rdk.graph({
+      a: derive(['b'], b => b),
+      b: derive(['a'], a => a),
     })
-    assert.throws(() => module.compile(), /Circular dependency: a -> b -> a/)
+    assert.throws(() => graph.compile(), /Circular dependency: a -> b -> a/)
   })
 
   it('composes promises synchronously as ordinary values', () => {
     const promise = Promise.resolve(42)
-    const module = di.module({
-      promise: toValue(promise),
-      injected: toFun(['promise'], value => value),
+    const graph = rdk.graph({
+      promise: value(promise),
+      injected: derive(['promise'], value => value),
     })
 
-    const container = module.compile()
+    const container = graph.compile()
     assert.equal(container.promise, promise)
     assert.equal(container.injected, promise)
   })

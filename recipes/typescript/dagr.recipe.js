@@ -1,5 +1,5 @@
 import bundledVersions from '//dagr.versions.yaml'
-import di from '//di//dagr.di.js'
+import rdk from '//rdk//dagr.rdk.js'
 import { writeJson, writeText, writeYaml } from '//dagr.file_utils.js'
 import { RECOMMENDED_IGNORE } from '//dagr.dockerignore.js'
 import { configFacet, devFacet, facetOf, target } from '//dagr.features.js'
@@ -9,7 +9,7 @@ import { packageManagers, resolvePackageManager } from '//dagr.package-managers.
 export * from '//dagr.features.js'
 export { typescriptModule, workspaceKey } from '//dagr.module.js'
 export { packageManagers }
-export { di }
+export { rdk }
 
 function writeProjectedFile(path, value) {
   return typeof value === 'string'
@@ -86,7 +86,7 @@ function createStack(options, features, declaration) {
     writeText,
     writeYaml,
   })
-  let module = typescriptModule({
+  let graph = typescriptModule({
     location,
     scope,
     version,
@@ -100,8 +100,8 @@ function createStack(options, features, declaration) {
   })
 
   const facets = Object.freeze({
-    ...Object.fromEntries([...module.keys()]
-      .map(name => facetOf(module.definitionOf(name)))
+    ...Object.fromEntries([...graph.keys()]
+      .map(name => facetOf(graph.definitionOf(name)))
       .filter(Boolean)
       .map(facet => [facet.name, facet])),
     [configFacet.name]: configFacet,
@@ -109,7 +109,7 @@ function createStack(options, features, declaration) {
   })
   const facetsTag = Symbol('typescript facets')
   const bindings = {
-    coreConfigDevTarget: di.toFun(
+    coreConfigDevTarget: rdk.derive(
       ['config:dev/workspace'],
       workspace => target('dev', {
         deps: [base],
@@ -124,7 +124,7 @@ function createStack(options, features, declaration) {
       }),
       [configFacet.targets],
     ),
-    coreDevSyncTarget: di.toFun(
+    coreDevSyncTarget: rdk.derive(
       ['dev:sync/workspace'],
       workspace => target('sync', {
         deps: ['config:dev'],
@@ -140,7 +140,7 @@ function createStack(options, features, declaration) {
   }
 
   for (const facet of Object.values(facets)) {
-    bindings[`facet:${facet.name}`] = di.toFun(
+    bindings[`facet:${facet.name}`] = rdk.derive(
       [{ tag: facet.targets }],
       targets => ({ name: facet.name, targets: collectNamed('target', targets) }),
       [facetsTag],
@@ -148,7 +148,7 @@ function createStack(options, features, declaration) {
   }
 
   let calculations
-  bindings.index = di.toFun(
+  bindings.index = rdk.derive(
     [{ tag: facetsTag }, 'dev:sync/name', 'dev:sync/slug'],
     (facetContributions, name, slug) => transform(
       collectNamed('facet', facetContributions, facet => facet.targets),
@@ -156,15 +156,15 @@ function createStack(options, features, declaration) {
     ),
   )
 
-  module = module.merge(di.module(bindings))
+  graph = graph.merge(rdk.graph(bindings))
   calculations = Object.freeze({
-    nodes: Object.freeze(Object.fromEntries([...module.keys()].map(name => [
+    nodes: Object.freeze(Object.fromEntries([...graph.keys()].map(name => [
       name,
-      module.definitionOf(name),
+      graph.definitionOf(name),
     ]))),
   })
 
-  return module
+  return graph
     .shake(['index'])
     .compile()
     .index
@@ -175,7 +175,7 @@ function builder(options, features) {
   return Object.assign(stack, {
     with(next) {
       if (typeof next?.keys !== 'function' || typeof next?.definitionOf !== 'function') {
-        throw new Error('with() expects a DI module')
+        throw new Error('with() expects an RDK graph')
       }
       return builder(options, features.merge(next))
     },
@@ -188,5 +188,5 @@ export default function typescript(options = {}) {
   return builder({
     ...options,
     packageManager: resolvePackageManager(options.packageManager),
-  }, di.module({}))
+  }, rdk.graph({}))
 }
