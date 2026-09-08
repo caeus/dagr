@@ -37,6 +37,7 @@ target. Built-in package managers are:
 
 - `packageManager: 'npm'`
 - `packageManager: 'pnpm'`
+- `packageManager: 'yarn'`
 
 The selected package manager owns install, local-binary execution, host-specific install, package
 packing, and package-manager-specific configuration. Local package dependencies are copied as
@@ -45,7 +46,10 @@ that mechanism is not tied to pnpm hooks. The manifest used for packing/publishi
 package dependency range.
 
 For pnpm, the stack emits `pnpm-workspace.yaml` only when an active feature needs explicit build-script
-allowances. npm needs no equivalent generated file.
+allowances. npm needs no equivalent generated file. Yarn emits `.yarnrc.yml` with the `node-modules`
+linker, supported OS/CPU/libc architectures, and `https://registry.npmjs.org` as the npm registry.
+Yarn installs use `yarn install --immutable`, execute tools with `yarn exec`, and pack with
+`yarn pack --out`.
 
 ## Calculation model
 
