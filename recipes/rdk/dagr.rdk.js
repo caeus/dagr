@@ -163,8 +163,22 @@ function normalize(bindings) {
   )
 }
 
+/**
+ * Recipes are loaded as separate module instances, so each one defines its own `Graph` class and
+ * class identity cannot be compared. A registry symbol is shared by every instance in the isolate.
+ */
+const GRAPH = Symbol.for('caeus/dagr/rdk#Graph')
+
 /** An immutable dependency graph that can be transformed and compiled. */
 class Graph {
+  /**
+   * @param {unknown} other
+   * @returns {other is Graph}
+   */
+  static [Symbol.hasInstance](other) {
+    return other !== null && typeof other === 'object' && other[GRAPH] === true
+  }
+
   /** @type {Map<string | symbol, Definition<unknown>>} */
   #bindings
 
@@ -172,6 +186,10 @@ class Graph {
   constructor(bindings) {
     this.#bindings = bindings
     Object.freeze(this)
+  }
+
+  get [GRAPH]() {
+    return true
   }
 
   /**
@@ -188,34 +206,19 @@ class Graph {
   }
 
   /**
-   * Returns a graph where definitions from `other` override definitions from this graph.
+   * Returns a graph where later definitions override earlier ones, this graph being the earliest.
    *
-   * @param {{
-   *   keys: () => IterableIterator<PropertyKey>,
-   *   definitionOf: (name: PropertyKey) => Definition<unknown> | undefined
-   * }} other
+   * @param {...Graph} others
    * @returns {Graph}
    */
-  merge(other) {
-    if (
-      other === null
-      || typeof other !== 'object'
-      || typeof other.keys !== 'function'
-      || typeof other.definitionOf !== 'function'
-    ) {
-      throw new TypeError('Can only merge another graph')
-    }
+  merge(...others) {
     const merged = new Map(this.#bindings)
-    for (const name of other.keys()) {
-      const binding = other.definitionOf(name)
-      if (binding === undefined) {
-        throw new TypeError(`Graph has no definition for ${bindingName(name)}`)
+    others.forEach((other, position) => {
+      if (!(other instanceof Graph)) {
+        throw new TypeError(`Can only merge another graph, got ${typeof other} at ${position}`)
       }
-      merged.set(
-        normalizeBindingKey(name),
-        definition(binding.deps, binding.factory, binding.tags ?? []),
-      )
-    }
+      for (const name of other.keys()) merged.set(name, other.definitionOf(name))
+    })
     return new Graph(merged)
   }
 
@@ -346,4 +349,14 @@ export function graph(bindings) {
   return new Graph(normalize(bindings))
 }
 
-export default Object.freeze({ graph, value, derive, construct })
+/**
+ * Merges graphs into one, later definitions overriding earlier ones. No graphs produce an empty one.
+ *
+ * @param {...Graph} graphs
+ * @returns {Graph}
+ */
+export function merge(...graphs) {
+  return graph({}).merge(...graphs)
+}
+
+export default Object.freeze({ graph, merge, value, derive, construct })

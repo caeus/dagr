@@ -127,7 +127,7 @@ mount boundary adds another `//`:
 The same syntax applies to imports and mounted `COPY` sources:
 
 ```js
-import stack from '//stacks/typescript//dagr.stack.js'
+import recipe from '//recipes/typescript//dagr.recipe.js'
 
 { COPY: { src: 'vendor/foo//assets/logo.svg', dest: '/assets/logo.svg' } }
 ```

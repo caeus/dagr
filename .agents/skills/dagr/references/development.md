@@ -33,7 +33,7 @@ Dagr intentionally keeps a small core model:
 - Dagr owns discovery, addressing, graph execution, validation, and the small recipe format;
 - Docker owns environments, isolation, file composition, and persistent layer caching.
 
-Avoid adding language-, framework-, package-manager-, or CI-specific semantics to the engine when the same behavior can remain repository-owned JavaScript or a reusable stack.
+Avoid adding language-, framework-, package-manager-, or CI-specific semantics to the engine when the same behavior can remain repository-owned JavaScript or a reusable recipe.
 
 Build definitions should remain deterministic and isolated from ambient host state.
 

@@ -1,90 +1,93 @@
 # Dagr recipe architecture
 
-Use this reference when authoring, extending, reviewing, or debugging reusable recipes under `recipes/`.
+Use this reference when authoring, extending, reviewing, or debugging reusable recipes under
+`recipes/`.
 
-Canonical source material:
+## Boundaries
 
-- `recipes/README.md`
-- `recipes/typescript/README.md`
-- `recipes/rdk/README.md`
-
-## Recipe boundaries
-
-Each top-level directory under `recipes/` is independently consumable. A recipe contains everything required when mounted or published. Repository-only tests belong under `recipes/tests/`.
-
-A build recipe exposes `dagr.recipe.js`. The RDK exposes `dagr.rdk.js`.
-
-## What the TypeScript stack owns
-
-The TypeScript stack accepts project facts, conventions, product/capability features, and explicit execution choices such as the base target and package manager. It returns a complete Dagr index.
-
-Generated configuration is not canonical input. When several outputs must agree, model the decision once and derive each tool field from it.
-
-Examples:
-
-```text
-outputLayout
-  ├── packageJson.main / exports / files
-  └── tsconfig.compilerOptions.outDir
-
-importAlias
-  ├── packageJson.imports
-  ├── tsconfig.compilerOptions.paths
-  └── vite.resolve.alias
-```
+Each top-level recipe directory is independently consumable. Runtime files stay inside that
+directory; repository tests stay under `recipes/tests/`. Build recipes expose `dagr.recipe.js`, and
+the RDK exposes `dagr.rdk.js`.
 
 ## Composition
 
-The stack follows this shape:
+A repository defines a reusable composition once:
 
 ```js
-const stack = typescript({
-  base,
-  packageManager,
-  versions,
-})
-  .with(product(...))
-  .with(capability(...))
-
-export default stack({ location, version, deps, metadata })
+export const nodeLibrary = recipe([
+  typescript({ base, versions }),
+  pnpm(),
+  library(),
+  vitest(),
+])
 ```
 
-Every `.with(...)` value is an ordinary RDK graph merged into the same calculation. The final root is `index`; target selection happens later in Dagr.
+Every entry is an RDK graph. Calling `nodeLibrary(declaration)` adds one package's irreducible facts
+and compiles the index. `nodeLibrary.with(feature)` creates a new composition;
+`nodeLibrary.graph` exposes the feature graph for inspection.
+
+`recipe` is made with `builder(init, run, graph)`. A builder call runs
+`run(graph.merge(init(...args)))`, so this pattern can be reused without adding another composition
+system.
+
+## Output contributions
+
+Files, commands, and targets are tagged RDK contributions:
+
+```js
+rdk.graph({
+  sourceDirectory: rdk.value('src'),
+  config: file(['sourceDirectory'], { for: ['test'], render }),
+  test: command([], { for: ['test'], render }),
+  testTarget: target([], { name: 'test', facet: 'ci', intent: 'test', render }),
+})
+```
+
+The contribution helpers attach `files`, `commands`, or `targets` automatically.
+
+A **file** renderer receives `{ intent, facet, host }` plus its dependency values and returns any
+valid Dagr step or arrays of steps. An empty array means "nothing to do"; `undefined`, `null`, and
+`false` are errors. Files are the context-aware kind, because a tsconfig or a manifest genuinely
+differs per intent.
+
+A **command** renderer receives only its dependency values and returns invocations — `{ tool }` for
+an installed binary, `{ shell }` for a literal command line. It gets no context and returns no step,
+so one declaration materializes as a container step (`runSteps(invocations, exec)`), a package.json
+script, or a task in some other runner. Do not put a step in a command; do not read the intent to
+decide whether to emit one. Installation is not a contribution — a target emits `install(host)`.
+
+`for` is the only intent gate. A renderer that reaches for `context.intent` to decide whether to emit
+anything is declaring the wrong `for` — narrow `for` instead. Requirements are gated separately, so a
+tool can be installed for `dev` without its command running there.
+
+When several outputs need the same tool packages, ambient types, or build allowances, model that
+once with an ordinary `requirement` node. Commands and file renderers depend on the same value; neither
+output becomes the source of truth for the other. `packages` lists names only — versions live in one
+catalog, never in a feature.
+
+A target receives context methods for rendering all applicable files or commands, or both in order.
+This keeps ordering and selection local to the target. Host-sensitive output is rendered inside the
+native target's `run` function. A target that builds from its own sources should be contributed with
+`sourceTarget(...)` instead of an open-coded body. A dependency on a sibling target is a plain
+`"facet:target"` or bare `"target"` string, which `index` checks something actually owns.
+
+Files render before commands. Contributions of one kind are ordered by their numeric `order`, which
+defaults to zero. Use explicit ordering only when step sequence is behavior, such as installation
+before invoking a tool.
+
+The final index calculation only groups target contributions by facet and name. It rejects duplicate
+names within one facet. A target creates a facet by existing; no facet declaration is required.
 
 ## Package managers
 
-Package manager choice is an explicit stack fact. Do not infer it from a base image or target name.
+Manager selection is an explicit feature graph. A manager supplies ordinary command transforms and
+contributes install/pack commands plus configuration files. A custom manager is the same graph shape,
+not an adapter object passed to a registry.
 
-Package-manager adapters own:
+Local package dependencies are copied from sibling `ci:pack` targets. Install manifests may point at
+the copied tarballs; pack and publish manifests retain their external ranges.
 
-- dependency installation
-- local binary execution
-- host-specific install flags
-- package packing
-- manager-specific generated files
+## Publication
 
-Features should provide raw tool commands, not embed `npm`, `pnpm`, or another manager directly.
-
-Local package dependencies are copied as tarballs from their Dagr `ci:pack` targets. The install-only package manifest rewrites those dependencies to `file:` URLs so this mechanism is package-manager-neutral.
-
-## Products and capabilities
-
-A product feature describes what is being built, such as `library()`, `cloudflareWorker()`, or `viteReact()`. Capabilities add optional behavior such as formatting, tests, linting, or documentation.
-
-Exactly one coherent product model should own product semantics. Capabilities can contribute settings, generated files, packages, validations, and native Dagr targets.
-
-## Publication and mounting
-
-Published recipe images are immutable filesystem images and finish at `WORKDIR /recipe`. Root `.dagr/config.js` owns volume identity; `.dagr/volumes.yaml` selects the implementation for workspace development.
-
-Consumers choose local mount aliases. Recipe code must not assume a particular alias.
-
-## Validation
-
-Start with:
-
-```sh
-dagr run //recipes:ci:test
-```
-
-Then build the relevant image target when recipe contents, mounts, or publication change.
+Published recipe images are immutable filesystem images ending at `WORKDIR /recipe`. Consumers own
+their mount aliases. Recipe source must not assume a particular alias.

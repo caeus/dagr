@@ -1,7 +1,31 @@
-# Core TypeScript fallbacks. Optional features contribute their own defaults.
-# Repository versions override both catalogs.
-pnpm: '11.20.0'
-
+# The single version catalog. Features name packages; they never pin versions.
+# A repository overrides any entry through `typescript({ versions })`.
 deps:
+  '@biomejs/biome': '2.5.10'
+  '@cloudflare/workers-types': '4.20250620.0'
+  '@eslint/js': '9.12.0'
+  '@rollup/plugin-commonjs': '29.0.3'
+  '@rollup/plugin-node-resolve': '16.0.3'
+  '@tailwindcss/vite': '4.3.3'
   '@tsconfig/strictest': '2.0.8'
+  '@types/node': '26.2.0'
+  '@typescript-eslint/eslint-plugin': '8.66.0'
+  '@typescript-eslint/parser': '8.66.0'
+  '@vitejs/plugin-react': '4.7.0'
+  'class-variance-authority': '0.7.1'
+  'clsx': '2.1.1'
+  'eslint': '9.12.0'
+  'eslint-plugin-prettier': '5.2.1'
+  'jsdom': '30.0.1'
+  'prettier': '3.3.3'
+  'react': '19.2.8'
+  'react-dom': '19.2.8'
+  'react-router-dom': '7.18.2'
+  'rollup': '4.63.1'
+  'tailwind-merge': '3.6.0'
+  'tailwindcss': '4.3.3'
+  'typedoc': '0.28.13'
   'typescript': '6.0.3'
+  'vite': '5.3.1'
+  'vitest': '3.2.7'
+  'wrangler': '4.0.0'

@@ -1,11 +1,11 @@
 # Dagr reusable recipes
 
-> Independently consumable recipes for Dagr. The TypeScript stack derives generated configuration and targets through a synchronous RDK graph; the RDK recipe provides that graph primitive.
+> Independently consumable recipes for Dagr. The TypeScript recipe combines ordinary RDK nodes with contextual file, command, and target contributions; the RDK recipe provides the graph primitive.
 
 ## Start here
 
 - [Recipes overview](https://github.com/caeus/dagr/blob/main/recipes/README.md): recipe boundaries, publication, mounting, and validation.
-- [TypeScript stack](https://github.com/caeus/dagr/blob/main/recipes/typescript/README.md): explicit base/package-manager selection, products, capabilities, generated configuration, and extension model.
+- [TypeScript recipe](https://github.com/caeus/dagr/blob/main/recipes/typescript/README.md): recipe builders, contextual contributions, products, capabilities, and package-manager graphs.
 - [RDK](https://github.com/caeus/dagr/blob/main/recipes/rdk/README.md): graphs, bindings, tags, shaking, and compilation.
 
 ## Agent guidance

@@ -1,56 +1,70 @@
 ---
 name: dagr-recipes
-description: Work with Dagr reusable recipes and the RDK-based settings calculation model under recipes/. Use when modifying the TypeScript stack, package-manager behavior, generated configuration, targets, facets, mounts, publication, or the inline Recipe Development Kit.
+description: Work with Dagr reusable recipes and RDK contributions under recipes/. Use when modifying the TypeScript recipe, package-manager behavior, generated files, commands, targets, mounts, publication, or the inline Recipe Development Kit.
 ---
 
 # Dagr recipes
 
-Use this skill for reusable recipes under `recipes/`, especially the composable TypeScript stack and its synchronous RDK calculation graph.
+Use this skill for reusable recipes under `recipes/`, especially the TypeScript recipe and its
+synchronous RDK graph.
 
 ## First orient yourself
 
 1. Read `recipes/README.md` and the nearest recipe `README.md`.
-2. Identify whether the change affects an external fact, convention, semantic calculation, tool-specific field, generated file, target, facet, or publication boundary.
-3. Inspect the existing RDK dependency path before adding a new setting.
+2. Classify each value as an irreducible fact, an ordinary calculation, or a rendered output.
+3. Inspect the current dependency path before adding a binding.
 4. Read the relevant reference:
    - [Recipe architecture](references/recipes.md)
    - [How recipes use RDK](references/rdk.md)
 
 ## Core model
 
-`recipes/` is the independently consumable publication boundary. `typescript` is a stack recipe; `rdk` is the supporting Recipe Development Kit.
+A TypeScript recipe contains one immutable RDK graph. Facts and reusable calculations are ordinary
+bindings. Files, commands, and targets are definitions created by `file`, `command`, and `target`;
+the helpers attach their own collection tags.
 
-The TypeScript stack calculates a complete Dagr index from project facts and developer intent. Generated files and targets are outputs. One native synchronous graph supplied by the RDK owns the calculation:
+`recipe(features)` returns a builder. Applying one package declaration merges its facts and runs:
 
 ```js
 graph.shake(['index']).compile().index
 ```
 
-Features are ordinary RDK graphs merged into that calculation. Do not introduce a second calculation graph, feature registry, target registry, or manifest evaluator.
+The index collects target contributions, groups them by facet, rejects duplicate names within a
+facet, and returns the result. There is no facet registry.
 
 ## Modeling rules
 
-- Model a fact once, then derive consequences through named dependencies.
-- Prefer tool-neutral semantic nodes when multiple generated outputs must agree.
-- Use tags only for intentionally open collections such as generated files, package lists, validations, rule sets, targets, and facets.
-- Keep package declarations limited to irreducible project facts.
+- Keep declarations limited to `location`, `version`, dependencies, and metadata.
+- Keep shared semantics as ordinary RDK nodes.
+- Use ordinary `requirement` nodes when files and commands must agree on tool packages, ambient
+  types, or allowed dependency builds.
+- Render generated files and executable commands only as contributions.
+- Pass `intent`, `facet`, and `host` through render context; never make all graph values contextual.
+- Let targets select their context and explicitly render the contributions they need.
 - Keep target values native Dagr `{ name, deps, run }` objects.
-- Make ownership collisions visible rather than depending on contribution order.
-- Keep calculations synchronous and deterministic.
+- Do not add graph copies, registries, installer/builder/projector layers, or another evaluator.
+- Make ownership collisions visible. Never depend on contribution order.
+- Keep factories synchronous and deterministic.
 
 ## Package managers
 
-The TypeScript stack requires both `base` and `packageManager`. Package manager selection is explicit and must not be inferred from a base target or image name.
+Package managers are ordinary feature graphs. Built-ins are `npm()`, `pnpm()`, and `yarn()`. They
+provide ordinary `installManifest`, `exec`, and `pack` functions and contribute commands/files.
+Custom managers provide the same graph bindings directly. Do not infer a manager from the base image
+or add a manager registry.
 
-Built-in managers are `npm` and `pnpm`. Manager-specific install, local binary execution, packing, host install, and generated manager configuration belong behind the package-manager adapter. Tool features provide manager-neutral command bodies such as `tsc --noEmit` or `vitest run`.
-
-Local package dependencies are Dagr-produced tarballs. The install-only manifest points local dependencies at `file:` tarballs, while the normal generated package manifest retains package dependency ranges.
+Local package dependencies arrive from sibling `ci:pack` targets as tarballs. Install rendering may
+replace their manifest ranges with `file:` references. Pack and publish rendering restores the public
+ranges.
 
 ## Working procedure
 
-Trace a requested behavior from the public fact through semantic nodes to every generated field and target it affects. Change the earliest node that owns the concept.
+Trace behavior from an ordinary fact through the contribution that renders it and the local target
+that selects its context. Prefer deleting an abstraction over adapting it when normal RDK composition
+already handles the job.
 
-When changing structure or public behavior, keep `README.md`, `AGENTS.md`, `llms.txt`, this Agent Skill, workflows, mount identities, and publication paths synchronized.
+Keep `README.md`, `AGENTS.md`, `llms.txt`, this skill, workflows, mounts, and publication paths current
+when structure or public behavior changes.
 
 Validate with:
 

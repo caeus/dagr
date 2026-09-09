@@ -148,7 +148,7 @@ Without `EXPORT`, the result can stay internal to the build graph.
 A `dagr.mount.yaml` requests a volume at the directory containing it:
 
 ```yaml
-# stacks/tools/dagr.mount.yaml
+# recipes/tools/dagr.mount.yaml
 repo: github.com/acme/dagr-tools
 version: "^3"
 ```
@@ -160,7 +160,7 @@ but only the root selects its identity and implementation.
 If that volume's final `WORKDIR` contains `c/dagr.index.js`, `//` marks the mount boundary in its package address:
 
 ```text
-//stacks/tools//c:ci:pack
+//recipes/tools//c:ci:pack
 ```
 
 `dagr.index.js` remains an ordinary target definition and may coexist with `dagr.mount.yaml` at
@@ -169,13 +169,13 @@ the same attachment point.
 A mount is materialized only when a requested target or import crosses its boundary. `dagr list`
 leaves mounts opaque.
 
-The boundary is part of package identity. `//stacks/tools/c` names a source package, while
-`//stacks/tools//c` crosses the mount declared at `//stacks/tools`.
+The boundary is part of package identity. `//recipes/tools/c` names a source package, while
+`//recipes/tools//c` crosses the mount declared at `//recipes/tools`.
 
 A package at the mounted `WORKDIR` root is addressed as:
 
 ```text
-//stacks/tools//:facet:target
+//recipes/tools//:facet:target
 ```
 
 See [Filesystem composition](03-filesystem-composition.md) for the complete request, identity,

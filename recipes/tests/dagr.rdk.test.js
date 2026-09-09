@@ -46,6 +46,33 @@ describe('rdk graph', () => {
     assert.equal(merged.compile().answer, 42)
   })
 
+  it('merges many graphs at once, latest winning', () => {
+    const first = rdk.graph({ name: value('first'), answer: value(42) })
+    const second = rdk.graph({ name: value('second'), extra: value('kept') })
+    const third = rdk.graph({ name: value('third') })
+
+    const chained = first.merge(second, third).compile()
+    assert.equal(chained.name, 'third')
+    assert.equal(chained.answer, 42)
+    assert.equal(chained.extra, 'kept')
+
+    const standalone = rdk.merge(first, second, third).compile()
+    assert.equal(standalone.name, 'third')
+    assert.equal(standalone.answer, 42)
+    assert.equal(standalone.extra, 'kept')
+
+    assert.deepEqual([...rdk.merge().keys()], [])
+    assert.deepEqual([...first.merge().keys()], ['name', 'answer'])
+    assert.throws(
+      () => rdk.merge(first, { name: 'not a graph' }),
+      /Can only merge another graph, got object at 1/,
+    )
+    assert.throws(
+      () => rdk.merge(first, { keys: () => [][Symbol.iterator](), definitionOf: () => undefined }),
+      /Can only merge another graph, got object at 1/,
+    )
+  })
+
   it('merges graphs loaded through separate JavaScript module instances', async () => {
     const foreignRdk = (await import('../rdk/dagr.rdk.js?foreign-graph')).default
     const left = rdk.graph({ name: value('left') })

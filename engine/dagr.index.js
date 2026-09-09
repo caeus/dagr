@@ -1,37 +1,26 @@
-import typescript, { ciFacet, library, rdk, target } from '//engine/stacks/typescript//dagr.recipe.js'
+import recipe, {
+  command,
+  library,
+  pnpm,
+  rdk,
+  requirement,
+  rollup,
+  runSteps,
+  target,
+  typescript,
+} from '//engine/recipes/typescript//dagr.recipe.js'
 
-const ROLLUP_CONFIG = `import commonjs from '@rollup/plugin-commonjs'
-import { nodeResolve } from '@rollup/plugin-node-resolve'
-import { builtinModules } from 'node:module'
+const TEST_RUN = "node --experimental-vm-modules --enable-source-maps --import tsx/esm"
+  + " --test --test-reporter=spec 'src/**/*.test.ts'"
 
-const builtins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((name) => \`node:\${name}\`)
-])
-
-export default {
-  input: 'build/index.js',
-  external: (id) => builtins.has(id),
-  plugins: [nodeResolve({ preferBuiltins: true }), commonjs()],
-  onLog(level, log, handler) {
-    if (log.code === 'CIRCULAR_DEPENDENCY') return
-    if (level === 'warn') handler('error', log)
-    else handler(level, log)
-  },
-  output: {
-    file: 'dist/dagr.js',
-    format: 'esm'
-  }
-}
-`
+const SMOKE_RUN = 'mkdir -p /tmp/dagr-smoke/packages'
+  + ' && HOST_OS=linux HOST_ARCH=x64 HOST_LIBC=musl REPO_ROOT=/tmp/dagr-smoke'
+  + ' node --experimental-vm-modules dist/dagr.js list > /dev/null'
 
 const versions = {
   '@caeus/wyr': '0.0.0-rc1',
   '@optique/core': '1.2.0',
   '@optique/run': '1.2.0',
-  '@rollup/plugin-commonjs': '29.0.3',
-  '@rollup/plugin-node-resolve': '16.0.3',
-  rollup: '4.63.1',
   'smol-toml': '1.7.0',
   tsx: '4.23.7',
   yaml: '2.8.3',
@@ -41,111 +30,103 @@ const versions = {
 const dagr = rdk.graph({
   name: rdk.value('@caeus/dagr'),
 
-  nodePnpmTarget: rdk.value(target('node-pnpm', {
-    deps: [],
-    run: () => ({
-      FROM: 'node:22-alpine',
-      steps: [
-        { RUN: 'corepack enable && corepack prepare pnpm@11.20.0 --activate' },
-        { WORKDIR: '/repo' },
-      ],
-      IGNORE: [],
+  // A bundled CLI publishes one JavaScript file, so type declarations are dead weight.
+  emitDeclarations: rdk.value(false),
+
+  importAlias: rdk.derive(['sourceDirectory', 'outputDirectory'], (source, output) => ({
+    specifier: '#*',
+    sourcePath: `./${source}/*`,
+    runtimePath: `./${output}/*`,
+  })),
+
+  dagrRequirements: requirement({
+    packages: ['tsx'],
+    allowBuilds: ['esbuild'],
+  }),
+
+  nodePnpmTarget: target([], {
+    name: 'node-pnpm',
+    facet: 'ci',
+    render: () => ({
+      deps: [],
+      run: () => ({
+        FROM: 'node:22-alpine',
+        steps: [
+          { RUN: 'corepack enable && corepack prepare pnpm@11.20.0 --activate' },
+          { WORKDIR: '/repo' },
+        ],
+        IGNORE: [],
+      }),
     }),
-  }), [ciFacet.targets]),
+  }),
 
-  importAlias: rdk.derive(
-    ['sourceDirectory', 'outputDirectory'],
-    (source, output) => ({
-      specifier: '#*',
-      sourcePath: `./${source}/*`,
-      runtimePath: `./${output}/*`,
-    }),
-  ),
-  'tsconfig.compilerOptions.declaration': rdk.value(false),
+  // Declared as an invocation so `pnpm test` on a host runs what CI runs.
+  testCommand: command([], {
+    for: ['test'],
+    run: () => ({ shell: TEST_RUN }),
+  }),
 
-  dagrToolPackages: rdk.value([
-    '@rollup/plugin-commonjs',
-    '@rollup/plugin-node-resolve',
-    'rollup',
-    'tsx',
-  ], ['toolPackages']),
-  dagrAllowBuilds: rdk.value(['esbuild'], ['allowBuilds']),
-
-  testTarget: rdk.derive(
-    ['#dagrRuntime'],
-    runtime => target('test', {
+  testTarget: target(['ignore', 'exec'], {
+    name: 'test',
+    facet: 'ci',
+    render: (context, ignore, exec) => ({
       deps: ['ci:build'],
       run: ({ images }) => ({
         FROM: images['ci:build'],
-        steps: [
-          { RUN: "node --experimental-vm-modules --enable-source-maps --import tsx/esm --test --test-reporter=spec 'src/**/*.test.ts'" },
-        ],
-        IGNORE: runtime.ignore,
+        steps: runSteps(context.invocations(), exec),
+        IGNORE: ignore,
       }),
     }),
-    [ciFacet.targets],
-  ),
+  }),
 
-  bundleTarget: rdk.derive(
-    ['#dagrRuntime'],
-    runtime => target('bundle', {
-      deps: ['ci:build'],
-      run: ({ images }) => ({
-        FROM: images['ci:build'],
-        steps: [
-          runtime.writeText('/repo/rollup.config.js', ROLLUP_CONFIG),
-          { RUN: runtime.packageManager.exec('rollup --config rollup.config.js') },
-        ],
-        IGNORE: runtime.ignore,
-        EXPORT: { '/repo/dist/dagr.js': 'dist/dagr.js' },
-      }),
-    }),
-    [ciFacet.targets],
-  ),
-
-  bundlecheckTarget: rdk.derive(
-    ['#dagrRuntime'],
-    runtime => target('bundlecheck', {
+  bundlecheckTarget: target(['ignore'], {
+    name: 'bundlecheck',
+    facet: 'ci',
+    render: (_context, ignore) => ({
       deps: ['ci:bundle'],
       run: ({ images }) => ({
         FROM: images['ci:bundle'],
-        steps: [
-          { RUN: 'mkdir -p /tmp/dagr-smoke/packages && HOST_OS=linux HOST_ARCH=x64 HOST_LIBC=musl REPO_ROOT=/tmp/dagr-smoke node --experimental-vm-modules dist/dagr.js list > /dev/null' },
-        ],
-        IGNORE: runtime.ignore,
+        steps: [{ RUN: SMOKE_RUN }],
+        IGNORE: ignore,
       }),
     }),
-    [ciFacet.targets],
-  ),
+  }),
 
-  imageTarget: rdk.value(target('image', {
-    deps: ['ci:bundlecheck'],
-    run: ({ images }) => ({
-      FROM: 'node:22-alpine',
-      steps: [
-        { RUN: 'apk add --no-cache docker-cli docker-cli-buildx' },
-        { WORKDIR: '/dagr' },
-        { COPY: { from: images['ci:bundlecheck'], src: '/repo/dist/dagr.js', dest: '/dagr/dagr.js' } },
-        { ENV: { REPO_ROOT: '/repo' } },
-        { ENTRYPOINT: ['node', '--experimental-vm-modules', '/dagr/dagr.js'] },
-      ],
-      IGNORE: [],
+  imageTarget: target([], {
+    name: 'image',
+    facet: 'ci',
+    render: () => ({
+      deps: ['ci:bundlecheck'],
+      run: ({ images }) => ({
+        FROM: 'node:22-alpine',
+        steps: [
+          { RUN: 'apk add --no-cache docker-cli docker-cli-buildx' },
+          { WORKDIR: '/dagr' },
+          { COPY: { from: images['ci:bundlecheck'], src: '/repo/dist/dagr.js', dest: '/dagr/dagr.js' } },
+          { ENV: { REPO_ROOT: '/repo' } },
+          { ENTRYPOINT: ['node', '--experimental-vm-modules', '/dagr/dagr.js'] },
+        ],
+        IGNORE: [],
+      }),
     }),
-  }), [ciFacet.targets]),
+  }),
 })
 
-const stack = typescript({
-  base: '//engine:ci:node-pnpm',
-  packageManager: 'pnpm',
-  scope: 'internal',
-  versions,
-  conventions: { outputDirectory: 'build' },
-  ignore: ['.git', '.dagr', 'node_modules', 'build', 'dist', 'docs', 'coverage'],
-})
-  .with(library({ runtime: 'node', sourceMaps: true }))
-  .with(dagr)
+const engine = recipe([
+  typescript({
+    base: '//engine:ci:node-pnpm',
+    scope: 'internal',
+    versions,
+    outputDirectory: 'build',
+    ignore: ['.git', '.dagr', 'node_modules', 'build', 'dist', 'docs', 'coverage'],
+  }),
+  pnpm(),
+  library({ runtime: 'node', sourceMaps: true }),
+  rollup(),
+  dagr,
+])
 
-export default stack({
+export default engine({
   location: import.meta.dagr.location,
   version: '0.0.0',
   deps: [

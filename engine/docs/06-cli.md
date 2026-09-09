@@ -16,7 +16,7 @@ parallel; a shared dependency builds once per invocation.
 
 ```sh
 dagr run //services/api:ci:build
-dagr run //engine:ci:test //stacks:ci:test
+dagr run //engine:ci:test //recipes:ci:test
 ```
 
 See [Dependencies and exports](05-deps-and-exports.md#reference-shorthands) for target-address
@@ -45,7 +45,7 @@ dependencies:
 ```text
 //engine:ci:build[//engine:ci:install-build]
 //engine:ci:test[//engine:ci:build]
-//stacks:ci:test[]
+//recipes:ci:test[]
 ```
 
 The output format is `//package:facet:target[dependency, ...]`.

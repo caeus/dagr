@@ -1,6 +1,6 @@
 ---
 name: dagr
-description: Work effectively with Dagr repositories and the Dagr codebase. Use when authoring, modifying, debugging, reviewing, or explaining dagr.index.js, dagr.mount.yaml, .dagr configuration, Dagr target addresses, facets, targets, recipes, dependencies, exports, mounts, stacks, CLI commands, or Dagr engine implementation.
+description: Work effectively with Dagr repositories and the Dagr codebase. Use when authoring, modifying, debugging, reviewing, or explaining dagr.index.js, dagr.mount.yaml, .dagr configuration, Dagr target addresses, facets, targets, recipes, dependencies, exports, mounts, CLI commands, or Dagr engine implementation.
 ---
 
 # Dagr
@@ -14,7 +14,7 @@ Use this skill whenever the task involves Dagr, whether Dagr is being used by an
 3. Use `dagr show <address>` to inspect a target recipe without building it.
 4. Read only the reference material relevant to the task:
    - [Authoring and debugging](references/authoring.md) for targets, addresses, recipes, dependencies, imports, mounts, exports, and common traps.
-   - [Developing Dagr](references/development.md) when changing Dagr's own engine, docs, examples, or stacks.
+   - [Developing Dagr](references/development.md) when changing Dagr's own engine, docs, examples, or recipes.
 
 ## Core mental model
 

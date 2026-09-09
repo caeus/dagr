@@ -3,7 +3,7 @@
 Read the nearest `README.md` before changing an area.
 
 - Engine work: use `.agents/skills/dagr/SKILL.md`.
-- Reusable recipe or TypeScript stack work: use `.agents/skills/dagr-recipes/SKILL.md`.
+- Reusable recipe or TypeScript recipe work: use `.agents/skills/dagr-recipes/SKILL.md`.
 
 Keep public documentation and machine-facing guidance synchronized with behavior. Structural or public API changes should update the relevant `README.md`, `AGENTS.md`, `llms.txt`, Agent Skill, workflows, mounts, and examples in the same change.
 

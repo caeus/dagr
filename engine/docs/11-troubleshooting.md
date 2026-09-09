@@ -57,10 +57,10 @@ import helper from '//build/dagr.helper.js'
 
 Importable files must be named `dagr.*.js`, `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml`.
 
-For a mounted stack, a second `//` crosses the mount boundary:
+For a mounted recipe, a second `//` crosses the mount boundary:
 
 ```js
-import stack from '//stacks/ts//dagr.stack.js'
+import recipe from '//recipes/ts//dagr.recipe.js'
 ```
 
 See [Build-file environment and imports](04-sandbox-and-imports.md) for the complete rules.

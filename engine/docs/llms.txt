@@ -26,11 +26,11 @@
 ## Source and contributor material
 
 - [GitHub repository](https://github.com/caeus/dagr): Engine, reusable recipes, documentation, examples, and build definitions.
-- [Reusable recipes](https://github.com/caeus/dagr/tree/main/recipes): TypeScript stack and RDK-based settings calculation recipes.
+- [Reusable recipes](https://github.com/caeus/dagr/tree/main/recipes): TypeScript recipe and RDK-based settings calculation recipes.
 - [Engine internals](https://github.com/caeus/dagr/blob/main/engine/docs/08-internals.md): Current engine structure, discovery, loading, execution, Docker integration, mounts, exports, and dependency composition.
 - [Docker-in-Docker notes](https://github.com/caeus/dagr/blob/main/engine/docs/09-docker-in-docker.md): Runtime and Docker socket behavior for contributors and debugging.
 
 ## Agent skills
 
 - [Dagr Agent Skill](https://github.com/caeus/dagr/tree/main/.agents/skills/dagr): Instructions for AI coding agents working on the engine.
-- [Dagr Recipes Agent Skill](https://github.com/caeus/dagr/tree/main/.agents/skills/dagr-recipes): Instructions for reusable recipes and the TypeScript calculation stack.
+- [Dagr Recipes Agent Skill](https://github.com/caeus/dagr/tree/main/.agents/skills/dagr-recipes): Instructions for reusable recipes and the TypeScript calculation recipe.

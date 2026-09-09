@@ -1,84 +1,79 @@
 # How Dagr recipes use RDK
 
-The RDK recipe at `recipes/rdk/dagr.rdk.js` is a tiny synchronous calculation graph.
+The RDK at `recipes/rdk/dagr.rdk.js` is the recipe's only calculation engine.
 
 ## Primitive operations
 
 ```js
-import rdk, { derive, value } from '//recipes/rdk//dagr.rdk.js'
-
 const graph = rdk.graph({
-  fact: value('input'),
-  derived: derive(['fact'], fact => `${fact}!`),
+  fact: rdk.value('input'),
+  result: rdk.derive(['fact'], fact => `${fact}!`),
 })
 
-const result = graph.shake(['derived']).compile().derived
+graph.merge(other)
+graph.definitionOf('result')
+graph.shake(['result']).compile().result
 ```
 
-- `value(input, tags?)` provides a known fact or contribution.
-- `derive(deps, factory, tags?)` derives a value from explicit dependencies.
-- `construct(deps, Class, tags?)` constructs a class when needed.
-- `graph.merge(other)` returns a new right-biased graph.
-- `graph.shake(roots)` retains only requested roots and transitive dependencies.
-- `graph.compile()` synchronously initializes retained bindings once.
+- `value(input, tags?)` provides a fact.
+- `derive(deps, factory, tags?)` calculates from explicit dependencies.
+- `construct(deps, Class, tags?)` constructs a class.
+- `merge` is immutable and right-biased.
+- `shake` retains roots, tag matches, and transitive dependencies.
+- `compile` resolves retained bindings synchronously once.
 
-## One graph
+## Recipe conventions
 
-The TypeScript stack intentionally has one calculation graph:
+Names identify facts and calculations such as `sourceDirectory`, `outputLayout`, and `exec`. Do not
+encode an intent or facet into a binding name. Values shared by several outputs stay ordinary.
+
+Open output collections use three tags, attached by their helpers:
+
+- `file(...)` attaches `files`.
+- `command(...)` attaches `commands`.
+- `target(...)` attaches `targets`.
+
+Targets automatically receive the file and command collections. The `index` binding automatically
+receives the target collection. Callers never attach these tags manually.
+
+A target renders the context-aware files, then decides how to materialize the intent's invocations.
+Ordering among contributions is their numeric `order`, not the target's dependency list:
 
 ```js
-graph.shake(['index']).compile().index
+target(['exec', 'install'], {
+  name: 'test',
+  facet: 'ci',
+  intent: 'test',
+  render(ctx, exec, install) {
+    return {
+      deps: [],
+      run: ({ host }) => ({
+        FROM: 'node:22-alpine',
+        steps: [
+          ...ctx.files({ host }),
+          { RUN: install(host) },
+          ...runSteps(ctx.invocations(), exec),
+        ],
+        IGNORE: [],
+      }),
+    }
+  },
+})
 ```
 
-Features merge into that graph. Do not add another registry or evaluator for calculations, features, targets, or generated manifests.
+Any other kind of contribution is an ordinary tagged value — `requirement(...)` is one, and a task for
+some external runner would be another. Invent a tag, have a file contribution depend on `{ tag }`, and
+aggregate. Only files, commands, and targets need helpers, because only they reach a container.
 
-## Keys are concepts
+Context is data passed to output rendering. It is not another graph and does not alter how ordinary
+dependencies resolve.
 
-Name bindings for the fact or calculation they own, for example:
-
-```text
-location
-intent
-outputLayout
-runtimeEntry
-packageJson.main
-ci:test/packageJson.private
-```
-
-Use workspace-qualified keys where the same setting exists in multiple generated workspaces.
-
-## Direct dependencies versus tags
-
-Use named dependencies for behavioral relationships. This keeps causal paths inspectable.
-
-Use tags only when the contributor set is intentionally open-ended, such as:
-
-- `toolPackages`
-- `runtimePackages`
-- `ambientTypes`
-- `generatedFiles`
-- `allowBuilds`
-- `versionDefaults`
-- `validations`
-- `buildDependencies`
-- `eslint.ruleSets`
-- facet target collections
-
-Collectors own collision policy. Never depend on contribution order.
-
-## Shared semantics
-
-If several generated outputs need the same decision, derive them from a shared semantic node rather than from one another:
-
-```text
-outputLayout
-  ├── packageJson.main
-  ├── packageJson.files
-  └── tsconfig.compilerOptions.outDir
-```
-
-Likewise, package-manager selection is one explicit stack fact. Targets ask the selected adapter to install, execute, or pack rather than independently embedding package-manager commands.
+`requirement(...)` is an ordinary tagged value used only where independent tooling features must
+contribute package, ambient-type, or build-policy facts. It is shared input to file and command
+outputs, not another evaluator. Its `packages` are names; the version catalog resolves them.
 
 ## Determinism
 
-Keep factories synchronous and deterministic. Do not design RDK nodes around network access, environment variables, timers, mutable ambient state, or asynchronous resolution. Promises are ordinary values and are not awaited by `compile()`.
+Factories stay synchronous and deterministic. Do not build RDK nodes around network access, ambient
+environment state, mutable registries, or asynchronous resolution. Promises are ordinary values and
+are not awaited by `compile()`.
