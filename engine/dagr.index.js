@@ -1,12 +1,5 @@
-import recipe, {
-  library,
-  pnpm,
-  rdk,
-  rollup,
-  target,
-  typescript,
-} from '//engine/recipes/typescript//dagr.recipe.js'
-import { nodeBase, nodeTest } from '//engine/recipes/dagr.node-features.js'
+import { rdk, target } from '//engine/recipes/typescript//dagr.recipe.js'
+import { nodeCli } from '//engine/recipes/dagr.node-cli.js'
 
 const SMOKE_RUN = 'mkdir -p /tmp/dagr-smoke/packages'
   + ' && HOST_OS=linux HOST_ARCH=x64 HOST_LIBC=musl REPO_ROOT=/tmp/dagr-smoke'
@@ -67,23 +60,7 @@ const dagr = rdk.graph({
   }),
 })
 
-const engine = recipe([
-  typescript({
-    base: 'ci:node-base',
-    scope: 'internal',
-    versions,
-    outputDirectory: 'build',
-    ignore: ['.git', '.dagr', 'node_modules', 'build', 'dist', 'docs', 'coverage'],
-  }),
-  pnpm(),
-  library({ runtime: 'node', sourceMaps: true }),
-  rollup(),
-  nodeBase(),
-  nodeTest({ vmModules: true }),
-  dagr,
-])
-
-export default engine({
+export default nodeCli({ versions }).with(dagr)({
   location: import.meta.dagr.location,
   version: '0.0.0',
   deps: [
