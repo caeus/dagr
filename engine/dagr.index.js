@@ -1,17 +1,12 @@
 import recipe, {
-  command,
   library,
   pnpm,
   rdk,
-  requirement,
   rollup,
-  runSteps,
   target,
   typescript,
 } from '//engine/recipes/typescript//dagr.recipe.js'
-
-const TEST_RUN = "node --experimental-vm-modules --enable-source-maps --import tsx/esm"
-  + " --test --test-reporter=spec 'src/**/*.test.ts'"
+import { nodeBase, nodeTest } from '//engine/recipes/dagr.node-features.js'
 
 const SMOKE_RUN = 'mkdir -p /tmp/dagr-smoke/packages'
   + ' && HOST_OS=linux HOST_ARCH=x64 HOST_LIBC=musl REPO_ROOT=/tmp/dagr-smoke'
@@ -38,46 +33,6 @@ const dagr = rdk.graph({
     sourcePath: `./${source}/*`,
     runtimePath: `./${output}/*`,
   })),
-
-  dagrRequirements: requirement({
-    packages: ['tsx'],
-    allowBuilds: ['esbuild'],
-  }),
-
-  nodePnpmTarget: target([], {
-    name: 'node-pnpm',
-    facet: 'ci',
-    render: () => ({
-      deps: [],
-      run: () => ({
-        FROM: 'node:22-alpine',
-        steps: [
-          { RUN: 'corepack enable && corepack prepare pnpm@11.20.0 --activate' },
-          { WORKDIR: '/repo' },
-        ],
-        IGNORE: [],
-      }),
-    }),
-  }),
-
-  // Declared as an invocation so `pnpm test` on a host runs what CI runs.
-  testCommand: command([], {
-    for: ['test'],
-    run: () => ({ shell: TEST_RUN }),
-  }),
-
-  testTarget: target(['ignore', 'exec'], {
-    name: 'test',
-    facet: 'ci',
-    render: (context, ignore, exec) => ({
-      deps: ['ci:build'],
-      run: ({ images }) => ({
-        FROM: images['ci:build'],
-        steps: runSteps(context.invocations(), exec),
-        IGNORE: ignore,
-      }),
-    }),
-  }),
 
   bundlecheckTarget: target(['ignore'], {
     name: 'bundlecheck',
@@ -114,7 +69,7 @@ const dagr = rdk.graph({
 
 const engine = recipe([
   typescript({
-    base: '//engine:ci:node-pnpm',
+    base: 'ci:node-base',
     scope: 'internal',
     versions,
     outputDirectory: 'build',
@@ -123,6 +78,8 @@ const engine = recipe([
   pnpm(),
   library({ runtime: 'node', sourceMaps: true }),
   rollup(),
+  nodeBase(),
+  nodeTest({ vmModules: true }),
   dagr,
 ])
 

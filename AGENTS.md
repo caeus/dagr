@@ -12,4 +12,10 @@ The repository has two main areas:
 - `engine/` for Dagr execution and CLI behavior.
 - `recipes/` for independently consumable recipes.
 
+A project's own conventions belong beside its mount, not inside it. `engine/recipes/` holds the
+`typescript/` mount and, next to it, `dagr.node-features.js`: features this repository composes onto
+the published recipe. Put a new convention there first, and move it into `recipes/typescript/` only
+once something other than the engine needs it. That keeps the published recipe free of guesses about
+what other projects want, and it keeps `engine/dagr.index.js` down to facts about the engine.
+
 Use Dagr itself for validation. For reusable recipes, start with `dagr run //recipes:ci:test` and build the relevant recipe image. For engine work, use the engine CI targets documented in `engine/README.md`.
