@@ -1,7 +1,7 @@
 import vm from 'node:vm'
 import { stringify as stringifyToml } from 'smol-toml'
 import { stringify as stringifyYaml } from 'yaml'
-import { createSandboxFunction } from '#pkg/sandbox.js'
+import { createSandboxFunction, createSandboxStringifier } from '#pkg/sandbox.js'
 
 export const BUILTIN_PREFIX = 'dagr:'
 
@@ -61,27 +61,33 @@ export function createBuiltinModules(context: vm.Context): ReadonlyMap<string, v
     builtin(
       'dagr:yaml',
       'stringify',
-      ['value'],
-      (value: unknown) => stringifyYaml(structuredClone(value)),
+      createSandboxStringifier(
+        context,
+        value => stringifyYaml(structuredClone(value)),
+      ),
     ),
     builtin(
       'dagr:toml',
       'stringify',
-      ['value'],
-      (value: unknown) => stringifyToml(
-        structuredClone(value) as Record<string, unknown>,
+      createSandboxStringifier(
+        context,
+        value => stringifyToml(
+          structuredClone(value) as Record<string, unknown>,
+        ),
       ),
     ),
-    builtin('dagr:glob', 'match', ['pattern', 'value'], matchGlob),
+    builtin(
+      'dagr:glob',
+      'match',
+      createSandboxFunction(context, ['pattern', 'value'], matchGlob),
+    ),
   ])
 
   function builtin<T extends (...args: never[]) => unknown>(
     specifier: string,
     exportName: string,
-    parameters: readonly string[],
-    implementation: T,
+    fn: T,
   ): readonly [string, vm.Module] {
-    const fn = createSandboxFunction(context, parameters, implementation)
     const namespace = vm.compileFunction(
       `return Object.freeze({ ${exportName}: fn })`,
       [],
