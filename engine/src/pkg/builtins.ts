@@ -5,11 +5,8 @@ import { createSandboxStringifier } from '#pkg/sandbox.js'
 
 export const BUILTIN_PREFIX = 'dagr:'
 
-type GlobMatcher = Readonly<{
-  match(value: string): boolean
-}>
-
-type GlobFactory = (pattern: string) => GlobMatcher
+type GlobPredicate = (path: string) => boolean
+type GlobFactory = (pattern: string) => GlobPredicate
 
 function createGlobFactory(context: vm.Context): GlobFactory {
   const of = vm.compileFunction(`
@@ -26,36 +23,36 @@ function createGlobFactory(context: vm.Context): GlobFactory {
         throw new Error('Invalid Dagr glob pattern ' + JSON.stringify(pattern) + ': wildcards must occupy an entire segment')
     }
 
-    const match = value => {
-      if (typeof value !== 'string')
-        throw new TypeError('dagr:glob matcher expects a string value')
+    const predicate = path => {
+      if (typeof path !== 'string')
+        throw new TypeError('dagr:glob predicate expects a string path')
 
-      const valueSegments = value === '' ? [] : value.split('/')
+      const pathSegments = path === '' ? [] : path.split('/')
       const memo = new Map()
 
-      const matches = (patternIndex, valueIndex) => {
-        const key = patternIndex + ':' + valueIndex
+      const matches = (patternIndex, pathIndex) => {
+        const key = patternIndex + ':' + pathIndex
         const cached = memo.get(key)
         if (cached !== undefined) return cached
 
         let result
         if (patternIndex === patternSegments.length) {
-          result = valueIndex === valueSegments.length
+          result = pathIndex === pathSegments.length
         } else {
           const segment = patternSegments[patternIndex]
-          const valueSegment = valueSegments[valueIndex]
+          const pathSegment = pathSegments[pathIndex]
           if (segment === '**') {
-            result = matches(patternIndex + 1, valueIndex)
+            result = matches(patternIndex + 1, pathIndex)
               || (
-                valueIndex < valueSegments.length
-                && valueSegment !== ''
-                && matches(patternIndex, valueIndex + 1)
+                pathIndex < pathSegments.length
+                && pathSegment !== ''
+                && matches(patternIndex, pathIndex + 1)
               )
           } else {
-            result = valueIndex < valueSegments.length
-              && valueSegment !== ''
-              && (segment === '*' || segment === valueSegment)
-              && matches(patternIndex + 1, valueIndex + 1)
+            result = pathIndex < pathSegments.length
+              && pathSegment !== ''
+              && (segment === '*' || segment === pathSegment)
+              && matches(patternIndex + 1, pathIndex + 1)
           }
         }
 
@@ -66,7 +63,7 @@ function createGlobFactory(context: vm.Context): GlobFactory {
       return matches(0, 0)
     }
 
-    return Object.freeze({ match: Object.freeze(match) })
+    return Object.freeze(predicate)
   `, ['pattern'], { parsingContext: context }) as GlobFactory
 
   return Object.freeze(of)
