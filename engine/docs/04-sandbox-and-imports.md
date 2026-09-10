@@ -10,9 +10,28 @@ Build files can use standard JavaScript values and `Buffer`. Dagr also provides:
 ```js
 import YAML from 'dagr:yaml'
 import TOML from 'dagr:toml'
+import Glob from 'dagr:glob'
 ```
 
-Both modules expose `stringify` through their default export and as a named export.
+YAML and TOML expose `stringify` through their default export and as a named export. Glob exposes
+`of` the same way. `Glob.of(pattern)` validates and compiles the pattern once, returning a reusable
+predicate:
+
+```js
+const isFile = Glob.of('file/*')
+isFile('file/tsconfig')   // true
+isFile('file/foo/bar')    // false
+
+const isTarget = Glob.of('target/**')
+isTarget('target')          // true
+isTarget('target/ci/build') // true
+```
+
+Glob matching is synchronous string matching only; it never reads the filesystem. `/` separates
+segments, `*` matches exactly one non-empty segment, and `**` matches zero or more non-empty
+segments. Wildcards must occupy an entire segment. Empty patterns, empty pattern segments, and
+partial wildcard segments such as `foo*` or `***` are rejected by `Glob.of(...)` rather than
+assigned extra glob semantics.
 
 Build files cannot access the host environment, filesystem, network, processes, timers, CommonJS
 globals, or arbitrary Node modules. In particular, `process`, `require`, `fetch`, and `fs` are not
