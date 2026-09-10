@@ -174,14 +174,15 @@ const tsconfig = file(
  * the context contributes, then the intent's invocations. Installation is structural here rather
  * than a contribution, because only a fresh image needs it.
  */
-export const sourceTarget = ({ intent, assets = false, export: exported } = {}) => target(
+export const sourceTarget = (intent, { assets = false, export: exported } = {}) => target(
   [
     '/image/base', '/source/ignore', '/source/directory', '/package/local-dependencies',
-    '/package-manager/exec', '/package-manager/install', ...(assets ? ['/source/assets'] : []),
+    '/package-manager/exec', '/package-manager/install', `/command/${intent}`,
+    ...(assets ? ['/source/assets'] : []),
   ],
   {
     intent,
-    render(context, base, ignore, source, localPackages, exec, install, buildAssets = []) {
+    render(context, base, ignore, source, localPackages, exec, install, invocations, buildAssets = []) {
       return {
         deps: [base, ...localPackages.map(pkg => pkg.target)],
         run: ({ images }) => ({
@@ -193,7 +194,7 @@ export const sourceTarget = ({ intent, assets = false, export: exported } = {}) 
             { WORKDIR: '/repo' },
             ...context.files({ install: true }),
             { RUN: install() },
-            ...runSteps(context.invocations(), exec),
+            ...runSteps(invocations, exec),
           ],
           IGNORE: ignore,
           ...(exported === undefined ? {} : { EXPORT: exported }),
@@ -269,7 +270,7 @@ export function typescript({
       return { directory, runtimeFile: `${directory}/${stem}.js`, declarationFile: `${directory}/${stem}.d.ts` }
     }),
     '/package/local-dependencies': rdk.derive(['/package/dependencies', '/package/scope'], localPackagesOf),
-    '/package/scripts': rdk.derive(['/command/**', '/package-manager/script'], scriptsFor),
+    '/package/scripts': rdk.derive(['/command/*', '/package-manager/script'], scriptsFor),
     '/package/facts': packageFacts,
     '/file/package-json': packageJson,
     '/file/tsconfig': tsconfig,
@@ -308,20 +309,14 @@ export function library({
       packages,
       types,
     }),
-    '/command/typecheck/typescript': command(['/requirement/typescript'], {
-      for: ['typecheck'],
-      run: () => ({ tool: 'tsc --noEmit' }),
-    }),
-    '/command/build/typescript': command(['/requirement/typescript'], {
-      for: ['build'],
-      run: () => ({ tool: 'tsc' }),
-    }),
-    '/target/ci/typecheck': sourceTarget(),
-    '/target/ci/build': sourceTarget({ assets: true }),
+    '/command/typecheck': command(['/requirement/typescript'], () => ({ tool: 'tsc --noEmit' })),
+    '/command/build': command(['/requirement/typescript'], () => ({ tool: 'tsc' })),
+    '/target/ci/typecheck': sourceTarget('typecheck'),
+    '/target/ci/build': sourceTarget('build', { assets: true }),
     '/target/ci/pack': target(
-      ['/source/ignore', '/package/local-dependencies', '/package-manager/exec'],
+      ['/source/ignore', '/package/local-dependencies', '/package-manager/pack', '/package/slug'],
       {
-        render(context, ignore, localPackages, exec) {
+        render(context, ignore, localPackages, pack, slug) {
           return {
             deps: ['build', ...localPackages.map(pkg => pkg.target)],
             run: ({ images }) => ({
@@ -330,7 +325,7 @@ export function library({
                 ...copyLocalPackages(localPackages, images, '/out'),
                 { WORKDIR: '/repo' },
                 ...context.files({ install: false }),
-                ...runSteps(context.invocations(), exec),
+                { RUN: pack(slug) },
               ],
               IGNORE: ignore,
             }),
@@ -339,10 +334,10 @@ export function library({
       },
     ),
     '/target/publish/pack': target(
-      ['/source/ignore', '/package/local-dependencies', '/package-manager/exec'],
+      ['/source/ignore', '/package/local-dependencies', '/package-manager/pack', '/package/slug'],
       {
         intent: 'publish',
-        render(context, ignore, localPackages, exec) {
+        render(context, ignore, localPackages, pack, slug) {
           return {
             deps: ['ci:build', ...localPackages.map(pkg => pkg.target)],
             run: ({ images }) => ({
@@ -351,7 +346,7 @@ export function library({
                 ...copyLocalPackages(localPackages, images, '/out'),
                 { WORKDIR: '/repo' },
                 ...context.files({ install: false }),
-                ...runSteps(context.invocations(), exec),
+                { RUN: pack(slug) },
               ],
               IGNORE: ignore,
             }),
@@ -382,11 +377,8 @@ export function cloudflareWorker({ language = 'ES2022' } = {}) {
       types: ['@cloudflare/workers-types'],
       allowBuilds: ['sharp', 'workerd'],
     }),
-    '/command/typecheck/typescript': command(['/requirement/typescript'], {
-      for: ['typecheck'],
-      run: () => ({ tool: 'tsc --noEmit' }),
-    }),
-    '/target/ci/typecheck': sourceTarget(),
+    '/command/typecheck': command(['/requirement/typescript'], () => ({ tool: 'tsc --noEmit' })),
+    '/target/ci/typecheck': sourceTarget('typecheck'),
   })
 }
 
@@ -437,16 +429,10 @@ export default defineConfig({
 `)
       },
     }),
-    '/command/typecheck/typescript': command(['/requirement/typescript'], {
-      for: ['typecheck'],
-      run: () => ({ tool: 'tsc --noEmit' }),
-    }),
-    '/command/build/vite': command(['/requirement/typescript'], {
-      for: ['build'],
-      run: () => ({ tool: 'vite build' }),
-    }),
-    '/target/ci/typecheck': sourceTarget(),
-    '/target/ci/build': sourceTarget({ assets: true }),
+    '/command/typecheck': command(['/requirement/typescript'], () => ({ tool: 'tsc --noEmit' })),
+    '/command/build': command(['/requirement/typescript'], () => ({ tool: 'vite build' })),
+    '/target/ci/typecheck': sourceTarget('typecheck'),
+    '/target/ci/build': sourceTarget('build', { assets: true }),
   })
 }
 
@@ -476,26 +462,22 @@ export function prettier({
   })
 }
 
-export function biome({ formatter = true, linter = true } = {}) {
+/** Composing this after `eslint()` makes biome the linter; before it, biome only formats. */
+export function biome({ formatter = true } = {}) {
   return rdk.graph({
     '/file/biome-config': file([], {
       for: ['dev', 'lint'],
       render: () => writeJson('/repo/biome.json', {
         formatter: { enabled: formatter },
-        linter: { enabled: linter },
+        linter: { enabled: true },
       }),
     }),
     '/requirement/biome': requirement({
       for: ['dev', 'lint'],
       packages: ['@biomejs/biome'],
     }),
-    ...(linter ? {
-      '/command/lint/biome': command(['/requirement/biome'], {
-        for: ['lint'],
-        run: () => ({ tool: 'biome check .' }),
-      }),
-      '/target/ci/lint': sourceTarget(),
-    } : {}),
+    '/command/lint': command(['/requirement/biome'], () => ({ tool: 'biome check .' })),
+    '/target/ci/lint': sourceTarget('lint'),
   })
 }
 
@@ -533,11 +515,8 @@ export default defineConfig({ test: {
       types: globals ? ['vitest/globals'] : [],
       allowBuilds: ['esbuild'],
     }),
-    '/command/test/vitest': command(['/requirement/vitest'], {
-      for: ['test'],
-      run: () => ({ tool: 'vitest run' }),
-    }),
-    '/target/ci/test': sourceTarget(),
+    '/command/test': command(['/requirement/vitest'], () => ({ tool: 'vitest run' })),
+    '/target/ci/test': sourceTarget('test'),
   })
 }
 
@@ -588,11 +567,8 @@ ${enforceFormatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}exp
       },
     }),
     '/requirement/eslint': requirement({ for: ['dev', 'lint'], packages }),
-    '/command/lint/eslint': command(['/requirement/eslint'], {
-      for: ['lint'],
-      run: () => ({ tool: 'eslint .' }),
-    }),
-    '/target/ci/lint': sourceTarget(),
+    '/command/lint': command(['/requirement/eslint'], () => ({ tool: 'eslint .' })),
+    '/target/ci/lint': sourceTarget('lint'),
   })
 }
 
@@ -636,7 +612,7 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
       packages: ['@rollup/plugin-commonjs', '@rollup/plugin-node-resolve', 'rollup'],
     }),
     '/file/rollup-config': file(['/output/layout', '/output/bundle-file'], {
-      for: ['bundle'],
+      for: ['dev', 'bundle'],
       render(_context, output, bundleFile) {
         if (output?.runtimeFile === undefined) {
           throw new Error('rollup() needs a product that emits JavaScript, such as library()')
@@ -644,21 +620,21 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
         return writeText('/repo/rollup.config.js', rollupConfig(output.runtimeFile, bundleFile, strict))
       },
     }),
-    '/command/bundle/rollup': command([], {
-      for: ['bundle'],
-      run: () => ({ tool: 'rollup --config rollup.config.js' }),
-    }),
-    '/target/ci/bundle': target(['/source/ignore', '/package-manager/exec', '/output/bundle-file'], {
-      render: (context, ignore, exec, bundleFile) => ({
-        deps: ['build'],
-        run: ({ images }) => ({
-          FROM: images.build,
-          steps: [...context.files(), ...runSteps(context.invocations(), exec)],
-          IGNORE: ignore,
-          EXPORT: { [`/repo/${bundleFile}`]: bundleFile },
+    '/command/bundle': command([], () => ({ tool: 'rollup --config rollup.config.js' })),
+    '/target/ci/bundle': target(
+      ['/source/ignore', '/package-manager/exec', '/output/bundle-file', '/command/bundle'],
+      {
+        render: (context, ignore, exec, bundleFile, invocations) => ({
+          deps: ['build'],
+          run: ({ images }) => ({
+            FROM: images.build,
+            steps: [...context.files(), ...runSteps(invocations, exec)],
+            IGNORE: ignore,
+            EXPORT: { [`/repo/${bundleFile}`]: bundleFile },
+          }),
         }),
-      }),
-    }),
+      },
+    ),
   })
 }
 
@@ -683,10 +659,7 @@ export function typedoc({ title } = {}) {
       for: ['dev', 'docs'],
       packages: ['typedoc'],
     }),
-    '/command/docs/typedoc': command(['/requirement/typedoc'], {
-      for: ['docs'],
-      run: () => ({ tool: 'typedoc' }),
-    }),
-    '/target/ci/docs': sourceTarget({ export: { '/repo/docs/': 'docs/' } }),
+    '/command/docs': command(['/requirement/typedoc'], () => ({ tool: 'typedoc' })),
+    '/target/ci/docs': sourceTarget('docs', { export: { '/repo/docs/': 'docs/' } }),
   })
 }

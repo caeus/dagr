@@ -149,10 +149,6 @@ describe('mountable TypeScript recipe', () => {
       '/package-manager/script': ts.rdk.value(invocation => invocation),
       '/package-manager/install': ts.rdk.value(() => 'bun install'),
       '/package-manager/pack': ts.rdk.value(slug => `bun pm pack --destination /out --filename ${slug}.tgz`),
-      '/command/pack/package': ts.command(['/package-manager/pack', '/package/slug'], {
-        for: ['pack', 'publish'],
-        run: (pack, slug) => ({ shell: pack(slug) }),
-      }),
       '/file/package-manager': ts.file([], {
         for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
         render: () => ({ RUN: 'write bunfig.toml' }),

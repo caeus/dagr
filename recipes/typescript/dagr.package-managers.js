@@ -1,5 +1,5 @@
 import rdk from '//rdk//dagr.rdk.js'
-import { command, file } from '//dagr.contributions.js'
+import { file } from '//dagr.contributions.js'
 import { DEVELOPMENT_INTENTS, requirementsOf } from '//dagr.model.js'
 import { writeYaml } from '//dagr.file-utils.js'
 
@@ -20,10 +20,6 @@ export const npm = () => rdk.graph({
   '/package-manager/script': rdk.value(invocation => invocation),
   '/package-manager/install': rdk.value(host => `npm install --include=dev${host ? ` --os=${host.os} --cpu=${host.arch}` : ''}`),
   '/package-manager/pack': rdk.value(packDestination('npm pack')),
-  '/command/pack/package': command(['/package-manager/pack', '/package/slug'], {
-    for: ['pack', 'publish'],
-    run: (pack, slug) => ({ shell: pack(slug) }),
-  }),
   '/file/package-manager': file([], {
     for: DEVELOPMENT_INTENTS,
     render: () => [],
@@ -36,10 +32,6 @@ export const pnpm = () => rdk.graph({
   '/package-manager/script': rdk.value(invocation => invocation),
   '/package-manager/install': rdk.value(host => `pnpm install --prod=false${host ? ` --os ${host.os} --cpu ${host.arch}` : ''}`),
   '/package-manager/pack': rdk.value(packDestination('pnpm pack')),
-  '/command/pack/package': command(['/package-manager/pack', '/package/slug'], {
-    for: ['pack', 'publish'],
-    run: (pack, slug) => ({ shell: pack(slug) }),
-  }),
   '/file/package-manager': file(['/requirement/**', '/version/catalog'], {
     for: DEVELOPMENT_INTENTS,
     render(context, requirements, versions) {
@@ -69,10 +61,6 @@ export const yarn = () => rdk.graph({
   '/package-manager/script': rdk.value(invocation => invocation),
   '/package-manager/install': rdk.value(() => 'yarn install --no-immutable'),
   '/package-manager/pack': rdk.value(slug => `mkdir -p /out && yarn pack --out /out/${slug}.tgz`),
-  '/command/pack/package': command(['/package-manager/pack', '/package/slug'], {
-    for: ['pack', 'publish'],
-    run: (pack, slug) => ({ shell: pack(slug) }),
-  }),
   '/file/package-manager': file([], {
     for: DEVELOPMENT_INTENTS,
     render: context => writeYaml('/repo/.yarnrc.yml', {

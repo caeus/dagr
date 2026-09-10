@@ -1,5 +1,4 @@
 import rdk from '//rdk//dagr.rdk.js'
-import { invocationsFor } from '//dagr.contributions.js'
 
 export const DEVELOPMENT_INTENTS = Object.freeze([
   'dev', 'typecheck', 'test', 'lint', 'docs', 'build',
@@ -95,10 +94,13 @@ export const runSteps = (invocations, exec) => invocations.map(invocation => ({
   RUN: invocation.tool === undefined ? invocation.shell : exec(invocation.tool),
 }))
 
-/** Materializes the same invocations as package-manager scripts, one per intent that runs any. */
-export const scriptsFor = (contributions, script) => present(DEVELOPMENT_INTENTS.map(intent => {
-  const invocations = invocationsFor(contributions, intent)
-  return [intent, invocations.length === 0
+/**
+ * Materializes the same invocations as package-manager scripts, one per intent that runs any. The
+ * intent is read off the binding path, so a command contributes a script without saying so.
+ */
+export const scriptsFor = (commands, script) => present(DEVELOPMENT_INTENTS.map(intent => {
+  const invocations = commands[`/command/${intent}`]
+  return [intent, invocations === undefined || invocations.length === 0
     ? undefined
     : invocations.map(invocation => invocation.tool === undefined
         ? invocation.shell

@@ -64,16 +64,13 @@ export function nodeTest({
       packages: ['tsx'],
       allowBuilds: ['esbuild'],
     }),
-    '/command/test/node': command(['/requirement/node-test'], {
-      for: ['test'],
-      run: () => ({ shell: invocation }),
-    }),
-    '/target/ci/test': target(['/source/ignore', '/package-manager/exec'], {
-      render: (context, ignore, exec) => ({
+    '/command/test': command(['/requirement/node-test'], () => ({ shell: invocation })),
+    '/target/ci/test': target(['/source/ignore', '/package-manager/exec', '/command/test'], {
+      render: (_context, ignore, exec, invocations) => ({
         deps: ['build'],
         run: ({ images }) => ({
           FROM: images.build,
-          steps: runSteps(context.invocations(), exec),
+          steps: runSteps(invocations, exec),
           IGNORE: ignore,
         }),
       }),

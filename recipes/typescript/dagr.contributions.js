@@ -70,32 +70,18 @@ const normalizeInvocations = rendered => {
   }))
 }
 
-/** A graph binding declaring what an intent runs, for any renderer to materialize. */
-export const command = (deps, options = {}) => {
+/**
+ * A graph binding naming what one intent runs, for any renderer to materialize. It is bound at
+ * `/command/<intent>`, so the intent is the path rather than a field, and a second feature claiming
+ * the same intent replaces the first the way any other binding does. Order is array order.
+ */
+export const command = (deps, run) => {
   if (!Array.isArray(deps)) throw new TypeError('command contribution dependencies must be an array')
-  if (typeof options.run !== 'function') throw new TypeError('command contribution needs run')
-  const intents = normalizeFor('command', options.for)
-  if (intents === undefined) {
-    throw new TypeError('command contribution needs for, the intents whose run it is')
-  }
-  const order = normalizeOrder('command', options.order)
-  return rdk.derive(
-    deps,
-    (...values) => Object.freeze({
-      for: intents,
-      order,
-      invocations: normalizeInvocations(options.run(...values)),
-    }),
-  )
+  if (typeof run !== 'function') throw new TypeError('command contribution needs a run function')
+  return rdk.derive(deps, (...values) => normalizeInvocations(run(...values)))
 }
 
-/** Every invocation an intent runs, in contributed order. */
-export const invocationsFor = (contributions, intent) => contributionValues(contributions)
-  .filter(contribution => contribution.for.includes(intent))
-  .sort((left, right) => left.order - right.order)
-  .flatMap(contribution => contribution.invocations)
-
-export const contextFor = (context, files, commands) => {
+export const contextFor = (context, files) => {
   const base = Object.freeze({
     intent: context.intent,
     facet: context.facet,
@@ -119,14 +105,14 @@ export const contextFor = (context, files, commands) => {
   return Object.freeze({
     ...base,
     files: overrides => renderAll(files, overrides),
-    invocations: overrides => invocationsFor(commands, withContext(overrides).intent),
   })
 }
 
 /**
- * A target binding. File and command collections are selected automatically; ordinary graph
- * dependencies keep their normal positions before the context. Its `/target/<facet>/<name>` path
- * supplies the Dagr facet and target name when the index materializes it.
+ * A target binding. The file collection is selected automatically because any feature may add one;
+ * a target that runs commands names `/command/<intent>` in its own dependencies, like any other
+ * node. Its `/target/<facet>/<name>` path supplies the Dagr facet and target name when the index
+ * materializes it.
  */
 export function target(deps, {
   intent,
@@ -139,13 +125,12 @@ export function target(deps, {
   if (typeof render !== 'function') throw new Error('target contribution needs render')
 
   return rdk.derive(
-    [...deps, '/file/**', '/command/**'],
+    [...deps, '/file/**'],
     (...values) => {
-      const commands = values.pop()
       const files = values.pop()
       return Object.freeze({
         materialize(name, facet) {
-          const context = contextFor({ intent: intent ?? name, facet, host: undefined }, files, commands)
+          const context = contextFor({ intent: intent ?? name, facet, host: undefined }, files)
           const rendered = render(context, ...values)
           if (rendered === null || typeof rendered !== 'object' || Array.isArray(rendered)) {
             throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} render must return a Dagr target`)

@@ -83,8 +83,10 @@ describe('recipe architecture', () => {
     ])
     assert.ok(graph.bindingOf('/file/package-json').deps.includes('/requirement/**'))
     // A tool command names what to run, so it needs no package manager to say it.
-    assert.deepEqual(graph.bindingOf('/command/test/vitest').deps, ['/requirement/vitest'])
-    assert.deepEqual(graph.bindingOf('/target/ci/test').deps.slice(-2), ['/file/**', '/command/**'])
+    assert.deepEqual(graph.bindingOf('/command/test').deps, ['/requirement/vitest'])
+    // Files are collected because any feature may add one; the command is named outright.
+    assert.deepEqual(graph.bindingOf('/target/ci/test').deps.slice(-1), ['/file/**'])
+    assert.ok(graph.bindingOf('/target/ci/test').deps.includes('/command/test'))
     assert.equal(graph.bindingOf('/workspace'), undefined)
     assert.equal(graph.bindingOf('/package/json'), undefined)
     assert.equal(graph.bindingOf('/facet/ci'), undefined)
@@ -110,22 +112,18 @@ describe('recipe architecture', () => {
         for: ['build'],
         render: () => ({ RUN: 'wrong intent' }),
       }),
-      '/command/test/example': ts.command(['/test/message'], {
-        for: ['test'],
-        run: message => ({ tool: `${message} suite` }),
-      }),
-      '/command/test/raw': ts.command([], {
-        for: ['test'],
-        order: 10,
-        run: () => ({ shell: 'echo done > /tmp/log' }),
-      }),
-      '/target/quality/inspect': ts.target(['/package-manager/exec'], {
+      // One command owns the intent, so array order is the only order there is.
+      '/command/test': ts.command(['/test/message'], message => [
+        { tool: `${message} suite` },
+        { shell: 'echo done > /tmp/log' },
+      ]),
+      '/target/quality/inspect': ts.target(['/package-manager/exec', '/command/test'], {
         intent: 'test',
-        render: (context, exec) => ({
+        render: (context, exec, invocations) => ({
           deps: [],
           run: ({ host }) => ({
             FROM: 'scratch',
-            steps: [...context.files({ host }), ...ts.runSteps(context.invocations(), exec)],
+            steps: [...context.files({ host }), ...ts.runSteps(invocations, exec)],
             IGNORE: [],
           }),
         }),
@@ -197,13 +195,11 @@ describe('recipe architecture', () => {
       assert.equal('scripts' in decodeWritten(runTarget(index, 'publish', 'pack').steps, 'package.json'), false)
     }
 
-    // Ordered invocations for one intent join in a script and stay separate steps in an image.
+    // Several invocations for one intent join in a script and stay separate steps in an image.
     const extended = ts.default([
       ts.typescript({ base: '//base:ci:image', versions }), ts.pnpm(), ts.library({ runtime: 'node' }),
       ts.rdk.graph({
-        '/command/build/verify': ts.command([], {
-          for: ['build'], order: 10, run: () => ({ shell: 'verify' }),
-        }),
+        '/command/build': ts.command([], () => [{ tool: 'tsc' }, { shell: 'verify' }]),
       }),
     ])({ location: '//packages/example' })
     const build = runTarget(extended, 'ci', 'build')
@@ -332,25 +328,28 @@ describe('recipe architecture', () => {
       })),
       /file contribution render must return a Dagr step or an array of steps/,
     )
-    assert.throws(
-      () => build(ts.rdk.graph({
-        '/command/build/step': ts.command([], { for: ['build'], run: () => ({ RUN: 'a step' }) }),
-      })),
-      /an invocation needs exactly one of tool or shell, naming what to run/,
-    )
-    assert.throws(
-      () => build(ts.rdk.graph({
-        '/command/build/both': ts.command([], {
-          for: ['build'], run: () => ({ tool: 'a', shell: 'b' }),
+    // A target that runs a command names it, so a bad invocation surfaces when the target resolves.
+    const bundle = run => ts.default([ts.rdk.graph({
+      '/command/bundle': ts.command([], run),
+      '/target/ci/bundle': ts.target(['/command/bundle'], {
+        render: (_context, invocations) => ({
+          deps: [],
+          run: () => ({ FROM: 'scratch', steps: ts.runSteps(invocations, String), IGNORE: [] }),
         }),
-      })),
-      /an invocation needs exactly one of tool or shell, naming what to run/,
-    )
+      }),
+    })])({ location: '//example' })
+
+    assert.throws(() => bundle(() => ({ RUN: 'a step' })), /an invocation needs exactly one of tool or shell, naming what to run/)
+    assert.throws(() => bundle(() => ({ tool: 'a', shell: 'b' })), /an invocation needs exactly one of tool or shell, naming what to run/)
+    assert.throws(() => ts.command([], undefined), /command contribution needs a run function/)
+    // A target naming an intent nothing runs fails loudly instead of building an empty container.
     assert.throws(
-      () => build(ts.rdk.graph({
-        '/command/build/anytime': ts.command([], { run: () => ({ tool: 'a' }) }),
-      })),
-      /command contribution needs for, the intents whose run it is/,
+      () => ts.default([ts.rdk.graph({
+        '/target/ci/nothing': ts.target(['/command/nothing'], {
+          render: () => ({ deps: [], run: () => ({ FROM: 'scratch', steps: [], IGNORE: [] }) }),
+        }),
+      })])({ location: '//example' }),
+      /Missing binding "\/command\/nothing" required by "\/target\/ci\/nothing"/,
     )
     assert.throws(
       () => ts.default([
@@ -410,17 +409,14 @@ describe('recipe architecture', () => {
     assert.deepEqual(decodeWritten(docs.steps, 'typedoc.json').entryPoints, ['source/index.ts'])
   })
 
-  it('extends a built-in target with contextual files and commands independently', () => {
+  it('adds a contextual file to a built-in target while replacing what it runs', () => {
     const extension = ts.rdk.graph({
       '/file/build-notice': ts.file([], {
         for: ['build'],
         render: () => ({ RUN: 'write build notice' }),
       }),
-      '/command/build/verify': ts.command([], {
-        for: ['build'],
-        order: 10,
-        run: () => ({ shell: 'verify build' }),
-      }),
+      // Files accumulate; the intent has one command, so claiming it replaces the recipe's.
+      '/command/build': ts.command([], () => [{ tool: 'tsc' }, { shell: 'verify build' }]),
     })
     const index = nodeLibrary().with(extension)({ location: '//packages/example' })
     const build = runTarget(index, 'ci', 'build')
