@@ -180,7 +180,7 @@ function binding(deps, factory) {
  */
 export function value(input) {
   if (arguments.length !== 1) throw new TypeError('value accepts exactly one argument')
-  return binding({}, () => input)
+  return binding([], () => input)
 }
 
 /**
