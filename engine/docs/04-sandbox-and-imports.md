@@ -15,16 +15,16 @@ import Glob from 'dagr:glob'
 
 YAML and TOML expose `stringify` through their default export and as a named export. Glob exposes
 `of` the same way. `Glob.of(pattern)` validates and compiles the pattern once, returning a reusable
-matcher:
+predicate:
 
 ```js
-const files = Glob.of('file/*')
-files.match('file/tsconfig')   // true
-files.match('file/foo/bar')    // false
+const isFile = Glob.of('file/*')
+isFile('file/tsconfig')   // true
+isFile('file/foo/bar')    // false
 
-const targets = Glob.of('target/**')
-targets.match('target')        // true
-targets.match('target/ci/build') // true
+const isTarget = Glob.of('target/**')
+isTarget('target')          // true
+isTarget('target/ci/build') // true
 ```
 
 Glob matching is synchronous string matching only; it never reads the filesystem. `/` separates
