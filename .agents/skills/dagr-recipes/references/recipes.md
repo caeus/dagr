@@ -76,6 +76,17 @@ The `/dagr/index` calculation selects `/target/**`, groups targets by the facet 
 paths, validates local target dependencies, and returns the Dagr index. A target creates a facet by
 existing.
 
+## Host files
+
+`devSync()` owns `/target/dev/sync`, which puts the generated files on the host so an editor reads
+what a container builds with. Do not add a second mechanism for this, and do not enumerate paths to
+export: the target copies no source, so everything under `/repo` is recipe output and
+`EXPORT: { '/repo/': './' }` is already exactly the generated set. A feature that starts generating a
+file is synced with no list to update.
+
+It does not install. A dependency tree resolved inside an image is wrong for a host, so a manifest is
+written and the host runs its own install. Do not make a target export `node_modules`.
+
 ## Package managers
 
 Manager selection is an explicit feature graph. A manager supplies `/package-manager/**` functions,
