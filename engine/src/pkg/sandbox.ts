@@ -1,6 +1,5 @@
 import vm from 'node:vm'
 
-export type SandboxFunction = (...args: never[]) => unknown
 export type SandboxStringifier = (value: unknown) => string
 export type SandboxJsonParser = (source: string) => unknown
 
@@ -47,25 +46,17 @@ export function createSandboxJsonParser(context: vm.Context): SandboxJsonParser 
   `, ['source'], { parsingContext: context }) as SandboxJsonParser
 }
 
-export function createSandboxFunction<T extends SandboxFunction>(
-  context: vm.Context,
-  parameters: readonly string[],
-  implementation: T,
-): T {
-  const fn = vm.compileFunction(
-    `return implementation(${parameters.join(', ')})`,
-    [...parameters],
-    {
-      parsingContext: context,
-      contextExtensions: [{ implementation }],
-    },
-  ) as T
-  return Object.freeze(fn)
-}
-
 export function createSandboxStringifier(
   context: vm.Context,
   implementation: SandboxStringifier,
 ): SandboxStringifier {
-  return createSandboxFunction(context, ['value'], implementation)
+  const stringify = vm.compileFunction(
+    'return implementation(value)',
+    ['value'],
+    {
+      parsingContext: context,
+      contextExtensions: [{ implementation }],
+    },
+  ) as SandboxStringifier
+  return Object.freeze(stringify)
 }
