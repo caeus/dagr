@@ -22,7 +22,7 @@ export const nodeLibrary = recipe([
 ])
 ```
 
-Every entry is an RDK graph. Calling `nodeLibrary(declaration)` adds one package's irreducible facts
+Every feature is an RDK graph. Calling `nodeLibrary(declaration)` adds one package's irreducible facts
 and compiles `/dagr/index`. `nodeLibrary.with(feature)` creates a new composition;
 `nodeLibrary.graph` exposes the feature graph for inspection.
 
