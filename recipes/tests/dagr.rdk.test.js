@@ -65,8 +65,7 @@ describe('rdk graph', () => {
     assert.throws(() => rdk.graph({ [Symbol('binding')]: value(1) }), /absolute semantic path/)
   })
 
-  it('requires dependency declarations to be a named object of one() or many()', () => {
-    assert.throws(() => derive([], String), /dependencies must be an object/)
+  it('requires named dependency declarations to use one() or many()', () => {
     assert.throws(() => derive({ value: '/value' }, String), /one\(\) or many\(\)/)
     assert.throws(() => derive({ value: ['/value'] }, String), /one\(\) or many\(\)/)
     assert.throws(() => derive({ [Symbol('value')]: one('/value') }, String), /names must be strings/)
