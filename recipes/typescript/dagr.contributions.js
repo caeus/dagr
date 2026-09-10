@@ -30,6 +30,16 @@ const normalizeOrder = (kind, order = 0) => {
   return order
 }
 
+const positionalDependencies = deps => Object.fromEntries(deps.map((dependency, index) => [
+  `dep${index}`,
+  Array.isArray(dependency) ? rdk.many(...dependency) : rdk.one(dependency),
+]))
+
+const derivePositional = (deps, factory) => rdk.derive(
+  positionalDependencies(deps),
+  dependencies => factory(...Object.values(dependencies)),
+)
+
 /** A graph binding carrying an intent-scoped fact for consumers to interpret. */
 export const fact = (deps, options = {}) => {
   if (!Array.isArray(deps)) throw new TypeError('fact contribution dependencies must be an array')
@@ -37,7 +47,7 @@ export const fact = (deps, options = {}) => {
   if (intents === undefined) {
     throw new TypeError('fact contribution needs for, the intents whose fact it is')
   }
-  return rdk.derive(
+  return derivePositional(
     deps,
     () => Object.freeze({
       for: intents,
@@ -62,7 +72,7 @@ export const file = (deps, options = {}) => {
   if (typeof options.render !== 'function') throw new TypeError('file contribution needs render')
   const intents = normalizeFor('file', options.for)
   const order = normalizeOrder('file', options.order)
-  return rdk.derive(
+  return derivePositional(
     deps,
     (...values) => Object.freeze({
       for: intents,
@@ -102,7 +112,7 @@ export const command = (deps, options = {}) => {
     throw new TypeError('command contribution needs for, the intents whose run it is')
   }
   const order = normalizeOrder('command', options.order)
-  return rdk.derive(
+  return derivePositional(
     deps,
     (...values) => Object.freeze({
       for: intents,
@@ -161,7 +171,7 @@ export function target(deps, {
   }
   if (typeof render !== 'function') throw new Error('target contribution needs render')
 
-  return rdk.derive(
+  return derivePositional(
     [...deps, ['/file/**'], ['/command/**']],
     (...values) => {
       const commands = values.pop()
@@ -229,12 +239,12 @@ const validateLocalRefs = facets => {
 
 /** The deliberately boring final calculation: materialize target paths, group, and validate refs. */
 export const index = () => rdk.graph({
-  '/dagr/index': rdk.derive([['/target/**']], bindings => {
+  '/dagr/index': rdk.derive({ targets: rdk.many('/target/**') }, ({ targets }) => {
     const facets = {}
-    for (const path of Object.keys(bindings)) {
+    for (const path of Object.keys(targets)) {
       const { facet, name } = targetCoordinates(path)
-      const targets = facets[facet] ??= {}
-      targets[name] = bindings[path].materialize(name, facet)
+      const facetTargets = facets[facet] ??= {}
+      facetTargets[name] = targets[path].materialize(name, facet)
     }
     validateLocalRefs(facets)
     return facets
