@@ -55,8 +55,8 @@ export const pnpm = () => rdk.graph({
 
 export const yarn = () => rdk.graph({
   '/package-manager/install-manifest': rdk.derive(
-    [['/requirement/build-scripts/**']],
-    builds => (manifest, localPackages, context) => {
+    { builds: rdk.many('/requirement/build-scripts/**') },
+    ({ builds }) => (manifest, localPackages, context) => {
       const allowBuilds = factsFor(builds, context.intent)
       return {
         ...fileTarballs(manifest, localPackages),
