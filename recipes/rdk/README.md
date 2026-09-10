@@ -48,7 +48,9 @@ Use the path for identity and hierarchy, such as `/target/ci/build`, `/command/t
 
 ## Dependencies and compilation
 
-Dependencies are exact binding paths or absolute glob selectors:
+Dependency syntax is structural. A string is always an exact binding path. A nested array is always
+one glob dependency, whose selectors are unioned into one frozen record and passed as one factory
+argument:
 
 ```js
 const graph = rdk.graph({
@@ -56,7 +58,7 @@ const graph = rdk.graph({
   '/file/tsconfig': value('tsconfig.json'),
   '/source/directory': value('src'),
   '/summary': derive(
-    ['/source/directory', '/file/**'],
+    ['/source/directory', ['/file/**', '/generated/*']],
     (source, files) => ({ source, files }),
   ),
 })
@@ -72,15 +74,21 @@ complete matching paths:
 }
 ```
 
-`*` matches exactly one segment. `**` matches zero or more segments. No matches produce a frozen
-empty object. Matching delegates to the engine's `dagr:glob` built-in and scans the graph's flat
-`Map` in key order.
+The nested array is the discriminator, not the presence of a wildcard. For example,
+`derive([['/file/package-json']], files => files)` receives `{ '/file/package-json': value }`, while
+`derive(['/file/package-json'], value => value)` receives the value directly. A scalar dependency may
+not contain reserved wildcards. A glob dependency must contain at least one selector.
+
+`*` matches exactly one segment. `**` matches zero or more segments. Multiple selectors in one glob
+dependency are unioned in graph key order; overlapping selectors do not duplicate a binding. No
+matches produce a frozen empty object. Matching delegates to the engine's `dagr:glob` built-in and
+scans the graph's flat `Map` in key order.
 
 `compile()` eagerly resolves every binding once. `compile(roots)` resolves only the roots and their
-transitive dependencies. Roots can mix exact paths and glob selectors. Exact roots retain one
-binding; glob roots retain every match. Glob dependencies retain every match transitively too.
-Missing exact bindings and cycles, including cycles introduced through glob selection, are errors.
-Compilation is synchronous; promises remain ordinary values.
+transitive dependencies. Compile roots are a separate API and can still be exact paths or glob
+selector strings. Exact roots retain one binding; glob roots retain every match. Glob dependencies
+retain every match transitively too. Missing exact bindings and cycles, including cycles introduced
+through glob selection, are errors. Compilation is synchronous; promises remain ordinary values.
 
 ## Composition and order
 
