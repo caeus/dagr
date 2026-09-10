@@ -27,8 +27,14 @@ graph.compile(['/message/greeting'])['/message/greeting']
 - `compile()` resolves all bindings.
 - `compile(roots)` retains exact or glob roots and every transitive exact or glob dependency.
 
+Dependency syntax is structural. An exact dependency is a string. A glob dependency is a nested
+array of one or more selectors, for example `['/source/directory', ['/file/**']]`. Multiple selectors
+inside one nested array are unioned and passed to the factory as one frozen record. The nested array
+is what makes it a glob dependency, so `[['/file/package-json']]` still produces a record even though
+that selector contains no wildcard. Scalar dependencies cannot contain wildcards.
+
 Binding names, exact dependencies, and selectors are absolute paths. Binding names cannot contain
-wildcards. Selectors use whole `*` and `**` segments and delegate matching to `dagr:glob`.
+wildcards. Glob selectors use `*` and `**` and delegate matching to `dagr:glob`.
 
 ## Recipe paths
 
@@ -46,16 +52,17 @@ The `file`, `command`, `fact`, `target`, and `requirement` helpers validate or r
 They do not group them. Consumers discover open collections with path selectors. A `fact` carries
 an intent list and an opaque value; `factsFor` filters, flattens, and deduplicates matching values.
 
-A target automatically depends on `/file/**` and `/command/**`. The `/dagr/index` binding depends on
-`/target/**` and derives each target's facet and name from `/target/<facet>/<name>`.
+A target automatically depends on `['/file/**']` and `['/command/**']`. The `/dagr/index` binding
+depends on `['/target/**']` and derives each target's facet and name from
+`/target/<facet>/<name>`.
 
 Files render before commands. Contributions of one kind are ordered by their numeric `order`, which
 defaults to zero. Equal orders retain graph key order. Use explicit ordering only when step sequence
 is behavior.
 
-Tool requirement consumers depend on `/requirement/*`. A package name appears in a requirement while
-its version comes from the single `/version/catalog` binding. Package-manager adapters depend on
-fact namespaces such as `/requirement/build-scripts/**` directly.
+Tool requirement consumers depend on `['/requirement/*']`. A package name appears in a requirement
+while its version comes from the single `/version/catalog` binding. Package-manager adapters depend
+on fact namespaces such as `['/requirement/build-scripts/**']` directly.
 
 ## Determinism
 
