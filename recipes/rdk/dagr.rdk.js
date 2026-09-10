@@ -125,7 +125,7 @@ function normalizeDependencies(deps) {
     throw new TypeError('Binding dependencies must be an object')
   }
 
-  const normalized = Object.create(null)
+  const normalized = {}
   for (const key of Reflect.ownKeys(deps)) {
     if (typeof key !== 'string') {
       throw new TypeError('Binding dependency names must be strings')
