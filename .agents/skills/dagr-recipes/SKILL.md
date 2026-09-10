@@ -20,11 +20,12 @@ synchronous RDK graph.
 ## Core model
 
 A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed
-by absolute semantic paths. Exact dependencies name one binding and glob dependencies select open
-sets through `dagr:glob`. Files, commands, targets, and requirements use `/file/**`, `/command/**`,
-`/target/**`, and `/requirement/**`; their helpers add validation or rendering, not grouping. Fixed
-tool requirements occupy `/requirement/*`; adapter-interpreted build facts occupy
-`/requirement/build-scripts/**`.
+by absolute semantic paths. Exact dependencies are path strings naming one binding. Glob dependencies
+are nested arrays of one or more selectors; all selectors in one nested array are unioned into one
+record argument. The nested array is the discriminator, even when its selector has no wildcard.
+Files, commands, targets, and requirements use `/file/**`, `/command/**`, `/target/**`, and
+`/requirement/**`; their helpers add validation or rendering, not grouping. Fixed tool requirements
+occupy `/requirement/*`; adapter-interpreted build facts occupy `/requirement/build-scripts/**`.
 
 `recipe(features)` returns a builder. Applying one package declaration merges its facts and runs:
 
