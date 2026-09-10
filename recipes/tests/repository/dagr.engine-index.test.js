@@ -9,10 +9,11 @@ describe('repository engine index', () => {
   it('composes the engine package with semantic binding paths', async () => {
     const { default: index } = await loadEngineIndex()
 
-    assert.deepEqual(Object.keys(index), ['ci', 'publish'])
+    assert.deepEqual(Object.keys(index), ['ci', 'publish', 'dev'])
     assert.deepEqual(Object.keys(index.ci), [
       'typecheck', 'build', 'pack', 'bundle', 'node-base', 'test', 'bundlecheck', 'image',
     ])
     assert.deepEqual(Object.keys(index.publish), ['pack'])
+    assert.deepEqual(Object.keys(index.dev), ['sync'])
   })
 })

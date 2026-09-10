@@ -1,4 +1,5 @@
 import recipe, {
+  devSync,
   library,
   pnpm,
   rollup,
@@ -25,4 +26,5 @@ export const nodeCli = ({ versions } = {}) => recipe([
   rollup(),
   nodeBase(),
   nodeTest({ vmModules: true }),
+  devSync(),
 ])
