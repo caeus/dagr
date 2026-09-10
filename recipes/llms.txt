@@ -18,3 +18,4 @@
 - `dagr run //recipes:ci:test`
 - `dagr run //recipes:ci:image-rdk`
 - `dagr run //recipes:ci:image-typescript`
+- `dagr run //harness:ci:test` (tests needing the recipe and a consuming index together)
