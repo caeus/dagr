@@ -7,6 +7,7 @@ Keep these rules while editing this area:
 
 - Treat `recipes/` as the publication/mount boundary. `typescript` is a build recipe; `rdk` is supporting recipe-authoring infrastructure.
 - Keep project facts and shared calculations as absolute semantic-path RDK bindings. Generated files and commands are outputs.
+- Exact RDK dependencies are path strings. Glob dependencies are nested arrays of one or more selectors; the nested array is the discriminator, not wildcard presence.
 - Use `/file/**`, `/command/**`, `/target/**`, and `/requirement/**` for open collections. Their helpers validate values and, where appropriate, render them; paths provide grouping.
 - Supply intent, facet, and host as render context. Never lift or duplicate the graph per intent.
 - Do not introduce tags, a settings graph, a feature/facet/target registry, another matcher, or another evaluator.
