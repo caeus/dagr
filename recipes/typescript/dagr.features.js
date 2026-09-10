@@ -101,7 +101,7 @@ const packageFacts = rdk.derive(
 
 const packageJson = file(
   [
-    '/package/facts', '/requirement/*', '/version/catalog', '/package-manager/install-manifest',
+    '/package/facts', ['/requirement/*'], '/version/catalog', '/package-manager/install-manifest',
     '/package/local-dependencies', '/package/scripts',
   ],
   {
@@ -122,7 +122,7 @@ const tsconfig = file(
     '/product/kind', '/typescript/language-target', '/output/source-maps',
     '/typescript/emit-declarations', '/source/directory', '/output/layout',
     '/typescript/module-kind', '/typescript/module-resolution', '/typescript/libraries',
-    '/source/import-alias', '/requirement/*', '/version/catalog',
+    '/source/import-alias', ['/requirement/*'], '/version/catalog',
   ],
   {
     for: DEVELOPMENT_INTENTS,
@@ -269,7 +269,7 @@ export function typescript({
       return { directory, runtimeFile: `${directory}/${stem}.js`, declarationFile: `${directory}/${stem}.d.ts` }
     }),
     '/package/local-dependencies': rdk.derive(['/package/dependencies', '/package/scope'], localPackagesOf),
-    '/package/scripts': rdk.derive(['/command/**', '/package-manager/script'], scriptsFor),
+    '/package/scripts': rdk.derive([['/command/**'], '/package-manager/script'], scriptsFor),
     '/package/facts': packageFacts,
     '/file/package-json': packageJson,
     '/file/tsconfig': tsconfig,
