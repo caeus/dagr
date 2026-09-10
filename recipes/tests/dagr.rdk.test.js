@@ -43,11 +43,14 @@ describe('rdk graph', () => {
     assert.throws(() => rdk.graph({ [Symbol('binding')]: value(1) }), /absolute semantic path/)
   })
 
-  it('rejects non-absolute and malformed dependency selectors', () => {
+  it('rejects non-absolute and malformed dependencies and selectors', () => {
     for (const dependency of ['relative', '/', '/trailing/', '/double//slash', '/dot/./x']) {
       assert.throws(() => derive([dependency], String))
     }
-    assert.throws(() => derive([{ selector: '/file/**' }], String), /absolute semantic path/)
+    assert.throws(() => derive(['/file/**'], String), /reserved wildcards/)
+    assert.throws(() => derive([[]], String), /at least one selector/)
+    assert.throws(() => derive([['relative']], String), /must start with/)
+    assert.throws(() => derive([[{ selector: '/file/**' }]], String), /absolute semantic path/)
   })
 
   it('resolves exact dependencies to exact values', () => {
@@ -66,7 +69,7 @@ describe('rdk graph', () => {
       '/file/tsconfig': value(2),
       '/file/generated/types': value(3),
       '/files': value(4),
-      '/selection': derive(['/file/*'], files => files),
+      '/selection': derive([['/file/*']], files => files),
     }).compile(['/selection'])['/selection']
 
     assert.deepEqual(files, {
@@ -79,7 +82,7 @@ describe('rdk graph', () => {
     const files = rdk.graph({
       '/file/package-json': value(1),
       '/file/generated/types': value(2),
-      '/selection': derive(['/file/**'], files => files),
+      '/selection': derive([['/file/**']], files => files),
     }).compile(['/selection'])['/selection']
 
     assert.deepEqual(files, {
@@ -88,9 +91,37 @@ describe('rdk graph', () => {
     })
   })
 
+  it('treats an array dependency as a glob even without wildcards', () => {
+    const selection = rdk.graph({
+      '/file/package-json': value(1),
+      '/selection': derive([['/file/package-json']], files => files),
+    }).compile(['/selection'])['/selection']
+
+    assert.deepEqual(selection, { '/file/package-json': 1 })
+  })
+
+  it('unions multiple selectors in one glob dependency', () => {
+    const selection = rdk.graph({
+      '/file/package-json': value(1),
+      '/file/generated/types': value(2),
+      '/command/test': value(3),
+      '/ignored': value(4),
+      '/selection': derive(
+        [['/file/*', '/file/**', '/command/**']],
+        bindings => bindings,
+      ),
+    }).compile(['/selection'])['/selection']
+
+    assert.deepEqual(selection, {
+      '/file/package-json': 1,
+      '/file/generated/types': 2,
+      '/command/test': 3,
+    })
+  })
+
   it('returns a frozen empty record when a glob dependency has no matches', () => {
     const selection = rdk.graph({
-      '/selection': derive(['/missing/**'], bindings => bindings),
+      '/selection': derive([['/missing/**']], bindings => bindings),
     }).compile(['/selection'])['/selection']
 
     assert.deepEqual(selection, {})
@@ -101,7 +132,7 @@ describe('rdk graph', () => {
     const selection = rdk.graph({
       '/command/test/vitest': value('vitest'),
       '/command/test/node': value('node --test'),
-      '/selection': derive(['/command/test/**'], commands => commands),
+      '/selection': derive([['/command/test/**']], commands => commands),
     }).compile(['/selection'])['/selection']
 
     assert.deepEqual(Object.keys(selection), [
@@ -119,7 +150,7 @@ describe('rdk graph', () => {
       '/command/build/typescript': value('tsc'),
       '/command/test/vitest': value('vitest'),
       '/result': derive(
-        ['/prefix', '/command/**'],
+        ['/prefix', ['/command/**']],
         (prefix, commands) => `${prefix}${Object.values(commands).join(',')}`,
       ),
     }).compile(['/result'])
@@ -134,7 +165,7 @@ describe('rdk graph', () => {
       '/file/first': derive(['/shared/prefix'], prefix => `${prefix}first`),
       '/file/second': value('second'),
       '/ignored': derive(['/missing'], () => { initialized = true }),
-      '/files': derive(['/file/**'], files => files),
+      '/files': derive([['/file/**']], files => files),
     }).compile(['/files'])
 
     assert.deepEqual(Object.keys(container), [
@@ -167,7 +198,7 @@ describe('rdk graph', () => {
 
   it('rejects cycles involving glob dependencies', () => {
     const graph = rdk.graph({
-      '/item/value': derive(['/item/**'], values => values),
+      '/item/value': derive([['/item/**']], values => values),
     })
 
     assert.throws(
@@ -200,7 +231,7 @@ describe('rdk graph', () => {
     const graph = rdk.graph({
       '/file/first': value(1),
       '/file/second': value(2),
-      '/selection': derive(['/file/**'], files => Object.keys(files)),
+      '/selection': derive([['/file/**']], files => Object.keys(files)),
     }).merge(rdk.graph({
       '/file/first': value(10),
       '/file/third': value(3),
