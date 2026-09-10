@@ -17,13 +17,16 @@ const DEPENDENCY = Symbol.for('caeus/dagr/rdk#Dependency')
  * }>} Dependency
  */
 
+/** @typedef {string | readonly string[]} PositionalDependency */
+/** @typedef {Readonly<Record<string, Dependency>> | readonly PositionalDependency[]} Dependencies */
+
 /**
  * A frozen recipe for producing one binding value.
  *
  * @template T
  * @typedef {Readonly<{
- *   deps: Readonly<Record<string, Dependency>>,
- *   factory: Factory<T>,
+ *   deps: Dependencies,
+ *   factory: Function,
  * }>} Binding
  */
 
@@ -117,9 +120,28 @@ function normalizeDependency(dependency) {
   throw new TypeError('Binding dependency must be declared with one() or many()')
 }
 
+/** @param {unknown} dependency */
+function normalizePositionalDependency(dependency) {
+  if (Array.isArray(dependency)) {
+    if (dependency.length === 0) {
+      throw new TypeError('Binding glob dependency must contain at least one selector')
+    }
+    return Object.freeze(dependency.map(selector => {
+      validatePath(selector, 'Binding glob selector', true)
+      return selector
+    }))
+  }
+
+  validatePath(dependency, 'Binding dependency', false)
+  return dependency
+}
+
 /** @param {unknown} deps */
 function normalizeDependencies(deps) {
-  if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
+  if (Array.isArray(deps)) {
+    return Object.freeze(deps.map(normalizePositionalDependency))
+  }
+  if (deps === null || typeof deps !== 'object') {
     throw new TypeError('Binding dependencies must be an object')
   }
 
@@ -140,8 +162,8 @@ function normalizeDependencies(deps) {
 
 /**
  * @template T
- * @param {Record<string, Dependency>} deps
- * @param {Factory<T>} factory
+ * @param {unknown} deps
+ * @param {Function} factory
  * @returns {Binding<T>}
  */
 function binding(deps, factory) {
@@ -183,7 +205,9 @@ export function construct(deps, Class) {
   if (typeof Class !== 'function') {
     throw new TypeError('Binding class must be a constructor')
   }
-  return binding(deps, dependencies => new Class(dependencies))
+  return Array.isArray(deps)
+    ? binding(deps, (...dependencies) => new Class(...dependencies))
+    : binding(deps, dependencies => new Class(dependencies))
 }
 
 /**
@@ -309,12 +333,42 @@ class Graph {
     const values = new Map()
     const resolving = []
 
+    /** @param {PositionalDependency} dependency @param {string} requiredBy */
+    const resolvePositionalDependency = (dependency, requiredBy) => {
+      if (typeof dependency === 'string') return resolve(dependency, requiredBy)
+      const record = {}
+      for (const matched of matchingNames(dependency)) {
+        Object.defineProperty(record, matched, {
+          value: resolve(matched, requiredBy),
+          enumerable: true,
+          writable: false,
+          configurable: false,
+        })
+      }
+      return Object.freeze(record)
+    }
+
+    /** @param {Dependency} dependency @param {string} requiredBy */
+    const resolveNamedDependency = (dependency, requiredBy) => {
+      if (dependency[DEPENDENCY] === 'one') return resolve(dependency.path, requiredBy)
+      const record = {}
+      for (const matched of matchingNames(dependency.selectors)) {
+        Object.defineProperty(record, matched, {
+          value: resolve(matched, requiredBy),
+          enumerable: true,
+          writable: false,
+          configurable: false,
+        })
+      }
+      return Object.freeze(record)
+    }
+
     /**
      * @param {string} name
      * @param {string | undefined} [requiredBy]
      * @returns {unknown}
      */
-    const resolve = (name, requiredBy) => {
+    function resolve(name, requiredBy) {
       if (values.has(name)) return values.get(name)
 
       const current = this.#bindings.get(name)
@@ -331,32 +385,21 @@ class Graph {
 
       resolving.push(name)
       try {
-        const dependencies = {}
-        for (const [key, dependency] of Object.entries(current.deps)) {
-          const dependencyValue = dependency[DEPENDENCY] === 'one'
-            ? resolve(dependency.path, name)
-            : (() => {
-                const record = {}
-                for (const matched of matchingNames(dependency.selectors)) {
-                  Object.defineProperty(record, matched, {
-                    value: resolve(matched, name),
-                    enumerable: true,
-                    writable: false,
-                    configurable: false,
-                  })
-                }
-                return Object.freeze(record)
-              })()
-
-          Object.defineProperty(dependencies, key, {
-            value: dependencyValue,
-            enumerable: true,
-            writable: false,
-            configurable: false,
-          })
+        let result
+        if (Array.isArray(current.deps)) {
+          result = current.factory(...current.deps.map(dependency => resolvePositionalDependency(dependency, name)))
+        } else {
+          const dependencies = {}
+          for (const [key, dependency] of Object.entries(current.deps)) {
+            Object.defineProperty(dependencies, key, {
+              value: resolveNamedDependency(dependency, name),
+              enumerable: true,
+              writable: false,
+              configurable: false,
+            })
+          }
+          result = current.factory(Object.freeze(dependencies))
         }
-
-        const result = current.factory(Object.freeze(dependencies))
         values.set(name, result)
         return result
       } finally {
@@ -366,9 +409,9 @@ class Graph {
 
     for (const root of normalizedRoots) {
       if (root.includes('*')) {
-        for (const matched of matchingNames([root])) resolve(matched)
+        for (const matched of matchingNames([root])) resolve.call(this, matched)
       } else {
-        resolve(root)
+        resolve.call(this, root)
       }
     }
 
