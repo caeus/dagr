@@ -162,7 +162,7 @@ export function target(deps, {
   if (typeof render !== 'function') throw new Error('target contribution needs render')
 
   return rdk.derive(
-    [...deps, '/file/**', '/command/**'],
+    [...deps, ['/file/**'], ['/command/**']],
     (...values) => {
       const commands = values.pop()
       const files = values.pop()
@@ -229,7 +229,7 @@ const validateLocalRefs = facets => {
 
 /** The deliberately boring final calculation: materialize target paths, group, and validate refs. */
 export const index = () => rdk.graph({
-  '/dagr/index': rdk.derive(['/target/**'], bindings => {
+  '/dagr/index': rdk.derive([['/target/**']], bindings => {
     const facets = {}
     for (const path of Object.keys(bindings)) {
       const { facet, name } = targetCoordinates(path)
