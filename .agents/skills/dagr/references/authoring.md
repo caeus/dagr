@@ -85,7 +85,9 @@ With `from`, `src` is a path inside the named dependency image and `//` has no m
 
 ## Imports and determinism
 
-Dagr build files are ES modules in a restricted environment. Standard JavaScript values and `Buffer` are available. Dagr provides YAML and TOML stringifiers through `dagr:yaml` and `dagr:toml`.
+Dagr build files are ES modules in a restricted environment. Standard JavaScript values and `Buffer` are available. Dagr provides YAML and TOML stringifiers through `dagr:yaml` and `dagr:toml`, plus deterministic segment glob matching through `dagr:glob`.
+
+`dagr:glob` exposes `of(pattern)`, which validates and compiles the pattern once and returns a reusable predicate `(path) => boolean`. `/` separates segments, `*` matches one segment, and `**` matches zero or more segments. Wildcards must occupy an entire segment. It only matches strings and never accesses the filesystem.
 
 Do not use host-dependent APIs such as `process`, `require`, `fetch`, `fs`, timers, arbitrary Node modules, network reads, environment reads, or filesystem reads.
 

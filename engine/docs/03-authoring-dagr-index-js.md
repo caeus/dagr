@@ -200,6 +200,22 @@ export function writeToml(path, value) {
 }
 ```
 
+Dagr also provides a small segment glob matcher for semantic path-like identifiers:
+
+```js
+import Glob from 'dagr:glob'
+
+const isVitestCommand = Glob.of('command/*/vitest')
+isVitestCommand('command/test/vitest') // true
+
+const isTarget = Glob.of('target/**')
+isTarget('target')                     // true
+```
+
+`Glob.of(pattern)` validates and compiles the pattern once and returns a reusable predicate.
+`*` matches one segment and `**` matches zero or more segments. Wildcards are whole segments only;
+this utility does not implement filesystem globbing or read the filesystem.
+
 Base64 encoding avoids shell quoting failures when content contains newlines, quotes, or `$`.
 
 The tradeoff: any change to the file's contents invalidates that layer and everything after
