@@ -17,8 +17,7 @@ const DEPENDENCY = Symbol.for('caeus/dagr/rdk#Dependency')
  * }>} Dependency
  */
 
-/** @typedef {string | readonly string[]} PositionalDependency */
-/** @typedef {Readonly<Record<string, Dependency>> | readonly PositionalDependency[]} Dependencies */
+/** @typedef {Readonly<Record<string, Dependency>>} Dependencies */
 
 /**
  * A frozen recipe for producing one binding value.
@@ -26,7 +25,7 @@ const DEPENDENCY = Symbol.for('caeus/dagr/rdk#Dependency')
  * @template T
  * @typedef {Readonly<{
  *   deps: Dependencies,
- *   factory: Function,
+ *   factory: Factory<T>,
  * }>} Binding
  */
 
@@ -120,28 +119,9 @@ function normalizeDependency(dependency) {
   throw new TypeError('Binding dependency must be declared with one() or many()')
 }
 
-/** @param {unknown} dependency */
-function normalizePositionalDependency(dependency) {
-  if (Array.isArray(dependency)) {
-    if (dependency.length === 0) {
-      throw new TypeError('Binding glob dependency must contain at least one selector')
-    }
-    return Object.freeze(dependency.map(selector => {
-      validatePath(selector, 'Binding glob selector', true)
-      return selector
-    }))
-  }
-
-  validatePath(dependency, 'Binding dependency', false)
-  return dependency
-}
-
 /** @param {unknown} deps */
 function normalizeDependencies(deps) {
-  if (Array.isArray(deps)) {
-    return Object.freeze(deps.map(normalizePositionalDependency))
-  }
-  if (deps === null || typeof deps !== 'object') {
+  if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
     throw new TypeError('Binding dependencies must be an object')
   }
 
@@ -163,7 +143,7 @@ function normalizeDependencies(deps) {
 /**
  * @template T
  * @param {unknown} deps
- * @param {Function} factory
+ * @param {Factory<T>} factory
  * @returns {Binding<T>}
  */
 function binding(deps, factory) {
@@ -180,7 +160,7 @@ function binding(deps, factory) {
  */
 export function value(input) {
   if (arguments.length !== 1) throw new TypeError('value accepts exactly one argument')
-  return binding([], () => input)
+  return binding({}, () => input)
 }
 
 /**
@@ -205,9 +185,7 @@ export function construct(deps, Class) {
   if (typeof Class !== 'function') {
     throw new TypeError('Binding class must be a constructor')
   }
-  return Array.isArray(deps)
-    ? binding(deps, (...dependencies) => new Class(...dependencies))
-    : binding(deps, dependencies => new Class(dependencies))
+  return binding(deps, dependencies => new Class(dependencies))
 }
 
 /**
@@ -335,23 +313,8 @@ class Graph {
     /** @type {(name: string, requiredBy?: string) => unknown} */
     let resolve
 
-    /** @param {PositionalDependency} dependency @param {string} requiredBy */
-    const resolvePositionalDependency = (dependency, requiredBy) => {
-      if (typeof dependency === 'string') return resolve(dependency, requiredBy)
-      const record = {}
-      for (const matched of matchingNames(dependency)) {
-        Object.defineProperty(record, matched, {
-          value: resolve(matched, requiredBy),
-          enumerable: true,
-          writable: false,
-          configurable: false,
-        })
-      }
-      return Object.freeze(record)
-    }
-
     /** @param {Dependency} dependency @param {string} requiredBy */
-    const resolveNamedDependency = (dependency, requiredBy) => {
+    const resolveDependency = (dependency, requiredBy) => {
       if (dependency[DEPENDENCY] === 'one') return resolve(dependency.path, requiredBy)
       const record = {}
       for (const matched of matchingNames(dependency.selectors)) {
@@ -382,21 +345,16 @@ class Graph {
 
       resolving.push(name)
       try {
-        let result
-        if (Array.isArray(current.deps)) {
-          result = current.factory(...current.deps.map(dependency => resolvePositionalDependency(dependency, name)))
-        } else {
-          const dependencies = {}
-          for (const [key, dependency] of Object.entries(current.deps)) {
-            Object.defineProperty(dependencies, key, {
-              value: resolveNamedDependency(dependency, name),
-              enumerable: true,
-              writable: false,
-              configurable: false,
-            })
-          }
-          result = current.factory(Object.freeze(dependencies))
+        const dependencies = {}
+        for (const [key, dependency] of Object.entries(current.deps)) {
+          Object.defineProperty(dependencies, key, {
+            value: resolveDependency(dependency, name),
+            enumerable: true,
+            writable: false,
+            configurable: false,
+          })
         }
+        const result = current.factory(Object.freeze(dependencies))
         values.set(name, result)
         return result
       } finally {
