@@ -1,37 +1,34 @@
 # Recipe Development Kit (RDK)
 
-An RDK graph is a flat collection of bindings addressed by absolute semantic paths. Exact
-dependencies reference one binding. Glob dependencies select open sets of bindings. Paths provide
-both identity and hierarchy, so RDK has no separate tag or registry system.
+An RDK graph is a flat collection of bindings addressed by absolute semantic paths. Derived bindings declare named dependencies with `one()` and `many()`, and factories receive those dependencies as one object.
 
 ```js
-import rdk, { construct, derive, value } from '//recipes/rdk//dagr.rdk.js'
+import rdk, { construct, derive, many, one, value } from '//recipes/rdk//dagr.rdk.js'
 
 class Greeter {
-  greet(name) { return `Hello, ${name}` }
+  constructor({ name }) {
+    this.name = name
+  }
+
+  greet() { return `Hello, ${this.name}` }
 }
 
 const base = rdk.graph({
   '/unused': value(42),
   '/person/name': value('caeus'),
-  '/service/greeter': construct([], Greeter),
+  '/service/greeter': construct({ name: one('/person/name') }, Greeter),
   '/message/greeting': derive(
-    ['/person/name', '/service/greeter'],
-    (name, greeter) => greeter.greet(name),
+    { greeter: one('/service/greeter') },
+    ({ greeter }) => greeter.greet(),
   ),
 })
 
 const graph = base.merge(rdk.graph({ '/person/name': value('caeus!') }))
-
-graph.bindingOf('/person/name')
-graph.keys()
-
 const values = graph.compile(['/message/greeting'])
 values['/message/greeting']
 ```
 
-The import path above uses an example consumer-owned mount alias. Consumers may mount the recipe
-elsewhere.
+The import path above uses an example consumer-owned mount alias. Consumers may mount the recipe elsewhere.
 
 ## Binding paths
 
@@ -43,29 +40,32 @@ Every binding name is an absolute semantic path:
 - it has no `.` or `..` segment;
 - it contains neither `*` nor `**`, which are reserved for selectors.
 
-Use the path for identity and hierarchy, such as `/target/ci/build`, `/command/test/vitest`, or
-`/file/package-json`. Do not encode namespaces by concatenating camelCase words.
+Use the path for identity and hierarchy, such as `/target/ci/build`, `/command/test/vitest`, or `/file/package-json`.
 
-## Dependencies and compilation
+## Dependencies
 
-Dependency syntax is structural. A string is always an exact binding path. A nested array is always
-one glob dependency, whose selectors are unioned into one frozen record and passed as one factory
-argument:
+`one(path)` declares one required exact binding. Wildcards are not allowed:
 
 ```js
-const graph = rdk.graph({
-  '/file/package-json': value('package.json'),
-  '/file/tsconfig': value('tsconfig.json'),
-  '/source/directory': value('src'),
-  '/summary': derive(
-    ['/source/directory', ['/file/**', '/generated/*']],
-    (source, files) => ({ source, files }),
-  ),
-})
+const greeting = derive(
+  { name: one('/person/name') },
+  ({ name }) => `Hello, ${name}`,
+)
 ```
 
-An exact dependency resolves to its value. A glob dependency resolves to a frozen record keyed by
-complete matching paths:
+`many(...selectors)` declares one collection dependency containing every binding matched by any selector. The result is a frozen record keyed by complete binding paths:
+
+```js
+const summary = derive(
+  {
+    source: one('/source/directory'),
+    files: many('/file/**', '/generated/*'),
+  },
+  ({ source, files }) => ({ source, files }),
+)
+```
+
+For example, `many('/file/**')` may inject:
 
 ```js
 {
@@ -74,28 +74,20 @@ complete matching paths:
 }
 ```
 
-The nested array is the discriminator, not the presence of a wildcard. For example,
-`derive([['/file/package-json']], files => files)` receives `{ '/file/package-json': value }`, while
-`derive(['/file/package-json'], value => value)` receives the value directly. A scalar dependency may
-not contain reserved wildcards. A glob dependency must contain at least one selector.
+`many()` is collection semantics, not wildcard detection. `many('/file/package-json')` still produces a record containing that matching binding. Multiple selectors are unioned in graph key order, overlapping selectors do not duplicate a binding, and no matches produce a frozen empty object.
 
-`*` matches exactly one segment. `**` matches zero or more segments. Multiple selectors in one glob
-dependency are unioned in graph key order; overlapping selectors do not duplicate a binding. No
-matches produce a frozen empty object. Matching delegates to the engine's `dagr:glob` built-in and
-scans the graph's flat `Map` in key order.
+`*` matches exactly one segment. `**` matches zero or more segments. Matching delegates to the engine's `dagr:glob` built-in and scans the graph's flat `Map` in key order.
 
-`compile()` eagerly resolves every binding once. `compile(roots)` resolves only the roots and their
-transitive dependencies. Compile roots are a separate API and can still be exact paths or glob
-selector strings. Exact roots retain one binding; glob roots retain every match. Glob dependencies
-retain every match transitively too. Missing exact bindings and cycles, including cycles introduced
-through glob selection, are errors. Compilation is synchronous; promises remain ordinary values.
+The dependency object is frozen before it reaches the factory, so names are stable local aliases rather than positional conventions.
+
+## Compilation
+
+`compile()` eagerly resolves every binding once. `compile(roots)` resolves only the roots and their transitive dependencies. Compile roots can be exact paths or glob selector strings. Exact roots retain one binding; glob roots retain every match.
+
+Missing `one()` bindings and cycles, including cycles introduced through `many()` selection, are errors. Compilation is synchronous; promises remain ordinary values.
 
 ## Composition and order
 
-Graphs are immutable. `merge` is right-biased, like object spread: bindings in arguments replace
-bindings in the receiver, and later arguments replace earlier ones. Replacing a path preserves its
-existing key position; newly introduced paths append in merge order. That makes key scans and glob
-records deterministic without sorting or a secondary index.
+Graphs are immutable. `merge` is right-biased, like object spread: bindings in arguments replace bindings in the receiver, and later arguments replace earlier ones. Replacing a path preserves its existing key position; newly introduced paths append in merge order. That makes key scans and `many()` records deterministic without sorting or a secondary index.
 
-`rdk.merge(...graphs)` performs the same fold starting from an empty graph. No arguments produce an
-empty graph.
+`rdk.merge(...graphs)` performs the same fold starting from an empty graph. No arguments produce an empty graph.
