@@ -10,8 +10,9 @@
 | [`typescript`](typescript/) | Composable TypeScript recipe that calculates generated configuration and Dagr targets |
 
 The TypeScript recipe uses one RDK graph. It addresses facts, calculations, files, commands,
-requirements, and targets by absolute semantic binding paths. Exact dependencies name one binding;
-glob dependencies select open sets such as `/file/**` and `/target/**`.
+requirements, and targets by absolute semantic binding paths. Exact dependencies are path strings;
+glob dependencies are nested selector arrays that select open sets such as `/file/**` and
+`/target/**`.
 
 ## Boundaries
 
