@@ -205,10 +205,14 @@ Dagr also provides a small segment glob matcher for semantic path-like identifie
 ```js
 import Glob from 'dagr:glob'
 
-Glob.match('command/*/vitest', 'command/test/vitest') // true
-Glob.match('target/**', 'target')                     // true
+const commands = Glob.of('command/*/vitest')
+commands.match('command/test/vitest') // true
+
+const targets = Glob.of('target/**')
+targets.match('target')               // true
 ```
 
+`Glob.of(pattern)` validates and compiles the pattern once; the returned matcher can be reused.
 `*` matches one segment and `**` matches zero or more segments. Wildcards are whole segments only;
 this utility does not implement filesystem globbing or read the filesystem.
 
