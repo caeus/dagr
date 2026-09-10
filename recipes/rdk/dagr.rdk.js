@@ -332,6 +332,8 @@ class Graph {
 
     const values = new Map()
     const resolving = []
+    /** @type {(name: string, requiredBy?: string) => unknown} */
+    let resolve
 
     /** @param {PositionalDependency} dependency @param {string} requiredBy */
     const resolvePositionalDependency = (dependency, requiredBy) => {
@@ -363,12 +365,7 @@ class Graph {
       return Object.freeze(record)
     }
 
-    /**
-     * @param {string} name
-     * @param {string | undefined} [requiredBy]
-     * @returns {unknown}
-     */
-    function resolve(name, requiredBy) {
+    resolve = (name, requiredBy) => {
       if (values.has(name)) return values.get(name)
 
       const current = this.#bindings.get(name)
@@ -409,9 +406,9 @@ class Graph {
 
     for (const root of normalizedRoots) {
       if (root.includes('*')) {
-        for (const matched of matchingNames([root])) resolve.call(this, matched)
+        for (const matched of matchingNames([root])) resolve(matched)
       } else {
-        resolve.call(this, root)
+        resolve(root)
       }
     }
 
