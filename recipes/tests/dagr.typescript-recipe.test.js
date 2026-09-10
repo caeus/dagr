@@ -124,14 +124,18 @@ describe('mountable TypeScript recipe', () => {
       ts.typescript({ base: '//base:ci:image', versions }),
       ts.yarn(),
       ts.viteReact(),
+      ts.hostDev(),
     ])({ location: '//packages/web' })
 
-    const install = runTarget(index.dev.install, { host: { os: 'linux', arch: 'arm64' } })
-    assert.deepEqual(decodeWritten(install.steps, '.yarnrc.yml'), {
+    const sync = runTarget(index.dev.sync, { host: { os: 'linux', arch: 'arm64' } })
+    assert.deepEqual(decodeWritten(sync.steps, '.yarnrc.yml'), {
       nodeLinker: 'node-modules',
       supportedArchitectures: { os: ['linux'], cpu: ['arm64'] },
     })
-    assert.deepEqual(install.EXPORT, { '/repo/node_modules': 'node_modules' })
+    // Nothing but generated files reaches /repo, so exporting all of it is precise.
+    assert.deepEqual(sync.EXPORT, { '/repo/': './' })
+    assert.equal(sync.steps.some(step => step.COPY?.src === 'src'), false)
+    assert.equal(sync.steps.some(step => step.RUN?.includes('install')), false)
 
     const build = runTarget(index.ci.build, { host: { os: 'linux', arch: 'arm64' } })
     assert.deepEqual(decodeWritten(build.steps, '.yarnrc.yml'), { nodeLinker: 'node-modules' })

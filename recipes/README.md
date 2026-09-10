@@ -50,6 +50,14 @@ Run the recipe test suite with:
 dagr run //recipes:ci:test
 ```
 
+That target's context is `recipes/` alone, which is what proves a recipe works without its consumers
+present. Tests that need a second package — the recipe plus an index that mounts it — run from the
+harness instead:
+
+```sh
+dagr run //harness:ci:test
+```
+
 Build recipe images with:
 
 ```sh
