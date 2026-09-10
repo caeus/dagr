@@ -22,9 +22,7 @@ export function nodeBase({
   packageManager = 'pnpm@11.20.0',
 } = {}) {
   return rdk.graph({
-    nodeBaseTarget: target([], {
-      name,
-      facet: 'ci',
+    [`/target/ci/${name}`]: target([], {
       render: () => ({
         deps: [],
         run: () => ({
@@ -62,17 +60,15 @@ export function nodeTest({
   return rdk.graph({
     // Every development intent, not just `test`: the target below runs in the image `build` produced,
     // so tsx has to be in the manifest that image installed. esbuild is tsx's own build step.
-    nodeTestRequirements: requirement({
+    '/requirement/node-test': requirement({
       packages: ['tsx'],
       allowBuilds: ['esbuild'],
     }),
-    nodeTestCommand: command(['nodeTestRequirements'], {
+    '/command/test/node': command(['/requirement/node-test'], {
       for: ['test'],
       run: () => ({ shell: invocation }),
     }),
-    nodeTestTarget: target(['ignore', 'exec'], {
-      name: 'test',
-      facet: 'ci',
+    '/target/ci/test': target(['/source/ignore', '/package-manager/exec'], {
       render: (context, ignore, exec) => ({
         deps: ['build'],
         run: ({ images }) => ({

@@ -16,20 +16,18 @@ const versions = {
 }
 
 const dagr = rdk.graph({
-  name: rdk.value('@caeus/dagr'),
+  '/package/name': rdk.value('@caeus/dagr'),
 
   // A bundled CLI publishes one JavaScript file, so type declarations are dead weight.
-  emitDeclarations: rdk.value(false),
+  '/typescript/emit-declarations': rdk.value(false),
 
-  importAlias: rdk.derive(['sourceDirectory', 'outputDirectory'], (source, output) => ({
+  '/source/import-alias': rdk.derive(['/source/directory', '/output/directory'], (source, output) => ({
     specifier: '#*',
     sourcePath: `./${source}/*`,
     runtimePath: `./${output}/*`,
   })),
 
-  bundlecheckTarget: target(['ignore'], {
-    name: 'bundlecheck',
-    facet: 'ci',
+  '/target/ci/bundlecheck': target(['/source/ignore'], {
     render: (_context, ignore) => ({
       deps: ['ci:bundle'],
       run: ({ images }) => ({
@@ -40,9 +38,7 @@ const dagr = rdk.graph({
     }),
   }),
 
-  imageTarget: target([], {
-    name: 'image',
-    facet: 'ci',
+  '/target/ci/image': target([], {
     render: () => ({
       deps: ['ci:bundlecheck'],
       run: ({ images }) => ({

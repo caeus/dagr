@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const repository = resolve(root, '..')
+const engine = resolve(repository, 'engine')
 const recipe = resolve(root, 'typescript')
 const rdk = resolve(root, 'rdk')
 
@@ -42,6 +44,9 @@ const createLoader = () => {
 
     const module = new vm.SourceTextModule(await readFile(canonical, 'utf8'), {
       identifier: canonical,
+      initializeImportMeta(meta) {
+        meta.dagr = { location: '//engine' }
+      },
     })
     cache.set(canonical, module)
     let resolveLinked
@@ -64,6 +69,12 @@ const createLoader = () => {
       if (specifier.startsWith('//rdk//')) {
         return load(resolve(rdk, specifier.slice('//rdk//'.length)))
       }
+      if (specifier.startsWith('//engine/recipes/typescript//')) {
+        return load(resolve(recipe, specifier.slice('//engine/recipes/typescript//'.length)))
+      }
+      if (specifier.startsWith('//engine/')) {
+        return load(resolve(repository, specifier.slice(2)))
+      }
       return load(resolve(recipe, specifier.slice(2)))
     }).then(resolveLinked, rejectLinked)
     await linked
@@ -82,3 +93,5 @@ const evaluate = async path => {
 export const loadTypeScript = () => evaluate(resolve(recipe, 'dagr.recipe.js'))
 
 export const loadRdk = () => evaluate(resolve(rdk, 'dagr.rdk.js'))
+
+export const loadEngineIndex = () => evaluate(resolve(engine, 'dagr.index.js'))
