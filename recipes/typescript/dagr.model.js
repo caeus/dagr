@@ -47,7 +47,6 @@ export function requirement({
   for: intents = DEVELOPMENT_INTENTS,
   packages = [],
   types = [],
-  allowBuilds = [],
 } = {}) {
   if (!Array.isArray(intents) || intents.some(intent => typeof intent !== 'string' || intent === '')) {
     throw new TypeError('requirement for must be an array of intent names')
@@ -55,27 +54,22 @@ export function requirement({
   if (!Array.isArray(packages) || packages.some(name => typeof name !== 'string' || name === '')) {
     throw new TypeError('requirement packages must be an array of package names')
   }
-  if (!Array.isArray(types) || !Array.isArray(allowBuilds)) {
-    throw new TypeError('requirement types and allowBuilds must be arrays')
-  }
+  if (!Array.isArray(types)) throw new TypeError('requirement types must be an array')
   return rdk.value(Object.freeze({
     for: Object.freeze([...intents]),
     packages: Object.freeze([...packages]),
     types: Object.freeze([...types]),
-    allowBuilds: Object.freeze([...allowBuilds]),
   }))
 }
 
 export function requirementsOf(contributions, context, versions) {
   const packages = []
   const types = []
-  const allowBuilds = []
 
   for (const contribution of Reflect.ownKeys(contributions).map(name => contributions[name])) {
     if (!contribution.for.includes(context.intent)) continue
     packages.push(...contribution.packages)
     types.push(...contribution.types)
-    allowBuilds.push(...contribution.allowBuilds)
   }
 
   return Object.freeze({
@@ -83,7 +77,6 @@ export function requirementsOf(contributions, context, versions) {
       unique(packages).map(name => [name, versionOf(versions, name)]),
     )),
     types: Object.freeze(unique(types)),
-    allowBuilds: Object.freeze(unique(allowBuilds)),
   })
 }
 

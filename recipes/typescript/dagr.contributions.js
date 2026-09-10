@@ -30,6 +30,29 @@ const normalizeOrder = (kind, order = 0) => {
   return order
 }
 
+/** A graph binding carrying an intent-scoped fact for consumers to interpret. */
+export const fact = (deps, options = {}) => {
+  if (!Array.isArray(deps)) throw new TypeError('fact contribution dependencies must be an array')
+  const intents = normalizeFor('fact', options.for)
+  if (intents === undefined) {
+    throw new TypeError('fact contribution needs for, the intents whose fact it is')
+  }
+  return rdk.derive(
+    deps,
+    () => Object.freeze({
+      for: intents,
+      value: options.value,
+    }),
+  )
+}
+
+/** Every fact applying to an intent, flattened and deduplicated in contribution order. */
+export const factsFor = (contributions, intent) => [...new Set(
+  contributionValues(contributions)
+    .filter(contribution => contribution.for.includes(intent))
+    .flatMap(contribution => contribution.value),
+)]
+
 /**
  * A graph binding whose value renders one or more steps that materialize files. Files are the
  * context-aware kind: what a tsconfig or a manifest contains genuinely differs per intent.
@@ -218,4 +241,4 @@ export const index = () => rdk.graph({
   }),
 })
 
-export default Object.freeze({ file, command, target })
+export default Object.freeze({ fact, file, command, target })

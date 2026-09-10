@@ -1,6 +1,6 @@
 import bundledVersions from '//dagr.versions.yaml'
 import rdk from '//rdk//dagr.rdk.js'
-import { command, file, target } from '//dagr.contributions.js'
+import { command, fact, file, target } from '//dagr.contributions.js'
 import { writeJson, writeText } from '//dagr.file-utils.js'
 import { RECOMMENDED_IGNORE } from '//dagr.dockerignore.js'
 import {
@@ -101,7 +101,7 @@ const packageFacts = rdk.derive(
 
 const packageJson = file(
   [
-    '/package/facts', '/requirement/**', '/version/catalog', '/package-manager/install-manifest',
+    '/package/facts', '/requirement/*', '/version/catalog', '/package-manager/install-manifest',
     '/package/local-dependencies', '/package/scripts',
   ],
   {
@@ -111,7 +111,7 @@ const packageJson = file(
       const manifest = packageManifest(context, facts, tooling, configuredVersions, scripts)
       return writeJson(
         '/repo/package.json',
-        context.install ? installManifest(manifest, localPackages, tooling, context) : manifest,
+        context.install ? installManifest(manifest, localPackages, context) : manifest,
       )
     },
   },
@@ -122,7 +122,7 @@ const tsconfig = file(
     '/product/kind', '/typescript/language-target', '/output/source-maps',
     '/typescript/emit-declarations', '/source/directory', '/output/layout',
     '/typescript/module-kind', '/typescript/module-resolution', '/typescript/libraries',
-    '/source/import-alias', '/requirement/**', '/version/catalog',
+    '/source/import-alias', '/requirement/*', '/version/catalog',
   ],
   {
     for: DEVELOPMENT_INTENTS,
@@ -380,7 +380,10 @@ export function cloudflareWorker({ language = 'ES2022' } = {}) {
     '/requirement/typescript': requirement({
       packages,
       types: ['@cloudflare/workers-types'],
-      allowBuilds: ['sharp', 'workerd'],
+    }),
+    '/requirement/build-scripts/typescript': fact([], {
+      for: DEVELOPMENT_INTENTS,
+      value: ['sharp', 'workerd'],
     }),
     '/command/typecheck/typescript': command(['/requirement/typescript'], {
       for: ['typecheck'],
@@ -420,7 +423,10 @@ export function viteReact({ language = 'ES2020' } = {}) {
     '/requirement/typescript': requirement({
       packages,
       types: ['node'],
-      allowBuilds: ['esbuild'],
+    }),
+    '/requirement/build-scripts/typescript': fact([], {
+      for: DEVELOPMENT_INTENTS,
+      value: ['esbuild'],
     }),
     '/file/vite-config': file(['/source/directory'], {
       for: ['dev', 'test', 'build'],
@@ -531,7 +537,10 @@ export default defineConfig({ test: {
       for: ['dev', 'test', 'lint'],
       packages: ['vitest', ...(environment === 'jsdom' ? ['jsdom'] : [])],
       types: globals ? ['vitest/globals'] : [],
-      allowBuilds: ['esbuild'],
+    }),
+    '/requirement/build-scripts/vitest': fact([], {
+      for: ['dev', 'test', 'lint'],
+      value: ['esbuild'],
     }),
     '/command/test/vitest': command(['/requirement/vitest'], {
       for: ['test'],

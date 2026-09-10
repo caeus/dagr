@@ -73,7 +73,7 @@ describe('recipe architecture', () => {
     assert.equal(calculation(3), 6)
   })
 
-  it('discovers files, commands, targets, and requirements by semantic path', () => {
+  it('discovers files, commands, targets, requirements, and facts by semantic path', () => {
     const built = nodeLibrary(ts.vitest(), ts.eslint(), ts.typedoc())
     const graph = built.graph
 
@@ -81,13 +81,32 @@ describe('recipe architecture', () => {
     assert.deepEqual(graph.bindingOf('/output/layout').deps, [
       '/product/kind', '/output/directory', '/source/entry',
     ])
-    assert.ok(graph.bindingOf('/file/package-json').deps.includes('/requirement/**'))
+    assert.ok(graph.bindingOf('/file/package-json').deps.includes('/requirement/*'))
+    assert.deepEqual(graph.bindingOf('/requirement/build-scripts/vitest').deps, [])
     // A tool command names what to run, so it needs no package manager to say it.
     assert.deepEqual(graph.bindingOf('/command/test/vitest').deps, ['/requirement/vitest'])
     assert.deepEqual(graph.bindingOf('/target/ci/test').deps.slice(-2), ['/file/**', '/command/**'])
     assert.equal(graph.bindingOf('/workspace'), undefined)
     assert.equal(graph.bindingOf('/package/json'), undefined)
     assert.equal(graph.bindingOf('/facet/ci'), undefined)
+  })
+
+  it('filters, flattens, and deduplicates intent facts', () => {
+    const graph = ts.rdk.graph({
+      '/requirement/build-scripts/first': ts.fact([], {
+        for: ['test'],
+        value: ['shared', 'first'],
+      }),
+      '/requirement/build-scripts/second': ts.fact([], {
+        for: ['build', 'test'],
+        value: ['shared', 'second'],
+      }),
+    })
+    const builds = graph.compile(['/requirement/build-scripts/**'])
+
+    assert.deepEqual(ts.factsFor(builds, 'test'), ['shared', 'first', 'second'])
+    assert.deepEqual(ts.factsFor(builds, 'build'), ['shared', 'second'])
+    assert.deepEqual(ts.factsFor(builds, 'lint'), [])
   })
 
   it('renders context-aware files and materializes context-free invocations', () => {

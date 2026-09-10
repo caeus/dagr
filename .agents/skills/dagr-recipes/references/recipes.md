@@ -38,7 +38,8 @@ Recipe graphs use absolute semantic paths. Ordinary facts and calculations inclu
 - `/file/**` for contextual file or step renderers;
 - `/command/**` for context-free invocations;
 - `/target/<facet>/<name>` for target ownership and Dagr index structure;
-- `/requirement/**` for tool packages, ambient types, and build allowances.
+- `/requirement/*` for tool packages and ambient types;
+- `/requirement/build-scripts/**` for portable, intent-scoped build-script facts.
 
 ```js
 rdk.graph({
@@ -49,8 +50,10 @@ rdk.graph({
 })
 ```
 
-The helpers validate and render binding values. The path namespace is the only grouping mechanism.
-RDK glob dependencies discover open sets without a feature or target registry.
+The helpers validate and, where appropriate, render binding values. The path namespace is the only
+grouping mechanism. `fact` carries an intent list plus an opaque value; `factsFor` filters a globbed
+collection by intent, flattens its values, and removes duplicates. RDK glob dependencies discover
+open sets without a feature or target registry.
 
 ## Output bindings
 

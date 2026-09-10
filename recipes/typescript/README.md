@@ -63,6 +63,10 @@ Paths carry both identity and hierarchy. The main open namespaces are:
 - `/target/**`
 - `/requirement/**`
 
+Tool requirements occupy `/requirement/*`. Intent-scoped facts that adapters interpret occupy nested
+namespaces such as `/requirement/build-scripts/**`, keeping them out of the universal requirement
+shape.
+
 Ordinary values use paths such as `/package/name`, `/source/directory`, `/output/layout`, and
 `/package-manager/install`. There is no separate contribution registry.
 
@@ -101,7 +105,7 @@ const health = () => rdk.graph({
 The target path supplies its Dagr facet and target name. A binding at `/target/quality/health`
 becomes `quality:health`.
 
-## Files and commands
+## Files, commands, and facts
 
 Files are context-aware; commands are not.
 
@@ -130,11 +134,17 @@ matching its context:
 Files and commands default to `order: 0`. Equal orders retain graph key order. Use another numeric
 order only where sequence is behavior.
 
+Facts carry an intent list and an opaque value without rendering it. Consumers glob their semantic
+namespace and use `factsFor` to select the current intent, flatten the values, and remove duplicates.
+For example, build-script allowances live under `/requirement/build-scripts/**`; each package-manager
+feature renders that portable fact in its own dialect.
+
 ## Requirements and versions
 
-Tool requirements use `/requirement/**`. Independent features can own paths such as
+Tool requirements use `/requirement/*`. Independent features can own paths such as
 `/requirement/typescript`, `/requirement/vitest`, and `/requirement/eslint`. Generated manifests,
-compiler configuration, commands, and package-manager configuration consume `/requirement/**`.
+compiler configuration, and commands consume that collection. Build-script facts use
+`/requirement/build-scripts/**` and are consumed directly by package-manager features.
 
 `packages` contains names only. Versions come from `/version/catalog`, built from
 `dagr.versions.yaml` plus the `versions` option passed to `typescript`. A required package with no

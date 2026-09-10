@@ -37,12 +37,14 @@ Use semantic path namespaces consistently:
 - `/file/**` for generated file or step contributions;
 - `/command/**` for context-free command contributions;
 - `/target/<facet>/<name>` for Dagr targets;
-- `/requirement/**` for package, ambient-type, and build-policy requirements;
+- `/requirement/*` for package and ambient-type requirements;
+- `/requirement/build-scripts/**` for package-manager-neutral build-script facts;
 - paths such as `/package/name`, `/source/directory`, and `/output/layout` for ordinary facts and
   calculations.
 
-The `file`, `command`, `target`, and `requirement` helpers validate or render their values. They do
-not group them. Consumers discover open collections with path selectors.
+The `file`, `command`, `fact`, `target`, and `requirement` helpers validate or render their values.
+They do not group them. Consumers discover open collections with path selectors. A `fact` carries
+an intent list and an opaque value; `factsFor` filters, flattens, and deduplicates matching values.
 
 A target automatically depends on `/file/**` and `/command/**`. The `/dagr/index` binding depends on
 `/target/**` and derives each target's facet and name from `/target/<facet>/<name>`.
@@ -51,8 +53,9 @@ Files render before commands. Contributions of one kind are ordered by their num
 defaults to zero. Equal orders retain graph key order. Use explicit ordering only when step sequence
 is behavior.
 
-Requirement consumers depend on `/requirement/**`. A package name appears in a requirement while its
-version comes from the single `/version/catalog` binding.
+Tool requirement consumers depend on `/requirement/*`. A package name appears in a requirement while
+its version comes from the single `/version/catalog` binding. Package-manager adapters depend on
+fact namespaces such as `/requirement/build-scripts/**` directly.
 
 ## Determinism
 

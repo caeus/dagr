@@ -1,7 +1,7 @@
 import rdk from '//rdk//dagr.rdk.js'
 import { index } from '//dagr.contributions.js'
 
-export { command, file, target } from '//dagr.contributions.js'
+export { command, fact, factsFor, file, target } from '//dagr.contributions.js'
 export * from '//dagr.features.js'
 export * from '//dagr.file-utils.js'
 export * from '//dagr.package-managers.js'
