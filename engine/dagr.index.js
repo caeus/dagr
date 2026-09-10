@@ -21,11 +21,14 @@ const dagr = rdk.graph({
   // A bundled CLI publishes one JavaScript file, so type declarations are dead weight.
   '/typescript/emit-declarations': rdk.value(false),
 
-  '/source/import-alias': rdk.derive(['/source/directory', '/output/directory'], (source, output) => ({
-    specifier: '#*',
-    sourcePath: `./${source}/*`,
-    runtimePath: `./${output}/*`,
-  })),
+  '/source/import-alias': rdk.derive(
+    { source: rdk.one('/source/directory'), output: rdk.one('/output/directory') },
+    ({ source, output }) => ({
+      specifier: '#*',
+      sourcePath: `./${source}/*`,
+      runtimePath: `./${output}/*`,
+    }),
+  ),
 
   '/target/ci/bundlecheck': target(['/source/ignore'], {
     render: (_context, ignore) => ({
