@@ -5,7 +5,7 @@ import { of as globOf } from 'dagr:glob'
  * @typedef {(...dependencies: unknown[]) => T} Factory
  */
 
-/** @typedef {string} Dependency */
+/** @typedef {string | readonly string[]} Dependency */
 
 /**
  * A frozen recipe for producing one binding value.
@@ -71,7 +71,17 @@ function normalizeBindingName(name) {
 
 /** @param {unknown} dependency */
 function normalizeDependency(dependency) {
-  validatePath(dependency, 'Binding dependency', true)
+  if (Array.isArray(dependency)) {
+    if (dependency.length === 0) {
+      throw new TypeError('Binding glob dependency must contain at least one selector')
+    }
+    return Object.freeze(dependency.map(selector => {
+      validatePath(selector, 'Binding glob selector', true)
+      return selector
+    }))
+  }
+
+  validatePath(dependency, 'Binding dependency', false)
   return dependency
 }
 
@@ -238,8 +248,9 @@ class Graph {
       }
       return matches
     }
-    /** @param {string} selector */
-    const matchingNames = selector => [...this.#bindings.keys()].filter(matcher(selector))
+    /** @param {readonly string[]} selectorGroup */
+    const matchingNames = selectorGroup => [...this.#bindings.keys()]
+      .filter(name => selectorGroup.some(selector => matcher(selector)(name)))
 
     /** @type {string[]} */
     const normalizedRoots = roots === undefined
@@ -275,7 +286,7 @@ class Graph {
       resolving.push(name)
       try {
         const dependencies = current.deps.map(dependency => {
-          if (!dependency.includes('*')) return resolve(dependency, name)
+          if (typeof dependency === 'string') return resolve(dependency, name)
 
           const record = {}
           for (const matched of matchingNames(dependency)) {
@@ -298,7 +309,7 @@ class Graph {
 
     for (const root of normalizedRoots) {
       if (root.includes('*')) {
-        for (const matched of matchingNames(root)) resolve(matched)
+        for (const matched of matchingNames([root])) resolve(matched)
       } else {
         resolve(root)
       }
