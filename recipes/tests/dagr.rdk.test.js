@@ -127,13 +127,13 @@ describe('rdk graph', () => {
     assert.equal(container['/result'], 'commands:tsc,vitest')
   })
 
-  it('compile roots retain exact and glob dependencies transitively', () => {
+  it('compile roots resolve exact and glob dependencies transitively in one traversal', () => {
     let initialized = false
     const container = rdk.graph({
       '/shared/prefix': value('item:'),
       '/file/first': derive(['/shared/prefix'], prefix => `${prefix}first`),
       '/file/second': value('second'),
-      '/ignored': derive([], () => { initialized = true }),
+      '/ignored': derive(['/missing'], () => { initialized = true }),
       '/files': derive(['/file/**'], files => files),
     }).compile(['/files'])
 
@@ -212,6 +212,12 @@ describe('rdk graph', () => {
     assert.deepEqual(graph.compile(['/selection'])['/selection'], [
       '/file/first', '/file/second', '/file/third',
     ])
+
+    const dependencyAfterConsumer = rdk.graph({
+      '/result': derive(['/dependency'], value => value),
+      '/dependency': value(42),
+    }).compile(['/result'])
+    assert.deepEqual(Object.keys(dependencyAfterConsumer), ['/result', '/dependency'])
   })
 
   it('merges graphs loaded through separate JavaScript module instances', async () => {

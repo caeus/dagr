@@ -215,8 +215,8 @@ class Graph {
 
   /**
    * Eagerly resolves every reachable binding once. When roots are omitted, every binding is
-   * resolved. Exact roots retain one binding; glob roots retain every match. In both cases their
-   * exact and glob dependencies are retained transitively.
+   * resolved. Exact roots begin at one binding; glob roots begin at every match. Dependencies are
+   * discovered and resolved while traversing from those roots.
    *
    * @param {readonly string[]} [roots]
    * @returns {Readonly<Record<string, unknown>>}
@@ -248,36 +248,6 @@ class Graph {
           validatePath(root, 'Compile root', true)
           return root
         })
-
-    const retained = new Set()
-    /**
-     * @param {string} name
-     * @param {string | undefined} [requiredBy]
-     */
-    const retain = (name, requiredBy) => {
-      const current = this.#bindings.get(name)
-      if (!current) {
-        const suffix = requiredBy === undefined ? '' : ` required by ${bindingName(requiredBy)}`
-        throw new Error(`Missing binding ${bindingName(name)}${suffix}`)
-      }
-      if (retained.has(name)) return
-      retained.add(name)
-      for (const dependency of current.deps) {
-        if (dependency.includes('*')) {
-          for (const matched of matchingNames(dependency)) retain(matched, name)
-        } else {
-          retain(dependency, name)
-        }
-      }
-    }
-
-    for (const root of normalizedRoots) {
-      if (root.includes('*')) {
-        for (const matched of matchingNames(root)) retain(matched)
-      } else {
-        retain(root)
-      }
-    }
 
     const values = new Map()
     const resolving = []
@@ -326,15 +296,20 @@ class Graph {
       }
     }
 
-    for (const name of this.#bindings.keys()) {
-      if (retained.has(name)) resolve(name)
+    for (const root of normalizedRoots) {
+      if (root.includes('*')) {
+        for (const matched of matchingNames(root)) resolve(matched)
+      } else {
+        resolve(root)
+      }
     }
 
     /** @type {Record<string, unknown>} */
     const container = Object.create(null)
-    for (const [name, result] of values) {
+    for (const name of this.#bindings.keys()) {
+      if (!values.has(name)) continue
       Object.defineProperty(container, name, {
-        value: result,
+        value: values.get(name),
         enumerable: true,
         writable: false,
         configurable: false,
