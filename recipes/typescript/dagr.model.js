@@ -5,7 +5,6 @@ export const DEVELOPMENT_INTENTS = Object.freeze([
   'dev', 'typecheck', 'test', 'lint', 'docs', 'build',
 ])
 export const DISTRIBUTION_INTENTS = Object.freeze(['pack', 'publish'])
-export const REQUIREMENTS = 'requirements'
 
 export const present = entries => Object.fromEntries(
   entries.filter(([, value]) => value !== undefined),
@@ -64,7 +63,7 @@ export function requirement({
     packages: Object.freeze([...packages]),
     types: Object.freeze([...types]),
     allowBuilds: Object.freeze([...allowBuilds]),
-  }), [REQUIREMENTS])
+  }))
 }
 
 export function requirementsOf(contributions, context, versions) {

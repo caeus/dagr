@@ -140,16 +140,16 @@ describe('mountable TypeScript recipe', () => {
   it('supports a custom manager as a normal feature graph', async () => {
     const ts = await loadTypeScript()
     const bun = ts.rdk.graph({
-      installManifest: ts.rdk.value(ts.fileTarballs),
-      exec: ts.rdk.value(invocation => `bun x ${invocation}`),
-      script: ts.rdk.value(invocation => invocation),
-      install: ts.rdk.value(() => 'bun install'),
-      pack: ts.rdk.value(slug => `bun pm pack --destination /out --filename ${slug}.tgz`),
-      packCommand: ts.command(['pack', 'slug'], {
+      '/package-manager/install-manifest': ts.rdk.value(ts.fileTarballs),
+      '/package-manager/exec': ts.rdk.value(invocation => `bun x ${invocation}`),
+      '/package-manager/script': ts.rdk.value(invocation => invocation),
+      '/package-manager/install': ts.rdk.value(() => 'bun install'),
+      '/package-manager/pack': ts.rdk.value(slug => `bun pm pack --destination /out --filename ${slug}.tgz`),
+      '/command/pack/package': ts.command(['/package-manager/pack', '/package/slug'], {
         for: ['pack', 'publish'],
         run: (pack, slug) => ({ shell: pack(slug) }),
       }),
-      packageManagerFile: ts.file([], {
+      '/file/package-manager': ts.file([], {
         for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
         render: () => ({ RUN: 'write bunfig.toml' }),
       }),
@@ -173,7 +173,7 @@ describe('mountable TypeScript recipe', () => {
       ts.typescript({ base: '//base:ci:image', versions }),
       ts.npm(),
       ts.library(),
-      ts.rdk.graph({ location: ts.rdk.value('//wrong') }),
+      ts.rdk.graph({ '/package/location': ts.rdk.value('//wrong') }),
     ])({ location: '//packages/example', metadata: { description: 'Example' } })
 
     const manifest = decodeWritten(runTarget(index.ci.typecheck).steps, 'package.json')
@@ -187,15 +187,19 @@ describe('mountable TypeScript recipe', () => {
     // A library needs a package manager to resolve its tools and install them.
     assert.throws(
       () => ts.default([ts.typescript({ base: '//base:ci:image', versions }), ts.library()])({ location: '//x' }),
-      /Missing binding "exec" required by "libraryTypecheckTarget"/,
+      /Missing binding "\/package-manager\/exec" required by "\/target\/ci\/typecheck"/,
     )
     assert.throws(
       () => ts.default([
         ts.typescript({ base: '//base:ci:image', versions }),
-        ts.rdk.graph({ exec: ts.rdk.value(String), install: ts.rdk.value(String), script: ts.rdk.value(String) }),
+        ts.rdk.graph({
+          '/package-manager/exec': ts.rdk.value(String),
+          '/package-manager/install': ts.rdk.value(String),
+          '/package-manager/script': ts.rdk.value(String),
+        }),
         ts.library(),
       ])({ location: '//x' }),
-      /Missing binding "installManifest" required by "packageJsonFile"/,
+      /Missing binding "\/package-manager\/install-manifest" required by "\/file\/package-json"/,
     )
     assert.deepEqual(
       ts.default([ts.typescript({ base: '//base:ci:image', versions }), ts.npm()])({ location: '//x' }),

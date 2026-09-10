@@ -1,7 +1,7 @@
 # Composable TypeScript recipe
 
-This recipe builds a Dagr index from one RDK graph. The graph contains ordinary calculated values and
-three kinds of output contribution: files, commands, and targets.
+This recipe builds a Dagr index from one immutable RDK graph. Every binding has an absolute semantic
+path. Exact dependencies name one binding; glob dependencies discover open collections.
 
 ```js
 import recipe, {
@@ -32,17 +32,17 @@ export default nodeLibrary({
 ```
 
 The declaration contains only irreducible facts: `location`, `version`, package dependencies, and
-package metadata. Generated manifests and tool configuration are file outputs.
+package metadata. Generated manifests and tool configuration are file bindings.
 
 ## Recipe and builder
 
 `recipe(features)` merges feature graphs and returns a callable builder. Calling it merges the
-package declaration and compiles the final `index` binding.
+package declaration and compiles `/dagr/index`.
 
 ```js
 const stricter = nodeLibrary.with(companyPolicy())
 
-nodeLibrary.graph.definitionOf('sourceDirectory')
+nodeLibrary.graph.bindingOf('/source/directory')
 ```
 
 Recipes use the exported generic builder:
@@ -54,37 +54,42 @@ builder(init, run, graph)
 The returned function performs `run(graph.merge(init(...args)))`. It exposes its immutable `graph`
 and `with(feature)`, which returns another builder with the feature merged in.
 
-## Contributions
+## Semantic paths
 
-`file`, `command`, and `target` return normal RDK definitions. Put them directly in a graph. Each
-helper adds its collection tag automatically.
+Paths carry both identity and hierarchy. The main open namespaces are:
+
+- `/file/**`
+- `/command/**`
+- `/target/**`
+- `/requirement/**`
+
+Ordinary values use paths such as `/package/name`, `/source/directory`, `/output/layout`, and
+`/package-manager/install`. There is no separate contribution registry.
 
 ```js
 const health = () => rdk.graph({
-  message: rdk.value('healthy'),
+  '/health/message': rdk.value('healthy'),
 
-  healthFile: file(['message'], {
+  '/file/health': file(['/health/message'], {
     for: ['test'],
-    render(ctx, message) {
+    render(_context, message) {
       return writeText('/repo/health.txt', message)
     },
   }),
 
-  healthCommand: command([], {
+  '/command/test/health': command([], {
     for: ['test'],
     run: () => ({ shell: 'test -s health.txt' }),
   }),
 
-  healthTarget: target(['exec'], {
-    name: 'health',
-    facet: 'ci',
+  '/target/quality/health': target(['/package-manager/exec'], {
     intent: 'test',
-    render(ctx, exec) {
+    render(context, exec) {
       return {
         deps: [],
         run: ({ host }) => ({
           FROM: 'alpine:3.22',
-          steps: [...ctx.files({ host }), ...runSteps(ctx.invocations(), exec)],
+          steps: [...context.files({ host }), ...runSteps(context.invocations(), exec)],
           IGNORE: [],
         }),
       }
@@ -93,87 +98,69 @@ const health = () => rdk.graph({
 })
 ```
 
-**Files are context-aware; commands are not.** That asymmetry is deliberate, and it is the reason a
-package.json script and a container step can come from one declaration.
+The target path supplies its Dagr facet and target name. A binding at `/target/quality/health`
+becomes `quality:health`.
 
-A file renderer receives `{ intent, facet, host }` plus its dependency values, and returns one Dagr
-step or nested arrays of steps. An empty array means "nothing to do"; anything that is not a step,
-including `undefined` and `false`, is an error. A file is not limited to a file schema — it can
-render `COPY`, an inline write, `CMD`, or any other step. What a tsconfig or a manifest contains
-genuinely differs per intent, which is why files get a context.
+## Files and commands
 
-A command renderer receives only its dependency values and returns **invocations**: `{ tool }` for a
-binary the package installs, or `{ shell }` for a literal command line. It never sees a context, and
-it never returns a step. Deciding how to run an invocation belongs to whoever materializes it:
+Files are context-aware; commands are not.
 
-- a container target maps it through `exec` — `pnpm exec tsc`;
-- `package.json` `scripts` uses it bare, because the manager already resolves installed binaries;
-- a Makefile or another task runner formats it however that runner expects.
+A file renderer receives `{ intent, facet, host }` plus dependency values and returns one Dagr step
+or nested arrays of steps. An empty array means "nothing to do". Any non-step value, including
+`undefined` and `false`, is an error. A file binding may render `COPY`, an inline write, `CMD`, or any
+other step.
 
-`runSteps(invocations, exec)` is the container materialization. Installation is not a contribution:
-only a fresh image needs it, so a target emits `install(host)` itself and no `order: -100` is needed
-to win a race against tool commands.
+A command renderer receives only dependency values and returns invocations: `{ tool }` for an
+installed binary or `{ shell }` for a literal command line. A consumer decides how to materialize an
+invocation:
 
-`for` is the only intent gate: a contribution declares the intents it belongs to, and its renderer
-then runs unconditionally. Do not re-check `ctx.intent` to opt back out. A target chooses its default
-`intent` and `facet`, then asks for what it needs:
+- a container target maps it through `/package-manager/exec`;
+- package.json scripts map it through `/package-manager/script`;
+- another runner may choose another representation.
 
-- `ctx.files(overrides)` renders every applicable file contribution.
-- `ctx.invocations(overrides)` collects the intent's invocations, in contributed order.
+`runSteps(invocations, exec)` performs container materialization. Installation is not a
+contribution; a target calls `/package-manager/install` when it creates a fresh image.
 
-Applicable contributions extend a target without modifying it. Contributions default to `order: 0`;
-use a smaller or larger number only where sequence is real behavior. Ordering means different things
-per materialization: separate steps in an image, `&&`-joined in one script.
+`for` is the intent gate. A target receives `/file/**` and `/command/**`, then asks for the values
+matching its context:
 
-Tool requirements remain ordinary graph values. `requirement({ for, packages, types, allowBuilds })`
-creates one such value for open feature composition. Commands depend on their requirement nodes, and
-generated manifests, compiler configuration, and manager files consume the same nodes. Neither the
-generated command nor a generated file becomes canonical truth.
+- `context.files(overrides)` renders applicable file bindings;
+- `context.invocations(overrides)` returns applicable invocations.
 
-`packages` names packages; it never pins them. Every version comes from one catalog,
-`dagr.versions.yaml`, which `typescript({ versions })` overrides per repository. A named package with
-no catalog entry and no override is an error, so a feature cannot smuggle in a second pin.
+Files and commands default to `order: 0`. Equal orders retain graph key order. Use another numeric
+order only where sequence is behavior.
 
-## Targets that build from source
+## Requirements and versions
 
-Nine of the built-in targets do the same thing: copy local tarballs, copy the source tree, then
-render every file and command the context contributes. `sourceTarget({ name, facet, intent, assets,
-export })` is that target, so a feature contributes one line and only its differences are visible.
-Targets that build from another image instead — the `pack` targets — stay explicit.
+Tool requirements use `/requirement/**`. Independent features can own paths such as
+`/requirement/typescript`, `/requirement/vitest`, and `/requirement/eslint`. Generated manifests,
+compiler configuration, commands, and package-manager configuration consume `/requirement/**`.
+
+`packages` contains names only. Versions come from `/version/catalog`, built from
+`dagr.versions.yaml` plus the `versions` option passed to `typescript`. A required package with no
+catalog entry is an error.
 
 ## Targets and index
 
-Targets are contributions with a local `name`, `facet`, `intent`, and renderer. There is no facet
-declaration or target registry. The `index` binding only:
+Target bindings have the form `/target/<facet>/<name>`, for example:
 
-1. collects target contributions;
-2. groups them by facet;
-3. rejects duplicate names within a facet;
-4. rejects a sibling dependency no contribution owns;
-5. returns the Dagr index.
+- `/target/ci/typecheck`
+- `/target/ci/build`
+- `/target/ci/test`
+- `/target/ci/lint`
+- `/target/ci/docs`
+- `/target/ci/pack`
+- `/target/publish/pack`
 
-Dagr resolves a bare `"build"` against the depending target's own facet and `"ci:build"` against its
-package, so both name a sibling the index must own. Step 4 is what makes a rename fail while the
-graph compiles rather than while a container builds; write either form as a plain string. Only a full
-`"//package:facet:target"` escapes the check, because it belongs to someone else.
+The `/dagr/index` binding selects `/target/**`, derives facet and name from each path, validates local
+target dependencies, and returns the Dagr index. A target creates a facet by existing.
 
-The built-in library composition contributes direct `ci:typecheck`, `ci:build`, `ci:test`, `ci:lint`,
-`ci:docs`, `ci:pack`, and `publish:pack` targets when their corresponding features are present. It
-does not generate intermediate config or install targets.
+Dagr resolves a bare `build` against the depending target's facet and `ci:build` against its package.
+The index verifies that one of its target bindings owns those local references. A full
+`//package:facet:target` reference belongs to another package and is not checked locally.
 
-## Ordinary graph values
-
-Facts and shared calculations stay ordinary. `sourceDirectory`, `runtimeKind`, `outputLayout`,
-`localPackages`, and the package-manager command transform are examples. Context is introduced only
-when an output is rendered, so the graph is never copied or lifted per intent.
-
-Replace a convention by merging a normal binding:
-
-```js
-const fromSource = nodeLibrary.with(rdk.graph({
-  sourceDirectory: rdk.value('source'),
-}))
-```
+Normal graph merge semantics govern ownership. If two features bind `/target/ci/build`, the later
+binding replaces the earlier one at that exact semantic path.
 
 ## Products and capabilities
 
@@ -184,46 +171,54 @@ Choose one product graph:
 - `viteReact()`
 
 Capabilities such as `prettier()`, `biome()`, `vitest()`, `eslint()`, `typedoc()`, and `rollup()` add
-their own file, command, and target contributions. They do not register themselves with the core
-recipe.
+their own file, command, requirement, and target paths. They do not register themselves with the
+core recipe.
 
-`rollup({ bundleDirectory, strict })` bundles a compiled library into one file and contributes
-`ci:bundle`. It configures itself from facts that already exist — `outputLayout.runtimeFile` is the
-input, `slug` names the output — so only the destination directory is an option. `strict` escalates
-bundler warnings to errors. It needs a product that emits JavaScript, and says so if given one that
-does not.
+`sourceTarget({ intent, assets, export })` implements targets that copy local tarballs and source,
+render files, install dependencies, run commands, and optionally export results. The target's graph
+path supplies its name and facet.
+
+`rollup({ bundleDirectory, strict })` adds `/target/ci/bundle` and supporting bindings. It consumes
+`/output/layout` and `/package/slug`; a product that emits no JavaScript entry is rejected.
 
 ## Package managers
 
-`npm()`, `pnpm()`, and `yarn()` are feature graphs. Each supplies four ordinary functions — `install`,
-`exec`, `script`, and `pack` — plus `installManifest`, a `packCommand`, and a `packageManagerFile`.
-`exec` and `script` are the two ways an invocation reaches a shell: through the manager in an image,
-and bare in a manifest script. Because the bindings have the same names, normal right-biased graph
-merging makes the last manager complete. The base image does not imply a manager.
+`npm()`, `pnpm()`, and `yarn()` are feature graphs. Each owns these replaceable semantic paths:
 
-A custom manager is just another graph with the same bindings and contributions:
+- `/package-manager/install-manifest`
+- `/package-manager/exec`
+- `/package-manager/script`
+- `/package-manager/install`
+- `/package-manager/pack`
+- `/command/pack/package`
+- `/file/package-manager`
+
+Because the paths are shared, normal right-biased graph merging makes the last manager complete. The
+base image does not imply a manager.
+
+A custom manager provides the same bindings directly:
 
 ```js
 const bun = () => rdk.graph({
-  installManifest: rdk.value(fileTarballs),
-  install: rdk.value(() => 'bun install'),
-  exec: rdk.value(invocation => `bun x ${invocation}`),
-  script: rdk.value(invocation => invocation),
-  pack: rdk.value(slug => `bun pm pack --destination /out --filename ${slug}.tgz`),
+  '/package-manager/install-manifest': rdk.value(fileTarballs),
+  '/package-manager/install': rdk.value(() => 'bun install'),
+  '/package-manager/exec': rdk.value(command => `bun x ${command}`),
+  '/package-manager/script': rdk.value(command => command),
+  '/package-manager/pack': rdk.value(slug =>
+    `bun pm pack --destination /out --filename ${slug}.tgz`),
 
-  packCommand: command(['pack', 'slug'], {
+  '/command/pack/package': command(['/package-manager/pack', '/package/slug'], {
     for: ['pack', 'publish'],
     run: (pack, slug) => ({ shell: pack(slug) }),
   }),
 
-  packageManagerFile: file([], {
+  '/file/package-manager': file([], {
     for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
     render: () => writeText('/repo/bunfig.toml', '[install]\nexact = true\n'),
   }),
 })
 ```
 
-`install` receives the host platform where one is known, so a dev install can narrow to the host's
-os and cpu while a CI image installs for its own platform.
-
-No core modification or package-manager registration is required.
+Local package dependencies arrive from sibling `ci:pack` targets as tarballs. Install rendering may
+replace their manifest ranges with `file:` references. Pack and publish rendering restores public
+ranges.

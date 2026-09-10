@@ -1,9 +1,5 @@
 import rdk from '//rdk//dagr.rdk.js'
 
-export const FILES = 'files'
-export const COMMANDS = 'commands'
-export const TARGETS = 'targets'
-
 const contributionValues = contributions => Reflect.ownKeys(contributions)
   .map(name => contributions[name])
 
@@ -50,7 +46,6 @@ export const file = (deps, options = {}) => {
       order,
       render: context => normalizeSteps(options.render(context, ...values)),
     }),
-    [FILES],
   )
 }
 
@@ -91,7 +86,6 @@ export const command = (deps, options = {}) => {
       order,
       invocations: normalizeInvocations(options.run(...values)),
     }),
-    [COMMANDS],
   )
 }
 
@@ -130,49 +124,55 @@ export const contextFor = (context, files, commands) => {
 }
 
 /**
- * A target contribution. File and command collections are supplied automatically; ordinary graph
- * dependencies keep their normal positions before the context.
+ * A target binding. File and command collections are selected automatically; ordinary graph
+ * dependencies keep their normal positions before the context. Its `/target/<facet>/<name>` path
+ * supplies the Dagr facet and target name when the index materializes it.
  */
 export function target(deps, {
-  name,
-  facet = 'ci',
-  intent = name,
+  intent,
   render,
 } = {}) {
   if (!Array.isArray(deps)) throw new TypeError('target contribution dependencies must be an array')
-  if (typeof name !== 'string' || name === '') throw new Error('target contribution needs a name')
-  if (typeof facet !== 'string' || facet === '') throw new Error(`target ${JSON.stringify(name)} needs a facet`)
-  if (typeof intent !== 'string' || intent === '') throw new Error(`target ${JSON.stringify(name)} needs an intent`)
-  if (typeof render !== 'function') throw new Error(`target ${JSON.stringify(name)} needs render`)
+  if (intent !== undefined && (typeof intent !== 'string' || intent === '')) {
+    throw new Error('target contribution intent must be a non-empty string')
+  }
+  if (typeof render !== 'function') throw new Error('target contribution needs render')
 
   return rdk.derive(
-    [...deps, { tag: FILES }, { tag: COMMANDS }],
+    [...deps, '/file/**', '/command/**'],
     (...values) => {
       const commands = values.pop()
       const files = values.pop()
-      const context = contextFor({ intent, facet, host: undefined }, files, commands)
-      const definition = render(context, ...values)
-      if (definition === null || typeof definition !== 'object' || Array.isArray(definition)) {
-        throw new TypeError(`target ${JSON.stringify(name)} render must return a target definition`)
-      }
-      if (!Array.isArray(definition.deps)) {
-        throw new TypeError(`target ${JSON.stringify(name)} needs deps`)
-      }
-      if (typeof definition.run !== 'function') {
-        throw new TypeError(`target ${JSON.stringify(name)} needs run`)
-      }
       return Object.freeze({
-        name,
-        facet,
-        definition: Object.freeze({
-          name,
-          deps: Object.freeze([...definition.deps]),
-          run: definition.run,
-        }),
+        materialize(name, facet) {
+          const context = contextFor({ intent: intent ?? name, facet, host: undefined }, files, commands)
+          const rendered = render(context, ...values)
+          if (rendered === null || typeof rendered !== 'object' || Array.isArray(rendered)) {
+            throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} render must return a Dagr target`)
+          }
+          if (!Array.isArray(rendered.deps)) {
+            throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs deps`)
+          }
+          if (typeof rendered.run !== 'function') {
+            throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs run`)
+          }
+          return Object.freeze({
+            name,
+            deps: Object.freeze([...rendered.deps]),
+            run: rendered.run,
+          })
+        },
       })
     },
-    [TARGETS],
   )
+}
+
+const targetCoordinates = path => {
+  const [, kind, facet, name, ...rest] = path.split('/')
+  if (kind !== 'target' || !facet || !name || rest.length !== 0) {
+    throw new Error(`Target binding ${JSON.stringify(path)} must have the form "/target/<facet>/<name>"`)
+  }
+  return { facet, name }
 }
 
 /**
@@ -190,8 +190,8 @@ const localRef = (dependency, facet) => {
 
 const validateLocalRefs = facets => {
   for (const [facet, targets] of Object.entries(facets)) {
-    for (const [name, definition] of Object.entries(targets)) {
-      for (const dependency of definition.deps) {
+    for (const [name, target] of Object.entries(targets)) {
+      for (const dependency of target.deps) {
         const sibling = localRef(dependency, facet)
         if (sibling === undefined) continue
         if (facets[sibling[0]]?.[sibling[1]] === undefined) {
@@ -204,18 +204,14 @@ const validateLocalRefs = facets => {
   }
 }
 
-/** The deliberately boring final calculation: collect, group, and reject unowned names. */
+/** The deliberately boring final calculation: materialize target paths, group, and validate refs. */
 export const index = () => rdk.graph({
-  index: rdk.derive([{ tag: TARGETS }], contributions => {
+  '/dagr/index': rdk.derive(['/target/**'], bindings => {
     const facets = {}
-    for (const contribution of contributionValues(contributions)) {
-      const targets = facets[contribution.facet] ??= {}
-      if (Object.hasOwn(targets, contribution.name)) {
-        throw new Error(
-          `target ${JSON.stringify(contribution.name)} in facet ${JSON.stringify(contribution.facet)} has more than one owner`,
-        )
-      }
-      targets[contribution.name] = contribution.definition
+    for (const path of Object.keys(bindings)) {
+      const { facet, name } = targetCoordinates(path)
+      const targets = facets[facet] ??= {}
+      targets[name] = bindings[path].materialize(name, facet)
     }
     validateLocalRefs(facets)
     return facets

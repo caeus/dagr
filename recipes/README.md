@@ -9,8 +9,9 @@
 | [`rdk`](rdk/) | Recipe Development Kit: a small synchronous graph for composing calculations |
 | [`typescript`](typescript/) | Composable TypeScript recipe that calculates generated configuration and Dagr targets |
 
-The TypeScript recipe uses one RDK graph. Project facts and shared calculations are ordinary bindings. Its output
-contributions are files, commands, and targets whose renderers receive target context.
+The TypeScript recipe uses one RDK graph. It addresses facts, calculations, files, commands,
+requirements, and targets by absolute semantic binding paths. Exact dependencies name one binding;
+glob dependencies select open sets such as `/file/**` and `/target/**`.
 
 ## Boundaries
 
@@ -20,8 +21,8 @@ inside that recipe directory. Repository-only tests live in [`tests/`](tests/).
 Build recipes expose `dagr.recipe.js`. The RDK exposes `dagr.rdk.js`.
 
 A recipe is a builder over a reusable feature graph. Features merge through normal RDK composition; calling the
-recipe adds one package declaration and returns its Dagr index. No graph is copied per intent, and facets need no
-declaration or registry.
+recipe adds one package declaration and compiles its `/dagr/index` binding. No graph is copied per
+intent, and paths replace separate contribution or facet registries.
 
 Consumers choose their own mount aliases. A mounted TypeScript recipe might therefore be imported as:
 

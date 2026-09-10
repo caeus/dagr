@@ -2,78 +2,63 @@
 
 The RDK at `recipes/rdk/dagr.rdk.js` is the recipe's only calculation engine.
 
-## Primitive operations
+## Core model
+
+An RDK graph is one flat `Map` of bindings addressed by absolute semantic paths. Paths provide
+identity and hierarchy. Exact dependencies name one binding; glob dependencies select open sets.
+There is no separate tag, registry, or selector system.
 
 ```js
 const graph = rdk.graph({
-  fact: rdk.value('input'),
-  result: rdk.derive(['fact'], fact => `${fact}!`),
+  '/source/directory': rdk.value('src'),
+  '/message/greeting': rdk.derive(['/source/directory'], source => `Hello from ${source}`),
 })
 
 graph.merge(other)
-graph.definitionOf('result')
-graph.shake(['result']).compile().result
+graph.bindingOf('/message/greeting')
+graph.keys()
+graph.compile(['/message/greeting'])['/message/greeting']
 ```
 
-- `value(input, tags?)` provides a fact.
-- `derive(deps, factory, tags?)` calculates from explicit dependencies.
-- `construct(deps, Class, tags?)` constructs a class.
+- `value(input)` provides a fact.
+- `derive(deps, factory)` calculates from explicit dependencies.
+- `construct(deps, Class)` constructs a class.
 - `merge` is immutable and right-biased.
-- `shake` retains roots, tag matches, and transitive dependencies.
-- `compile` resolves retained bindings synchronously once.
+- `compile()` resolves all bindings.
+- `compile(roots)` retains exact or glob roots and every transitive exact or glob dependency.
 
-## Recipe conventions
+Binding names, exact dependencies, and selectors are absolute paths. Binding names cannot contain
+wildcards. Selectors use whole `*` and `**` segments and delegate matching to `dagr:glob`.
 
-Names identify facts and calculations such as `sourceDirectory`, `outputLayout`, and `exec`. Do not
-encode an intent or facet into a binding name. Values shared by several outputs stay ordinary.
+## Recipe paths
 
-Open output collections use three tags, attached by their helpers:
+Use semantic path namespaces consistently:
 
-- `file(...)` attaches `files`.
-- `command(...)` attaches `commands`.
-- `target(...)` attaches `targets`.
+- `/file/**` for generated file or step contributions;
+- `/command/**` for context-free command contributions;
+- `/target/<facet>/<name>` for Dagr targets;
+- `/requirement/**` for package, ambient-type, and build-policy requirements;
+- paths such as `/package/name`, `/source/directory`, and `/output/layout` for ordinary facts and
+  calculations.
 
-Targets automatically receive the file and command collections. The `index` binding automatically
-receives the target collection. Callers never attach these tags manually.
+The `file`, `command`, `target`, and `requirement` helpers validate or render their values. They do
+not group them. Consumers discover open collections with path selectors.
 
-A target renders the context-aware files, then decides how to materialize the intent's invocations.
-Ordering among contributions is their numeric `order`, not the target's dependency list:
+A target automatically depends on `/file/**` and `/command/**`. The `/dagr/index` binding depends on
+`/target/**` and derives each target's facet and name from `/target/<facet>/<name>`.
 
-```js
-target(['exec', 'install'], {
-  name: 'test',
-  facet: 'ci',
-  intent: 'test',
-  render(ctx, exec, install) {
-    return {
-      deps: [],
-      run: ({ host }) => ({
-        FROM: 'node:22-alpine',
-        steps: [
-          ...ctx.files({ host }),
-          { RUN: install(host) },
-          ...runSteps(ctx.invocations(), exec),
-        ],
-        IGNORE: [],
-      }),
-    }
-  },
-})
-```
+Files render before commands. Contributions of one kind are ordered by their numeric `order`, which
+defaults to zero. Equal orders retain graph key order. Use explicit ordering only when step sequence
+is behavior.
 
-Any other kind of contribution is an ordinary tagged value — `requirement(...)` is one, and a task for
-some external runner would be another. Invent a tag, have a file contribution depend on `{ tag }`, and
-aggregate. Only files, commands, and targets need helpers, because only they reach a container.
-
-Context is data passed to output rendering. It is not another graph and does not alter how ordinary
-dependencies resolve.
-
-`requirement(...)` is an ordinary tagged value used only where independent tooling features must
-contribute package, ambient-type, or build-policy facts. It is shared input to file and command
-outputs, not another evaluator. Its `packages` are names; the version catalog resolves them.
+Requirement consumers depend on `/requirement/**`. A package name appears in a requirement while its
+version comes from the single `/version/catalog` binding.
 
 ## Determinism
 
-Factories stay synchronous and deterministic. Do not build RDK nodes around network access, ambient
+Factories stay synchronous and deterministic. Do not build bindings around network access, ambient
 environment state, mutable registries, or asynchronous resolution. Promises are ordinary values and
 are not awaited by `compile()`.
+
+Glob matches follow graph key order. A merge replacement keeps the existing key position, while a
+new binding appends in merge order.

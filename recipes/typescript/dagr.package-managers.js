@@ -1,6 +1,6 @@
 import rdk from '//rdk//dagr.rdk.js'
 import { command, file } from '//dagr.contributions.js'
-import { DEVELOPMENT_INTENTS, REQUIREMENTS, requirementsOf } from '//dagr.model.js'
+import { DEVELOPMENT_INTENTS, requirementsOf } from '//dagr.model.js'
 import { writeYaml } from '//dagr.file-utils.js'
 
 export const fileTarballs = (manifest, localPackages) => localPackages.reduce(
@@ -15,32 +15,32 @@ const packDestination = command => slug =>
   `mkdir -p /tmp/pack /out && ${command} --pack-destination /tmp/pack && mv /tmp/pack/*.tgz /out/${slug}.tgz`
 
 export const npm = () => rdk.graph({
-  installManifest: rdk.value(fileTarballs),
-  exec: rdk.value(invocation => `npm exec -- ${invocation}`),
-  script: rdk.value(invocation => invocation),
-  install: rdk.value(host => `npm install --include=dev${host ? ` --os=${host.os} --cpu=${host.arch}` : ''}`),
-  pack: rdk.value(packDestination('npm pack')),
-  packCommand: command(['pack', 'slug'], {
+  '/package-manager/install-manifest': rdk.value(fileTarballs),
+  '/package-manager/exec': rdk.value(invocation => `npm exec -- ${invocation}`),
+  '/package-manager/script': rdk.value(invocation => invocation),
+  '/package-manager/install': rdk.value(host => `npm install --include=dev${host ? ` --os=${host.os} --cpu=${host.arch}` : ''}`),
+  '/package-manager/pack': rdk.value(packDestination('npm pack')),
+  '/command/pack/package': command(['/package-manager/pack', '/package/slug'], {
     for: ['pack', 'publish'],
     run: (pack, slug) => ({ shell: pack(slug) }),
   }),
-  packageManagerFile: file([], {
+  '/file/package-manager': file([], {
     for: DEVELOPMENT_INTENTS,
     render: () => [],
   }),
 })
 
 export const pnpm = () => rdk.graph({
-  installManifest: rdk.value(fileTarballs),
-  exec: rdk.value(invocation => `pnpm exec ${invocation}`),
-  script: rdk.value(invocation => invocation),
-  install: rdk.value(host => `pnpm install --prod=false${host ? ` --os ${host.os} --cpu ${host.arch}` : ''}`),
-  pack: rdk.value(packDestination('pnpm pack')),
-  packCommand: command(['pack', 'slug'], {
+  '/package-manager/install-manifest': rdk.value(fileTarballs),
+  '/package-manager/exec': rdk.value(invocation => `pnpm exec ${invocation}`),
+  '/package-manager/script': rdk.value(invocation => invocation),
+  '/package-manager/install': rdk.value(host => `pnpm install --prod=false${host ? ` --os ${host.os} --cpu ${host.arch}` : ''}`),
+  '/package-manager/pack': rdk.value(packDestination('pnpm pack')),
+  '/command/pack/package': command(['/package-manager/pack', '/package/slug'], {
     for: ['pack', 'publish'],
     run: (pack, slug) => ({ shell: pack(slug) }),
   }),
-  packageManagerFile: file([{ tag: REQUIREMENTS }, 'configuredVersions'], {
+  '/file/package-manager': file(['/requirement/**', '/version/catalog'], {
     for: DEVELOPMENT_INTENTS,
     render(context, requirements, versions) {
       const { allowBuilds } = requirementsOf(requirements, context, versions)
@@ -54,7 +54,7 @@ export const pnpm = () => rdk.graph({
 })
 
 export const yarn = () => rdk.graph({
-  installManifest: rdk.value((manifest, localPackages, requirements) => ({
+  '/package-manager/install-manifest': rdk.value((manifest, localPackages, requirements) => ({
     ...fileTarballs(manifest, localPackages),
     ...(requirements.allowBuilds.length === 0
       ? {}
@@ -65,15 +65,15 @@ export const yarn = () => rdk.graph({
           },
         }),
   })),
-  exec: rdk.value(invocation => `yarn exec ${invocation}`),
-  script: rdk.value(invocation => invocation),
-  install: rdk.value(() => 'yarn install --no-immutable'),
-  pack: rdk.value(slug => `mkdir -p /out && yarn pack --out /out/${slug}.tgz`),
-  packCommand: command(['pack', 'slug'], {
+  '/package-manager/exec': rdk.value(invocation => `yarn exec ${invocation}`),
+  '/package-manager/script': rdk.value(invocation => invocation),
+  '/package-manager/install': rdk.value(() => 'yarn install --no-immutable'),
+  '/package-manager/pack': rdk.value(slug => `mkdir -p /out && yarn pack --out /out/${slug}.tgz`),
+  '/command/pack/package': command(['/package-manager/pack', '/package/slug'], {
     for: ['pack', 'publish'],
     run: (pack, slug) => ({ shell: pack(slug) }),
   }),
-  packageManagerFile: file([], {
+  '/file/package-manager': file([], {
     for: DEVELOPMENT_INTENTS,
     render: context => writeYaml('/repo/.yarnrc.yml', {
       nodeLinker: 'node-modules',

@@ -19,24 +19,25 @@ synchronous RDK graph.
 
 ## Core model
 
-A TypeScript recipe contains one immutable RDK graph. Facts and reusable calculations are ordinary
-bindings. Files, commands, and targets are definitions created by `file`, `command`, and `target`;
-the helpers attach their own collection tags.
+A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed
+by absolute semantic paths. Exact dependencies name one binding and glob dependencies select open
+sets through `dagr:glob`. Files, commands, targets, and requirements use `/file/**`, `/command/**`,
+`/target/**`, and `/requirement/**`; their helpers add validation or rendering, not grouping.
 
 `recipe(features)` returns a builder. Applying one package declaration merges its facts and runs:
 
 ```js
-graph.shake(['index']).compile().index
+graph.compile(['/dagr/index'])['/dagr/index']
 ```
 
-The index collects target contributions, groups them by facet, rejects duplicate names within a
-facet, and returns the result. There is no facet registry.
+The index derives facet and name from every `/target/<facet>/<name>` binding and returns the grouped
+result. There is no facet registry.
 
 ## Modeling rules
 
 - Keep declarations limited to `location`, `version`, dependencies, and metadata.
-- Keep shared semantics as ordinary RDK nodes.
-- Use ordinary `requirement` nodes when files and commands must agree on tool packages, ambient
+- Keep shared semantics as ordinary RDK bindings with paths such as `/source/directory`.
+- Use `/requirement/**` bindings when files and commands must agree on tool packages, ambient
   types, or allowed dependency builds.
 - Render generated files and executable commands only as contributions.
 - Pass `intent`, `facet`, and `host` through render context; never make all graph values contextual.
@@ -49,9 +50,9 @@ facet, and returns the result. There is no facet registry.
 ## Package managers
 
 Package managers are ordinary feature graphs. Built-ins are `npm()`, `pnpm()`, and `yarn()`. They
-provide ordinary `installManifest`, `exec`, and `pack` functions and contribute commands/files.
-Custom managers provide the same graph bindings directly. Do not infer a manager from the base image
-or add a manager registry.
+provide `/package-manager/**`, `/command/pack/package`, and `/file/package-manager` bindings. Custom
+managers provide the same paths directly. Do not infer a manager from the base image or add a
+manager registry.
 
 Local package dependencies arrive from sibling `ci:pack` targets as tarballs. Install rendering may
 replace their manifest ranges with `file:` references. Pack and publish rendering restores the public

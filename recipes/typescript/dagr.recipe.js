@@ -11,10 +11,10 @@ export { rdk }
 const declarationOf = ({ location, version = '0.1.0', deps = [], metadata = {} } = {}) => {
   if (!location) throw new Error('A package declaration requires a location')
   return rdk.graph({
-    location: rdk.value(location),
-    version: rdk.value(version),
-    deps: rdk.value(Object.freeze([...deps])),
-    metadata: rdk.value(Object.freeze({ ...metadata })),
+    '/package/location': rdk.value(location),
+    '/package/version': rdk.value(version),
+    '/package/dependencies': rdk.value(Object.freeze([...deps])),
+    '/package/metadata': rdk.value(Object.freeze({ ...metadata })),
   })
 }
 
@@ -32,7 +32,7 @@ export function builder(init, run, graph = rdk.graph({})) {
   })
 }
 
-const renderIndex = graph => graph.shake(['index']).compile().index
+const renderIndex = graph => graph.compile(['/dagr/index'])['/dagr/index']
 
 /** A reusable graph composition applied to one irreducible package declaration. */
 export default function recipe(features = []) {
