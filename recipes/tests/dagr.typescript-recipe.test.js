@@ -101,7 +101,10 @@ describe('mountable TypeScript recipe', () => {
 
     const yarn = runTarget(indexFor(ts.yarn()).ci.test)
     assert.equal(yarn.steps.at(-2).RUN, 'yarn install --no-immutable')
-    assert.deepEqual(decodeWritten(yarn.steps, '.yarnrc.yml'), { nodeLinker: 'node-modules' })
+    assert.deepEqual(decodeWritten(yarn.steps, '.yarnrc.yml'), {
+      enableScripts: false,
+      nodeLinker: 'node-modules',
+    })
     assert.deepEqual(decodeWritten(yarn.steps, 'package.json').dependenciesMeta, {
       esbuild: { built: true },
     })
@@ -129,6 +132,7 @@ describe('mountable TypeScript recipe', () => {
 
     const sync = runTarget(index.dev.sync, { host: { os: 'linux', arch: 'arm64' } })
     assert.deepEqual(decodeWritten(sync.steps, '.yarnrc.yml'), {
+      enableScripts: false,
       nodeLinker: 'node-modules',
       supportedArchitectures: { os: ['linux'], cpu: ['arm64'] },
     })
@@ -138,7 +142,10 @@ describe('mountable TypeScript recipe', () => {
     assert.equal(sync.steps.some(step => step.RUN?.includes('install')), false)
 
     const build = runTarget(index.ci.build, { host: { os: 'linux', arch: 'arm64' } })
-    assert.deepEqual(decodeWritten(build.steps, '.yarnrc.yml'), { nodeLinker: 'node-modules' })
+    assert.deepEqual(decodeWritten(build.steps, '.yarnrc.yml'), {
+      enableScripts: false,
+      nodeLinker: 'node-modules',
+    })
   })
 
   it('supports a custom manager as a normal feature graph', async () => {

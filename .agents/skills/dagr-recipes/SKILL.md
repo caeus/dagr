@@ -22,7 +22,9 @@ synchronous RDK graph.
 A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed
 by absolute semantic paths. Exact dependencies name one binding and glob dependencies select open
 sets through `dagr:glob`. Files, commands, targets, and requirements use `/file/**`, `/command/**`,
-`/target/**`, and `/requirement/**`; their helpers add validation or rendering, not grouping.
+`/target/**`, and `/requirement/**`; their helpers add validation or rendering, not grouping. Fixed
+tool requirements occupy `/requirement/*`; adapter-interpreted build facts occupy
+`/requirement/build-scripts/**`.
 
 `recipe(features)` returns a builder. Applying one package declaration merges its facts and runs:
 
@@ -37,8 +39,9 @@ result. There is no facet registry.
 
 - Keep declarations limited to `location`, `version`, dependencies, and metadata.
 - Keep shared semantics as ordinary RDK bindings with paths such as `/source/directory`.
-- Use `/requirement/**` bindings when files and commands must agree on tool packages, ambient
-  types, or allowed dependency builds.
+- Use `/requirement/*` bindings when files and commands must agree on tool packages or ambient types.
+- Use intent-scoped `fact` bindings under `/requirement/build-scripts/**` for dependencies whose
+  build scripts a package manager should permit.
 - Render generated files and executable commands only as contributions.
 - Pass `intent`, `facet`, and `host` through render context; never make all graph values contextual.
 - Let targets select their context and explicitly render the contributions they need.

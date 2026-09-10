@@ -1,9 +1,9 @@
 import rdk from '//rdk//dagr.rdk.js'
-import { command, file } from '//dagr.contributions.js'
-import { DEVELOPMENT_INTENTS, requirementsOf } from '//dagr.model.js'
+import { command, factsFor, file } from '//dagr.contributions.js'
+import { DEVELOPMENT_INTENTS } from '//dagr.model.js'
 import { writeYaml } from '//dagr.file-utils.js'
 
-export const fileTarballs = (manifest, localPackages) => localPackages.reduce(
+export const fileTarballs = (manifest, localPackages, _context) => localPackages.reduce(
   (result, { name, tarball, at }) => {
     const field = at === 'dev' ? 'devDependencies' : 'dependencies'
     return { ...result, [field]: { ...(result[field] ?? {}), [name]: `file:./${tarball}` } }
@@ -40,10 +40,10 @@ export const pnpm = () => rdk.graph({
     for: ['pack', 'publish'],
     run: (pack, slug) => ({ shell: pack(slug) }),
   }),
-  '/file/package-manager': file(['/requirement/**', '/version/catalog'], {
+  '/file/package-manager': file(['/requirement/build-scripts/**'], {
     for: DEVELOPMENT_INTENTS,
-    render(context, requirements, versions) {
-      const { allowBuilds } = requirementsOf(requirements, context, versions)
+    render(context, builds) {
+      const allowBuilds = factsFor(builds, context.intent)
       return allowBuilds.length === 0
         ? []
         : writeYaml('/repo/pnpm-workspace.yaml', {
@@ -54,17 +54,23 @@ export const pnpm = () => rdk.graph({
 })
 
 export const yarn = () => rdk.graph({
-  '/package-manager/install-manifest': rdk.value((manifest, localPackages, requirements) => ({
-    ...fileTarballs(manifest, localPackages),
-    ...(requirements.allowBuilds.length === 0
-      ? {}
-      : {
-          dependenciesMeta: {
-            ...manifest.dependenciesMeta,
-            ...Object.fromEntries(requirements.allowBuilds.map(pkg => [pkg, { built: true }])),
-          },
-        }),
-  })),
+  '/package-manager/install-manifest': rdk.derive(
+    ['/requirement/build-scripts/**'],
+    builds => (manifest, localPackages, context) => {
+      const allowBuilds = factsFor(builds, context.intent)
+      return {
+        ...fileTarballs(manifest, localPackages),
+        ...(allowBuilds.length === 0
+          ? {}
+          : {
+              dependenciesMeta: {
+                ...manifest.dependenciesMeta,
+                ...Object.fromEntries(allowBuilds.map(pkg => [pkg, { built: true }])),
+              },
+            }),
+      }
+    },
+  ),
   '/package-manager/exec': rdk.value(invocation => `yarn exec ${invocation}`),
   '/package-manager/script': rdk.value(invocation => invocation),
   '/package-manager/install': rdk.value(() => 'yarn install --no-immutable'),
@@ -76,6 +82,7 @@ export const yarn = () => rdk.graph({
   '/file/package-manager': file([], {
     for: DEVELOPMENT_INTENTS,
     render: context => writeYaml('/repo/.yarnrc.yml', {
+      enableScripts: false,
       nodeLinker: 'node-modules',
       ...(context.host
         ? { supportedArchitectures: { os: [context.host.os], cpu: [context.host.arch] } }

@@ -1,5 +1,6 @@
 import {
   command,
+  fact,
   rdk,
   requirement,
   runSteps,
@@ -62,7 +63,10 @@ export function nodeTest({
     // so tsx has to be in the manifest that image installed. esbuild is tsx's own build step.
     '/requirement/node-test': requirement({
       packages: ['tsx'],
-      allowBuilds: ['esbuild'],
+    }),
+    '/requirement/build-scripts/node-test': fact([], {
+      for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
+      value: ['esbuild'],
     }),
     '/command/test/node': command(['/requirement/node-test'], {
       for: ['test'],

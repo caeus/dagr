@@ -7,7 +7,7 @@ Keep these rules while editing this area:
 
 - Treat `recipes/` as the publication/mount boundary. `typescript` is a build recipe; `rdk` is supporting recipe-authoring infrastructure.
 - Keep project facts and shared calculations as absolute semantic-path RDK bindings. Generated files and commands are outputs.
-- Use `/file/**`, `/command/**`, `/target/**`, and `/requirement/**` for open collections. Their helpers validate and render values; paths provide grouping.
+- Use `/file/**`, `/command/**`, `/target/**`, and `/requirement/**` for open collections. Their helpers validate values and, where appropriate, render them; paths provide grouping.
 - Supply intent, facet, and host as render context. Never lift or duplicate the graph per intent.
 - Do not introduce tags, a settings graph, a feature/facet/target registry, another matcher, or another evaluator.
 - Keep package-manager behavior in explicit feature graphs such as `npm()`, `pnpm()`, and `yarn()`. A custom manager is an ordinary graph, not a core registration.
