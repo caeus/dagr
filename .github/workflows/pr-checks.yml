@@ -25,7 +25,8 @@ jobs:
             //engine:ci:image \
             //recipes:ci:test \
             //recipes:ci:image-rdk \
-            //recipes:ci:image-typescript
+            //recipes:ci:image-typescript \
+            //harness:ci:test
 
       - name: Smoke-test self-built image
         run: |

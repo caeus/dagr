@@ -5,10 +5,12 @@ Read [`README.md`](README.md) first, then use the repository Agent Skill at
 
 Keep these rules while editing this area:
 
-- Treat `recipes/` as the publication/mount boundary. `typescript` is a stack recipe; `rdk` is supporting recipe-authoring infrastructure.
-- Model project facts once and derive tool-specific consequences through the RDK graph.
-- Do not introduce a second settings graph, feature registry, target registry, or manifest evaluator.
-- Keep package-manager behavior behind the TypeScript stack's explicit `packageManager` choice. Do not infer it from the base image.
+- Treat `recipes/` as the publication/mount boundary. `typescript` is a build recipe; `rdk` is supporting recipe-authoring infrastructure.
+- Keep project facts and shared calculations as absolute semantic-path RDK bindings. Generated files and commands are outputs.
+- Use `/file/**`, `/command/**`, `/target/**`, and `/requirement/**` for open collections. Their helpers validate and render values; paths provide grouping.
+- Supply intent, facet, and host as render context. Never lift or duplicate the graph per intent.
+- Do not introduce tags, a settings graph, a feature/facet/target registry, another matcher, or another evaluator.
+- Keep package-manager behavior in explicit feature graphs such as `npm()`, `pnpm()`, and `yarn()`. A custom manager is an ordinary graph, not a core registration.
 - Keep mount identities, workflows, README files, `llms.txt`, `AGENTS.md`, and Agent Skill guidance synchronized with structural changes.
 - Put repository-only tests under `recipes/tests/`, not in published recipe directories.
 

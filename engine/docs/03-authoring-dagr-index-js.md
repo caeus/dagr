@@ -36,7 +36,7 @@ Notes on validation:
 - `steps` is required. Use `steps: []` for a target that only re-tags or re-exports its base.
 - `IGNORE` is required, and `IGNORE: []` means "upload the whole context". Also no default —
   see [`IGNORE`](#ignore) below.
-- Additional target fields are preserved, allowing stacks to attach metadata. `deps` and `run`
+- Additional target fields are preserved, allowing recipes to attach metadata. `deps` and `run`
   are still validated.
 
 ## Package location
@@ -174,7 +174,7 @@ A common need is writing a config file whose contents are computed in JavaScript
 step is just a `RUN`, a helper can return one:
 
 ```js
-// lib/dagr.file_utils.js
+// lib/dagr.file-utils.js
 export function writeText(path, content) {
   return { RUN: `echo "${Buffer.from(content).toString('base64')}" | base64 -d > ${path}` }
 }

@@ -1,84 +1,64 @@
 # How Dagr recipes use RDK
 
-The RDK recipe at `recipes/rdk/dagr.rdk.js` is a tiny synchronous calculation graph.
+The RDK at `recipes/rdk/dagr.rdk.js` is the recipe's only calculation engine.
 
-## Primitive operations
+## Core model
+
+An RDK graph is one flat `Map` of bindings addressed by absolute semantic paths. Paths provide
+identity and hierarchy. Exact dependencies name one binding; glob dependencies select open sets.
+There is no separate tag, registry, or selector system.
 
 ```js
-import rdk, { derive, value } from '//recipes/rdk//dagr.rdk.js'
-
 const graph = rdk.graph({
-  fact: value('input'),
-  derived: derive(['fact'], fact => `${fact}!`),
+  '/source/directory': rdk.value('src'),
+  '/message/greeting': rdk.derive(['/source/directory'], source => `Hello from ${source}`),
 })
 
-const result = graph.shake(['derived']).compile().derived
+graph.merge(other)
+graph.bindingOf('/message/greeting')
+graph.keys()
+graph.compile(['/message/greeting'])['/message/greeting']
 ```
 
-- `value(input, tags?)` provides a known fact or contribution.
-- `derive(deps, factory, tags?)` derives a value from explicit dependencies.
-- `construct(deps, Class, tags?)` constructs a class when needed.
-- `graph.merge(other)` returns a new right-biased graph.
-- `graph.shake(roots)` retains only requested roots and transitive dependencies.
-- `graph.compile()` synchronously initializes retained bindings once.
+- `value(input)` provides a fact.
+- `derive(deps, factory)` calculates from explicit dependencies.
+- `construct(deps, Class)` constructs a class.
+- `merge` is immutable and right-biased.
+- `compile()` resolves all bindings.
+- `compile(roots)` retains exact or glob roots and every transitive exact or glob dependency.
 
-## One graph
+Binding names, exact dependencies, and selectors are absolute paths. Binding names cannot contain
+wildcards. Selectors use whole `*` and `**` segments and delegate matching to `dagr:glob`.
 
-The TypeScript stack intentionally has one calculation graph:
+## Recipe paths
 
-```js
-graph.shake(['index']).compile().index
-```
+Use semantic path namespaces consistently:
 
-Features merge into that graph. Do not add another registry or evaluator for calculations, features, targets, or generated manifests.
+- `/file/**` for generated file or step contributions;
+- `/command/**` for context-free command contributions;
+- `/target/<facet>/<name>` for Dagr targets;
+- `/requirement/**` for package, ambient-type, and build-policy requirements;
+- paths such as `/package/name`, `/source/directory`, and `/output/layout` for ordinary facts and
+  calculations.
 
-## Keys are concepts
+The `file`, `command`, `target`, and `requirement` helpers validate or render their values. They do
+not group them. Consumers discover open collections with path selectors.
 
-Name bindings for the fact or calculation they own, for example:
+A target automatically depends on `/file/**` and `/command/**`. The `/dagr/index` binding depends on
+`/target/**` and derives each target's facet and name from `/target/<facet>/<name>`.
 
-```text
-location
-intent
-outputLayout
-runtimeEntry
-packageJson.main
-ci:test/packageJson.private
-```
+Files render before commands. Contributions of one kind are ordered by their numeric `order`, which
+defaults to zero. Equal orders retain graph key order. Use explicit ordering only when step sequence
+is behavior.
 
-Use workspace-qualified keys where the same setting exists in multiple generated workspaces.
-
-## Direct dependencies versus tags
-
-Use named dependencies for behavioral relationships. This keeps causal paths inspectable.
-
-Use tags only when the contributor set is intentionally open-ended, such as:
-
-- `toolPackages`
-- `runtimePackages`
-- `ambientTypes`
-- `generatedFiles`
-- `allowBuilds`
-- `versionDefaults`
-- `validations`
-- `buildDependencies`
-- `eslint.ruleSets`
-- facet target collections
-
-Collectors own collision policy. Never depend on contribution order.
-
-## Shared semantics
-
-If several generated outputs need the same decision, derive them from a shared semantic node rather than from one another:
-
-```text
-outputLayout
-  ├── packageJson.main
-  ├── packageJson.files
-  └── tsconfig.compilerOptions.outDir
-```
-
-Likewise, package-manager selection is one explicit stack fact. Targets ask the selected adapter to install, execute, or pack rather than independently embedding package-manager commands.
+Requirement consumers depend on `/requirement/**`. A package name appears in a requirement while its
+version comes from the single `/version/catalog` binding.
 
 ## Determinism
 
-Keep factories synchronous and deterministic. Do not design RDK nodes around network access, environment variables, timers, mutable ambient state, or asynchronous resolution. Promises are ordinary values and are not awaited by `compile()`.
+Factories stay synchronous and deterministic. Do not build bindings around network access, ambient
+environment state, mutable registries, or asynchronous resolution. Promises are ordinary values and
+are not awaited by `compile()`.
+
+Glob matches follow graph key order. A merge replacement keeps the existing key position, while a
+new binding appends in merge order.

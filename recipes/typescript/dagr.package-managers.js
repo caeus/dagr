@@ -1,36 +1,85 @@
-const manager = definition => Object.freeze(definition)
+import rdk from '//rdk//dagr.rdk.js'
+import { command, file } from '//dagr.contributions.js'
+import { DEVELOPMENT_INTENTS, requirementsOf } from '//dagr.model.js'
+import { writeYaml } from '//dagr.file-utils.js'
 
-const packCommand = command => slug =>
+export const fileTarballs = (manifest, localPackages) => localPackages.reduce(
+  (result, { name, tarball, at }) => {
+    const field = at === 'dev' ? 'devDependencies' : 'dependencies'
+    return { ...result, [field]: { ...(result[field] ?? {}), [name]: `file:./${tarball}` } }
+  },
+  manifest,
+)
+
+const packDestination = command => slug =>
   `mkdir -p /tmp/pack /out && ${command} --pack-destination /tmp/pack && mv /tmp/pack/*.tgz /out/${slug}.tgz`
 
-const npm = manager({
-  name: 'npm',
-  install: ({ host } = {}) => `npm install --include=dev${host ? ` --os=${host.os} --cpu=${host.arch}` : ''}`,
-  exec: command => `npm exec -- ${command}`,
-  pack: packCommand('npm pack'),
-  configFiles: () => [],
+export const npm = () => rdk.graph({
+  '/package-manager/install-manifest': rdk.value(fileTarballs),
+  '/package-manager/exec': rdk.value(invocation => `npm exec -- ${invocation}`),
+  '/package-manager/script': rdk.value(invocation => invocation),
+  '/package-manager/install': rdk.value(host => `npm install --include=dev${host ? ` --os=${host.os} --cpu=${host.arch}` : ''}`),
+  '/package-manager/pack': rdk.value(packDestination('npm pack')),
+  '/command/pack/package': command(['/package-manager/pack', '/package/slug'], {
+    for: ['pack', 'publish'],
+    run: (pack, slug) => ({ shell: pack(slug) }),
+  }),
+  '/file/package-manager': file([], {
+    for: DEVELOPMENT_INTENTS,
+    render: () => [],
+  }),
 })
 
-const pnpm = manager({
-  name: 'pnpm',
-  install: ({ host } = {}) => `pnpm install --prod=false${host ? ` --os ${host.os} --cpu ${host.arch}` : ''}`,
-  exec: command => `pnpm exec ${command}`,
-  pack: packCommand('pnpm pack'),
-  configFiles: ({ allowBuilds }) => allowBuilds.length === 0
-    ? []
-    : [{
-        path: 'pnpm-workspace.yaml',
-        format: 'yaml',
-        value: { allowBuilds: Object.fromEntries(allowBuilds.map(pkg => [pkg, true])) },
-      }],
+export const pnpm = () => rdk.graph({
+  '/package-manager/install-manifest': rdk.value(fileTarballs),
+  '/package-manager/exec': rdk.value(invocation => `pnpm exec ${invocation}`),
+  '/package-manager/script': rdk.value(invocation => invocation),
+  '/package-manager/install': rdk.value(host => `pnpm install --prod=false${host ? ` --os ${host.os} --cpu ${host.arch}` : ''}`),
+  '/package-manager/pack': rdk.value(packDestination('pnpm pack')),
+  '/command/pack/package': command(['/package-manager/pack', '/package/slug'], {
+    for: ['pack', 'publish'],
+    run: (pack, slug) => ({ shell: pack(slug) }),
+  }),
+  '/file/package-manager': file(['/requirement/**', '/version/catalog'], {
+    for: DEVELOPMENT_INTENTS,
+    render(context, requirements, versions) {
+      const { allowBuilds } = requirementsOf(requirements, context, versions)
+      return allowBuilds.length === 0
+        ? []
+        : writeYaml('/repo/pnpm-workspace.yaml', {
+            allowBuilds: Object.fromEntries(allowBuilds.map(pkg => [pkg, true])),
+          })
+    },
+  }),
 })
 
-export const packageManagers = Object.freeze({ npm, pnpm })
-
-export function resolvePackageManager(name) {
-  const value = packageManagers[name]
-  if (value === undefined) {
-    throw new Error(`Unknown TypeScript package manager ${JSON.stringify(name)}; expected npm or pnpm`)
-  }
-  return value
-}
+export const yarn = () => rdk.graph({
+  '/package-manager/install-manifest': rdk.value((manifest, localPackages, requirements) => ({
+    ...fileTarballs(manifest, localPackages),
+    ...(requirements.allowBuilds.length === 0
+      ? {}
+      : {
+          dependenciesMeta: {
+            ...manifest.dependenciesMeta,
+            ...Object.fromEntries(requirements.allowBuilds.map(pkg => [pkg, { built: true }])),
+          },
+        }),
+  })),
+  '/package-manager/exec': rdk.value(invocation => `yarn exec ${invocation}`),
+  '/package-manager/script': rdk.value(invocation => invocation),
+  '/package-manager/install': rdk.value(() => 'yarn install --no-immutable'),
+  '/package-manager/pack': rdk.value(slug => `mkdir -p /out && yarn pack --out /out/${slug}.tgz`),
+  '/command/pack/package': command(['/package-manager/pack', '/package/slug'], {
+    for: ['pack', 'publish'],
+    run: (pack, slug) => ({ shell: pack(slug) }),
+  }),
+  '/file/package-manager': file([], {
+    for: DEVELOPMENT_INTENTS,
+    render: context => writeYaml('/repo/.yarnrc.yml', {
+      nodeLinker: 'node-modules',
+      ...(context.host
+        ? { supportedArchitectures: { os: [context.host.os], cpu: [context.host.arch] } }
+        : {}),
+    }),
+  }),
+})

@@ -1,97 +1,87 @@
+import { of as globOf } from 'dagr:glob'
+
 /**
  * @template T
  * @typedef {(...dependencies: unknown[]) => T} Factory
  */
 
-/** @typedef {string | number | symbol} PropertyKey */
+/** @typedef {string} Dependency */
 
 /**
- * @template {PropertyKey} [Tag=PropertyKey]
- * @typedef {Readonly<{ tag: Tag }>} TagDependency
- */
-
-/** @typedef {PropertyKey | TagDependency} Dependency */
-
-/** @typedef {readonly PropertyKey[] | ReadonlySet<PropertyKey>} Tags */
-
-/**
- * A frozen recipe for producing one binding.
+ * A frozen recipe for producing one binding value.
  *
  * @template T
  * @typedef {Readonly<{
  *   deps: readonly Dependency[],
  *   factory: Factory<T>,
- *   tags: readonly PropertyKey[]
- * }>} Definition
+ * }>} Binding
  */
 
-/** @typedef {Record<PropertyKey, Definition<unknown>>} Bindings */
+/** @typedef {Record<string, Binding<unknown>>} Bindings */
 
-/** @param {PropertyKey} name */
-const bindingName = name => typeof name === 'symbol' ? String(name) : JSON.stringify(name)
-
-/** @param {PropertyKey} key */
-const normalizeBindingKey = key => typeof key === 'number' ? String(key) : key
-
-/** @param {unknown} value */
-const isPropertyKey = value => (
-  typeof value === 'string'
-  || typeof value === 'number'
-  || typeof value === 'symbol'
-)
+/** @param {unknown} name */
+const bindingName = name => JSON.stringify(name)
 
 /**
- * @param {Dependency} dependency
- * @returns {dependency is TagDependency}
+ * Validates an absolute semantic path and returns whether it is a glob selector.
+ *
+ * `dagr:glob` owns matching and wildcard grammar. RDK owns the absolute-path rules shared by
+ * binding names, dependencies, and compile roots.
+ *
+ * @param {unknown} path
+ * @param {string} role
+ * @param {boolean} allowGlob
+ * @returns {boolean}
  */
-const isTagDependency = dependency => (
-  dependency !== null
-  && typeof dependency === 'object'
-  && !Array.isArray(dependency)
-  && Object.hasOwn(dependency, 'tag')
-)
-
-/**
- * @param {unknown} dependency
- * @returns {Dependency}
- */
-function normalizeDependency(dependency) {
-  if (isPropertyKey(dependency)) return normalizeBindingKey(dependency)
-  if (
-    dependency !== null
-    && typeof dependency === 'object'
-    && !Array.isArray(dependency)
-    && Object.hasOwn(dependency, 'tag')
-    && isPropertyKey(dependency.tag)
-  ) {
-    return Object.freeze({ tag: dependency.tag })
+function validatePath(path, role, allowGlob) {
+  if (typeof path !== 'string') {
+    throw new TypeError(`${role} must be an absolute semantic path`)
   }
-  throw new TypeError('Binding dependencies must be property keys or { tag } selectors')
+  if (!path.startsWith('/')) {
+    throw new Error(`${role} ${bindingName(path)} must start with "/"`)
+  }
+  if (path === '/') {
+    throw new Error(`${role} cannot be "/"`)
+  }
+  if (path.endsWith('/')) {
+    throw new Error(`${role} ${bindingName(path)} must not end with "/"`)
+  }
+
+  const segments = path.slice(1).split('/')
+  if (segments.includes('')) {
+    throw new Error(`${role} ${bindingName(path)} must not contain "//"`)
+  }
+  if (segments.some(segment => segment === '.' || segment === '..')) {
+    throw new Error(`${role} ${bindingName(path)} must not contain "." or ".." segments`)
+  }
+
+  const wildcard = segments.some(segment => segment.includes('*'))
+  if (wildcard && !allowGlob) {
+    throw new Error(`${role} ${bindingName(path)} must not contain reserved wildcards "*" or "**"`)
+  }
+  if (wildcard) globOf(path.slice(1))
+  return wildcard
 }
 
-/**
- * @param {unknown} tags
- * @returns {readonly PropertyKey[]}
- */
-function normalizeTags(tags) {
-  if (!Array.isArray(tags) && !(tags instanceof Set)) {
-    throw new TypeError('Binding tags must be an array or set of property keys')
-  }
-  const values = [...tags]
-  if (values.some(tag => !isPropertyKey(tag))) {
-    throw new TypeError('Binding tags must be an array or set of property keys')
-  }
-  return Object.freeze([...new Set(values)])
+/** @param {unknown} name */
+function normalizeBindingName(name) {
+  validatePath(name, 'Binding name', false)
+  return name
+}
+
+/** @param {unknown} dependency */
+function normalizeDependency(dependency) {
+  validatePath(dependency, 'Binding dependency', true)
+  return dependency
 }
 
 /**
  * @template T
  * @param {readonly Dependency[]} deps
  * @param {Factory<T>} factory
- * @param {Tags} [tags]
- * @returns {Definition<T>}
+ * @returns {Binding<T>}
  */
-function definition(deps, factory, tags = []) {
+function binding(deps, factory) {
   if (!Array.isArray(deps)) {
     throw new TypeError('Binding dependencies must be an array')
   }
@@ -102,50 +92,49 @@ function definition(deps, factory, tags = []) {
   return Object.freeze({
     deps: Object.freeze(deps.map(normalizeDependency)),
     factory,
-    tags: normalizeTags(tags),
   })
 }
 
 /**
  * @template T
  * @param {T} input
- * @param {Tags} [tags]
- * @returns {Definition<T>}
+ * @returns {Binding<T>}
  */
-export function value(input, tags = []) {
-  return definition([], () => input, tags)
+export function value(input) {
+  if (arguments.length !== 1) throw new TypeError('value accepts exactly one argument')
+  return binding([], () => input)
 }
 
 /**
  * @template T
  * @param {readonly Dependency[]} deps
  * @param {Factory<T>} factory
- * @param {Tags} [tags]
- * @returns {Definition<T>}
+ * @returns {Binding<T>}
  */
-export function derive(deps, factory, tags = []) {
-  return definition(deps, factory, tags)
+export function derive(deps, factory) {
+  if (arguments.length !== 2) throw new TypeError('derive accepts exactly two arguments')
+  return binding(deps, factory)
 }
 
 /**
  * @template T
  * @param {readonly Dependency[]} deps
  * @param {new (...dependencies: unknown[]) => T} Class
- * @param {Tags} [tags]
- * @returns {Definition<T>}
+ * @returns {Binding<T>}
  */
-export function construct(deps, Class, tags = []) {
+export function construct(deps, Class) {
+  if (arguments.length !== 2) throw new TypeError('construct accepts exactly two arguments')
   if (typeof Class !== 'function') {
     throw new TypeError('Binding class must be a constructor')
   }
-  return definition(deps, (...args) => new Class(...args), tags)
+  return binding(deps, (...args) => new Class(...args))
 }
 
 /**
- * Copies and freezes user-provided definitions at the graph boundary.
+ * Copies and freezes user-provided bindings at the graph boundary.
  *
  * @param {Bindings} bindings
- * @returns {Map<string | symbol, Definition<unknown>>}
+ * @returns {Map<string, Binding<unknown>>}
  */
 function normalize(bindings) {
   if (bindings === null || typeof bindings !== 'object' || Array.isArray(bindings)) {
@@ -153,160 +142,145 @@ function normalize(bindings) {
   }
 
   return new Map(
-    Reflect.ownKeys(bindings).map(name => {
-      const binding = bindings[name]
-      if (binding === null || typeof binding !== 'object') {
-        throw new TypeError(`Binding ${bindingName(name)} must be a definition`)
+    Reflect.ownKeys(bindings).map(inputName => {
+      const name = normalizeBindingName(inputName)
+      const input = bindings[name]
+      if (input === null || typeof input !== 'object') {
+        throw new TypeError(`Binding ${bindingName(name)} must be a binding`)
       }
-      return [name, definition(binding.deps, binding.factory, binding.tags ?? [])]
-    })
+      return [name, binding(input.deps, input.factory)]
+    }),
   )
 }
 
-/** An immutable dependency graph that can be transformed and compiled. */
+/**
+ * Recipes are loaded as separate module instances, so each one defines its own `Graph` class and
+ * class identity cannot be compared. A registry symbol is shared by every instance in the isolate.
+ */
+const GRAPH = Symbol.for('caeus/dagr/rdk#Graph')
+
+/** An immutable dependency graph backed by a flat map of semantic paths. */
 class Graph {
-  /** @type {Map<string | symbol, Definition<unknown>>} */
+  /**
+   * @param {unknown} other
+   * @returns {other is Graph}
+   */
+  static [Symbol.hasInstance](other) {
+    return other !== null && typeof other === 'object' && other[GRAPH] === true
+  }
+
+  /** @type {Map<string, Binding<unknown>>} */
   #bindings
 
-  /** @param {Map<string | symbol, Definition<unknown>>} bindings */
+  /** @param {Map<string, Binding<unknown>>} bindings */
   constructor(bindings) {
     this.#bindings = bindings
     Object.freeze(this)
   }
 
-  /**
-   * @param {PropertyKey} name
-   * @returns {Definition<unknown> | undefined}
-   */
-  definitionOf(name) {
-    return this.#bindings.get(normalizeBindingKey(name))
+  get [GRAPH]() {
+    return true
   }
 
-  /** @returns {IterableIterator<string | symbol>} */
+  /**
+   * @param {string} name
+   * @returns {Binding<unknown> | undefined}
+   */
+  bindingOf(name) {
+    return this.#bindings.get(normalizeBindingName(name))
+  }
+
+  /** @returns {IterableIterator<string>} */
   keys() {
     return this.#bindings.keys()
   }
 
   /**
-   * Returns a graph where definitions from `other` override definitions from this graph.
+   * Returns a graph where later bindings replace earlier ones, this graph being the earliest.
+   * Replacement preserves the binding's existing position; new paths append in merge order.
    *
-   * @param {{
-   *   keys: () => IterableIterator<PropertyKey>,
-   *   definitionOf: (name: PropertyKey) => Definition<unknown> | undefined
-   * }} other
+   * @param {...Graph} others
    * @returns {Graph}
    */
-  merge(other) {
-    if (
-      other === null
-      || typeof other !== 'object'
-      || typeof other.keys !== 'function'
-      || typeof other.definitionOf !== 'function'
-    ) {
-      throw new TypeError('Can only merge another graph')
-    }
+  merge(...others) {
     const merged = new Map(this.#bindings)
-    for (const name of other.keys()) {
-      const binding = other.definitionOf(name)
-      if (binding === undefined) {
-        throw new TypeError(`Graph has no definition for ${bindingName(name)}`)
+    others.forEach((other, position) => {
+      if (!(other instanceof Graph)) {
+        throw new TypeError(`Can only merge another graph, got ${typeof other} at ${position}`)
       }
-      merged.set(
-        normalizeBindingKey(name),
-        definition(binding.deps, binding.factory, binding.tags ?? []),
-      )
-    }
+      for (const name of other.keys()) merged.set(name, other.bindingOf(name))
+    })
     return new Graph(merged)
   }
 
   /**
-   * Retains each root and its transitive dependencies.
+   * Eagerly resolves every reachable binding once. When roots are omitted, every binding is
+   * resolved. Exact roots begin at one binding; glob roots begin at every match. Dependencies are
+   * discovered and resolved while traversing from those roots.
    *
-   * @param {readonly PropertyKey[]} roots
-   * @returns {Graph}
+   * @param {readonly string[]} [roots]
+   * @returns {Readonly<Record<string, unknown>>}
    */
-  shake(roots) {
-    if (!Array.isArray(roots) || roots.some(root => !isPropertyKey(root))) {
-      throw new TypeError('Shake roots must be an array of property keys')
+  compile(roots) {
+    if (roots !== undefined && !Array.isArray(roots)) {
+      throw new TypeError('Compile roots must be an array of absolute semantic paths')
     }
 
-    const retained = new Set()
-
-    /** @param {PropertyKey} tag */
-    const taggedNames = tag => [...this.#bindings]
-      .filter(([, binding]) => binding.tags.includes(tag))
-      .map(([name]) => name)
-
-    /**
-     * @param {PropertyKey} name
-     * @param {PropertyKey | undefined} [requiredBy]
-     */
-    const visit = (name, requiredBy) => {
-      name = normalizeBindingKey(name)
-      const binding = this.#bindings.get(name)
-      if (!binding) {
-        const suffix = requiredBy === undefined
-          ? ''
-          : ` required by ${bindingName(requiredBy)}`
-        throw new Error(`Missing binding ${bindingName(name)}${suffix}`)
+    /** @type {Map<string, (path: string) => boolean>} */
+    const selectors = new Map()
+    /** @param {string} selector */
+    const matcher = selector => {
+      let matches = selectors.get(selector)
+      if (matches === undefined) {
+        const relative = globOf(selector.slice(1))
+        matches = path => relative(path.slice(1))
+        selectors.set(selector, matches)
       }
-      if (retained.has(name)) return
-      retained.add(name)
-      for (const dependency of binding.deps) {
-        if (isTagDependency(dependency)) {
-          for (const tagged of taggedNames(dependency.tag)) visit(tagged, name)
-        } else {
-          visit(dependency, name)
-        }
-      }
+      return matches
     }
+    /** @param {string} selector */
+    const matchingNames = selector => [...this.#bindings.keys()].filter(matcher(selector))
 
-    for (const root of roots) visit(root)
-    return new Graph(new Map([...this.#bindings].filter(([name]) => retained.has(name))))
-  }
+    /** @type {string[]} */
+    const normalizedRoots = roots === undefined
+      ? [...this.#bindings.keys()]
+      : roots.map(root => {
+          validatePath(root, 'Compile root', true)
+          return root
+        })
 
-  /**
-   * Eagerly resolves every binding once. Values, including promises, are never awaited or unwrapped.
-   *
-   * @returns {Readonly<Record<PropertyKey, unknown>>}
-   */
-  compile() {
     const values = new Map()
     const resolving = []
 
     /**
-     * @param {PropertyKey} name
-     * @param {PropertyKey | undefined} [requiredBy]
+     * @param {string} name
+     * @param {string | undefined} [requiredBy]
      * @returns {unknown}
      */
     const resolve = (name, requiredBy) => {
-      name = normalizeBindingKey(name)
       if (values.has(name)) return values.get(name)
 
-      const binding = this.#bindings.get(name)
-      if (!binding) {
-        const suffix = requiredBy === undefined
-          ? ''
-          : ` required by ${bindingName(requiredBy)}`
+      const current = this.#bindings.get(name)
+      if (!current) {
+        const suffix = requiredBy === undefined ? '' : ` required by ${bindingName(requiredBy)}`
         throw new Error(`Missing binding ${bindingName(name)}${suffix}`)
       }
 
       const cycleAt = resolving.indexOf(name)
       if (cycleAt !== -1) {
-        const cycle = [...resolving.slice(cycleAt), name].map(String).join(' -> ')
+        const cycle = [...resolving.slice(cycleAt), name].join(' -> ')
         throw new Error(`Circular dependency: ${cycle}`)
       }
 
       resolving.push(name)
       try {
-        const dependencies = binding.deps.map(dependency => {
-          if (!isTagDependency(dependency)) return resolve(dependency, name)
+        const dependencies = current.deps.map(dependency => {
+          if (!dependency.includes('*')) return resolve(dependency, name)
 
           const record = {}
-          for (const [taggedName, taggedBinding] of this.#bindings) {
-            if (!taggedBinding.tags.includes(dependency.tag)) continue
-            Object.defineProperty(record, taggedName, {
-              value: resolve(taggedName, name),
+          for (const matched of matchingNames(dependency)) {
+            Object.defineProperty(record, matched, {
+              value: resolve(matched, name),
               enumerable: true,
               writable: false,
               configurable: false,
@@ -314,7 +288,7 @@ class Graph {
           }
           return Object.freeze(record)
         })
-        const result = binding.factory(...dependencies)
+        const result = current.factory(...dependencies)
         values.set(name, result)
         return result
       } finally {
@@ -322,13 +296,20 @@ class Graph {
       }
     }
 
-    for (const name of this.#bindings.keys()) resolve(name)
+    for (const root of normalizedRoots) {
+      if (root.includes('*')) {
+        for (const matched of matchingNames(root)) resolve(matched)
+      } else {
+        resolve(root)
+      }
+    }
 
-    /** @type {Record<PropertyKey, unknown>} */
+    /** @type {Record<string, unknown>} */
     const container = Object.create(null)
-    for (const [name, result] of values) {
+    for (const name of this.#bindings.keys()) {
+      if (!values.has(name)) continue
       Object.defineProperty(container, name, {
-        value: result,
+        value: values.get(name),
         enumerable: true,
         writable: false,
         configurable: false,
@@ -346,4 +327,14 @@ export function graph(bindings) {
   return new Graph(normalize(bindings))
 }
 
-export default Object.freeze({ graph, value, derive, construct })
+/**
+ * Merges graphs into one, later bindings replacing earlier ones. No graphs produce an empty one.
+ *
+ * @param {...Graph} graphs
+ * @returns {Graph}
+ */
+export function merge(...graphs) {
+  return graph({}).merge(...graphs)
+}
+
+export default Object.freeze({ graph, merge, value, derive, construct })

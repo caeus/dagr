@@ -1,13 +1,27 @@
 import { readFile, realpath } from 'node:fs/promises'
-import { dirname, extname, resolve } from 'node:path'
+import { dirname, extname, matchesGlob, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const repository = resolve(root, '..')
+const engine = resolve(repository, 'engine')
 const recipe = resolve(root, 'typescript')
 const rdk = resolve(root, 'rdk')
 
-export async function loadTypeScript() {
+// Test double for the engine-provided module. Production RDK always imports `dagr:glob`.
+const globOf = pattern => Object.freeze(path => matchesGlob(path, pattern))
+
+const synthetic = async (specifier, exports) => {
+  const names = Object.keys(exports)
+  const module = new vm.SyntheticModule(names, function () {
+    for (const name of names) this.setExport(name, exports[name])
+  }, { identifier: specifier })
+  await module.link(() => {})
+  return module
+}
+
+const createLoader = () => {
   const cache = new Map()
   const linking = new Map()
 
@@ -30,15 +44,24 @@ export async function loadTypeScript() {
 
     const module = new vm.SourceTextModule(await readFile(canonical, 'utf8'), {
       identifier: canonical,
+      initializeImportMeta(meta) {
+        meta.dagr = { location: '//engine' }
+      },
     })
     cache.set(canonical, module)
-    const linked = module.link(async specifier => {
+    let resolveLinked
+    let rejectLinked
+    const linked = new Promise((resolve, reject) => {
+      resolveLinked = resolve
+      rejectLinked = reject
+    })
+    linking.set(canonical, linked)
+    module.link(async specifier => {
       if (specifier === 'dagr:yaml') {
-        const builtin = new vm.SyntheticModule(['stringify'], function () {
-          this.setExport('stringify', value => JSON.stringify(value, null, 2))
-        }, { identifier: specifier })
-        await builtin.link(() => {})
-        return builtin
+        return synthetic(specifier, { stringify: value => JSON.stringify(value, null, 2) })
+      }
+      if (specifier === 'dagr:glob') {
+        return synthetic(specifier, { default: Object.freeze({ of: globOf }), of: globOf })
       }
       if (!specifier.startsWith('//')) {
         throw new Error(`Dagr imports must start with //, got: ${specifier}`)
@@ -46,14 +69,29 @@ export async function loadTypeScript() {
       if (specifier.startsWith('//rdk//')) {
         return load(resolve(rdk, specifier.slice('//rdk//'.length)))
       }
+      if (specifier.startsWith('//engine/recipes/typescript//')) {
+        return load(resolve(recipe, specifier.slice('//engine/recipes/typescript//'.length)))
+      }
+      if (specifier.startsWith('//engine/')) {
+        return load(resolve(repository, specifier.slice(2)))
+      }
       return load(resolve(recipe, specifier.slice(2)))
-    })
-    linking.set(canonical, linked)
+    }).then(resolveLinked, rejectLinked)
     await linked
     return module
   }
 
-  const module = await load(resolve(recipe, 'dagr.recipe.js'))
+  return load
+}
+
+const evaluate = async path => {
+  const module = await createLoader()(path)
   await module.evaluate()
   return module.namespace
 }
+
+export const loadTypeScript = () => evaluate(resolve(recipe, 'dagr.recipe.js'))
+
+export const loadRdk = () => evaluate(resolve(rdk, 'dagr.rdk.js'))
+
+export const loadEngineIndex = () => evaluate(resolve(engine, 'dagr.index.js'))

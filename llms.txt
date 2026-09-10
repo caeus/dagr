@@ -5,7 +5,7 @@
 ## Areas
 
 - [Engine](https://github.com/caeus/dagr/tree/main/engine): CLI, graph loading, execution, Docker integration, mounts, docs, and examples.
-- [Reusable recipes](https://github.com/caeus/dagr/tree/main/recipes): TypeScript build stack, RDK calculation primitive, recipe tests, mounting, and publication.
+- [Reusable recipes](https://github.com/caeus/dagr/tree/main/recipes): TypeScript build recipe, RDK calculation primitive, recipe tests, mounting, and publication.
 
 ## Documentation
 

@@ -3,7 +3,7 @@
 A package is any directory containing a `dagr.index.js`. Its root-relative path, prefixed with
 `//`, becomes the package name.
 
-The repository layout belongs to the repository. `engine/`, `stacks/`, `apps/`, `services/`, and
+The repository layout belongs to the repository. `engine/`, `recipes/`, `apps/`, `services/`, and
 `packages/` have no built-in meaning.
 
 ## What Dagr enforces
@@ -23,7 +23,7 @@ The repository layout belongs to the repository. `engine/`, `stacks/`, `apps/`, 
   `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml`.
 
 Everything else is a project convention, including directory names, facet names, target names,
-stack aliases, and the location of shared helpers.
+recipe aliases, and the location of shared helpers.
 
 ## This repository
 
@@ -36,16 +36,16 @@ dagr/
 │   ├── dagr.index.js         # Dagr engine package
 │   ├── src/                  # engine implementation
 │   ├── docs/                 # public documentation source
-│   └── stacks/typescript/    # bootstrap mount for the TypeScript stack
-└── stacks/
-    ├── dagr.index.js         # stack tests and publishable stack images
+│   └── recipes/typescript/  # bootstrap mount for the TypeScript recipe
+└── recipes/
+    ├── dagr.index.js         # recipe tests and publishable recipe images
     ├── di/                   # DI component
-    ├── typescript/           # current composable TypeScript stack
-    ├── ts-library/           # earlier TypeScript library stack
-    └── tests/                # stack tests
+    ├── typescript/           # current composable TypeScript recipe
+    ├── ts-library/           # earlier TypeScript library recipe
+    └── tests/                # recipe tests
 ```
 
-Consequently, `dagr list` discovers `engine` and `stacks`. It does not require either directory to
+Consequently, `dagr list` discovers `engine` and `recipes`. It does not require either directory to
 be renamed or placed below `packages/`.
 
 The root currently has no `dagr.index.js`. Adding one would define root targets without changing
@@ -59,7 +59,7 @@ those directories by domain when that makes the repository easier to understand:
 ```text
 <repo>/
 ├── engine/dagr.index.js
-├── stacks/dagr.index.js
+├── recipes/dagr.index.js
 ├── services/api/dagr.index.js
 └── services/web/dagr.index.js
 ```
@@ -68,7 +68,7 @@ This produces:
 
 ```text
 //engine:ci:build
-//stacks:ci:test
+//recipes:ci:test
 //services/api:ci:build
 //services/web:ci:build
 ```
@@ -76,7 +76,7 @@ This produces:
 `dagr list` currently stays within source directories and does not materialize requested volumes.
 Mount contents remain addressable when a command explicitly loads a target through that boundary.
 
-## Shared stacks and helpers
+## Shared recipes and helpers
 
 Shared code is ordinary importable Dagr code. Its directory name is a convention, not a Dagr
 feature. For example:
@@ -87,8 +87,8 @@ import { service } from '//build/dagr.service.js'
 export default service({ image: 'alpine:3.22' })
 ```
 
-The `build` directory is a repository convention. A mounted stack could instead be imported through
-a project-chosen alias such as `//stacks/toolchain//dagr.stack.js`; the second `//` marks the mount
+The `build` directory is a repository convention. A mounted recipe could instead be imported through
+a project-chosen alias such as `//recipes/toolchain//dagr.recipe.js`; the second `//` marks the mount
 boundary.
 
 See [Build-file environment and imports](04-sandbox-and-imports.md) for module rules and

@@ -64,7 +64,7 @@ supported.
 A second `//` crosses a mount requested by `dagr.mount.yaml`:
 
 ```js
-import toolchain from '//stacks/toolchain//dagr.stack.js'
+import toolchain from '//recipes/toolchain//dagr.recipe.js'
 ```
 
 Imports made inside that mounted tree resolve their own leading `//` from the mounted root. Nested

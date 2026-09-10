@@ -1,6 +1,8 @@
 # Recipe Development Kit (RDK)
 
-A tiny synchronous dependency graph for inline JavaScript composition and settings calculation. It is the low-level machinery used to author and compose Dagr recipes.
+An RDK graph is a flat collection of bindings addressed by absolute semantic paths. Exact
+dependencies reference one binding. Glob dependencies select open sets of bindings. Paths provide
+both identity and hierarchy, so RDK has no separate tag or registry system.
 
 ```js
 import rdk, { construct, derive, value } from '//recipes/rdk//dagr.rdk.js'
@@ -9,46 +11,83 @@ class Greeter {
   greet(name) { return `Hello, ${name}` }
 }
 
-const graph0 = rdk.graph({
-  unused: value(42),
-  name: value('caeus'),
-  greeter: construct([], Greeter),
-  greeting: derive(['name', 'greeter'], (name, greeter) => greeter.greet(name)),
+const base = rdk.graph({
+  '/unused': value(42),
+  '/person/name': value('caeus'),
+  '/service/greeter': construct([], Greeter),
+  '/message/greeting': derive(
+    ['/person/name', '/service/greeter'],
+    (name, greeter) => greeter.greet(name),
+  ),
 })
 
-const graph1 = rdk.graph({ name: value('caeus!') })
-const graph = graph0.merge(graph1)
+const graph = base.merge(rdk.graph({ '/person/name': value('caeus!') }))
 
-graph.definitionOf('name')
+graph.bindingOf('/person/name')
 graph.keys()
 
-const container = graph.shake(['greeting']).compile()
-container.greeting
+const values = graph.compile(['/message/greeting'])
+values['/message/greeting']
 ```
 
-The import path above uses an example consumer-owned mount alias. Consumers may mount the recipe elsewhere.
+The import path above uses an example consumer-owned mount alias. Consumers may mount the recipe
+elsewhere.
 
-Providers can carry tags. A `{ tag }` dependency collects every matching binding into a frozen record at that argument position:
+## Binding paths
+
+Every binding name is an absolute semantic path:
+
+- it starts with `/`;
+- it is not `/`;
+- it has no trailing `/` or empty `//` segment;
+- it has no `.` or `..` segment;
+- it contains neither `*` nor `**`, which are reserved for selectors.
+
+Use the path for identity and hierarchy, such as `/target/ci/build`, `/command/test/vitest`, or
+`/file/package-json`. Do not encode namespaces by concatenating camelCase words.
+
+## Dependencies and compilation
+
+Dependencies are exact binding paths or absolute glob selectors:
 
 ```js
-const handler = Symbol('handler')
-const symbolicHandler = Symbol('symbolicHandler')
-
 const graph = rdk.graph({
-  json: value(input => JSON.parse(input), [handler]),
-  [symbolicHandler]: derive([], () => value => value, new Set([handler])),
-  handlers: derive([{ tag: handler }], handlers => handlers),
+  '/file/package-json': value('package.json'),
+  '/file/tsconfig': value('tsconfig.json'),
+  '/source/directory': value('src'),
+  '/summary': derive(
+    ['/source/directory', '/file/**'],
+    (source, files) => ({ source, files }),
+  ),
 })
-
-const handlers = graph.shake(['handlers']).compile().handlers
-handlers.json('{"ready":true}')
-handlers[symbolicHandler]('text')
 ```
 
-`value(input, tags)`, `derive(deps, factory, tags)`, and `construct(deps, Class, tags)` accept tags as an array or set of property keys. Direct dependencies remain property keys. Tag selectors and direct dependencies can be mixed in any order.
+An exact dependency resolves to its value. A glob dependency resolves to a frozen record keyed by
+complete matching paths:
 
-Tag collection is graph-wide and unordered. No matches produce a frozen `{}`. `shake` retains all matching bindings and their transitive dependencies. A provider depending on its own tag is a cycle. Since `merge` replaces the complete definition, it replaces that binding's tags too.
+```js
+{
+  '/file/package-json': 'package.json',
+  '/file/tsconfig': 'tsconfig.json',
+}
+```
 
-Graphs are immutable. `merge` is right-biased, like object spread: definitions in the argument override definitions in the receiver. `shake` returns a new graph containing the requested roots and their transitive dependencies.
+`*` matches exactly one segment. `**` matches zero or more segments. No matches produce a frozen
+empty object. Matching delegates to the engine's `dagr:glob` built-in and scans the graph's flat
+`Map` in key order.
 
-`compile()` takes no arguments and eagerly initializes every binding in the graph exactly once. Shake first when bindings should be excluded from initialization. Missing and circular dependencies are rejected. Promises are ordinary values: compilation never awaits or unwraps them.
+`compile()` eagerly resolves every binding once. `compile(roots)` resolves only the roots and their
+transitive dependencies. Roots can mix exact paths and glob selectors. Exact roots retain one
+binding; glob roots retain every match. Glob dependencies retain every match transitively too.
+Missing exact bindings and cycles, including cycles introduced through glob selection, are errors.
+Compilation is synchronous; promises remain ordinary values.
+
+## Composition and order
+
+Graphs are immutable. `merge` is right-biased, like object spread: bindings in arguments replace
+bindings in the receiver, and later arguments replace earlier ones. Replacing a path preserves its
+existing key position; newly introduced paths append in merge order. That makes key scans and glob
+records deterministic without sorting or a secondary index.
+
+`rdk.merge(...graphs)` performs the same fold starting from an empty graph. No arguments produce an
+empty graph.

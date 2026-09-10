@@ -1,192 +1,41 @@
-import bundledVersions from '//dagr.versions.yaml'
 import rdk from '//rdk//dagr.rdk.js'
-import { writeJson, writeText, writeYaml } from '//dagr.file_utils.js'
-import { RECOMMENDED_IGNORE } from '//dagr.dockerignore.js'
-import { configFacet, devFacet, facetOf, target } from '//dagr.features.js'
-import { typescriptModule } from '//dagr.module.js'
-import { packageManagers, resolvePackageManager } from '//dagr.package-managers.js'
+import { index } from '//dagr.contributions.js'
 
+export { command, file, target } from '//dagr.contributions.js'
 export * from '//dagr.features.js'
-export { typescriptModule, workspaceKey } from '//dagr.module.js'
-export { packageManagers }
+export * from '//dagr.file-utils.js'
+export * from '//dagr.package-managers.js'
+export { requirement, runSteps, scriptsFor } from '//dagr.model.js'
 export { rdk }
 
-function writeProjectedFile(path, value) {
-  return typeof value === 'string'
-    ? writeText(`/repo/${path}`, value)
-    : writeJson(`/repo/${path}`, value)
-}
-
-const contributionValues = contributions => Reflect.ownKeys(contributions)
-  .map(name => contributions[name])
-  .filter(value => value !== undefined)
-
-const collectNamed = (kind, contributions, valueOf = contribution => contribution) => {
-  const values = {}
-  for (const contribution of contributionValues(contributions)) {
-    if (Object.hasOwn(values, contribution.name)) {
-      throw new Error(`${kind} ${JSON.stringify(contribution.name)} has more than one owner`)
-    }
-    values[contribution.name] = valueOf(contribution)
-  }
-  return values
-}
-
-const packageIdentity = (location, scope) => {
-  if (!location.startsWith('//')) {
-    throw new Error(`Expected a logical package location, got ${JSON.stringify(location)}`)
-  }
-  const path = location.slice(2)
-  const relativePath = path.startsWith('packages/') ? path.slice('packages/'.length) : path
-  if (!relativePath) throw new Error(`Cannot infer a project name from ${location}`)
-  const slug = relativePath.replaceAll('/', '-')
-  return { name: `@${scope}/${slug}`, slug }
-}
-
-const installPackageJson = (packageJson, localDeps, scope) => {
-  let result = { ...packageJson }
-  for (const dependency of localDeps) {
-    const { name, slug } = packageIdentity(dependency.pkg, scope)
-    const field = dependency.at === 'dev' ? 'devDependencies' : 'dependencies'
-    result = {
-      ...result,
-      [field]: {
-        ...(result[field] ?? {}),
-        [name]: `file:./${slug}.tgz`,
-      },
-    }
-  }
-  return result
-}
-
-function createStack(options, features, declaration) {
-  const {
-    base,
-    packageManager,
-    scope = 'internal',
-    versions = {},
-    conventions = {},
-    ignore = RECOMMENDED_IGNORE,
-    transform = index => index,
-  } = options
-  const { location, version = '0.1.0', deps = [], metadata = {} } = declaration
-  const localDeps = deps.filter(dependency => 'pkg' in dependency)
-  const packTarget = dependency => `${dependency.pkg}:ci:pack`
-  const dagrRuntime = Object.freeze({
-    base,
-    ignore,
-    installPackageJson: packageJson => installPackageJson(packageJson, localDeps, scope),
-    localDeps: Object.freeze(localDeps),
-    packageManager,
-    packTarget,
-    packTargets: Object.freeze(localDeps.map(packTarget)),
-    scope,
-    writeJson,
-    writeProjectedFile,
-    writeText,
-    writeYaml,
-  })
-  let graph = typescriptModule({
-    location,
-    scope,
-    version,
-    deps,
-    metadata,
-    versions,
-    defaultVersions: bundledVersions.deps,
-    features,
-    conventions,
-    dagrRuntime,
-  })
-
-  const facets = Object.freeze({
-    ...Object.fromEntries([...graph.keys()]
-      .map(name => facetOf(graph.definitionOf(name)))
-      .filter(Boolean)
-      .map(facet => [facet.name, facet])),
-    [configFacet.name]: configFacet,
-    [devFacet.name]: devFacet,
-  })
-  const facetsTag = Symbol('typescript facets')
-  const bindings = {
-    coreConfigDevTarget: rdk.derive(
-      ['config:dev/workspace'],
-      workspace => target('dev', {
-        deps: [base],
-        run: ({ images }) => ({
-          FROM: images[base],
-          steps: [
-            { WORKDIR: '/repo' },
-            ...Object.entries(workspace.files).map(([path, value]) => writeProjectedFile(path, value)),
-          ],
-          IGNORE: ignore,
-        }),
-      }),
-      [configFacet.targets],
-    ),
-    coreDevSyncTarget: rdk.derive(
-      ['dev:sync/workspace'],
-      workspace => target('sync', {
-        deps: ['config:dev'],
-        run: ({ images }) => ({
-          FROM: images['config:dev'],
-          steps: [],
-          IGNORE: ignore,
-          EXPORT: Object.fromEntries(Object.keys(workspace.files).map(path => [`/repo/${path}`, path])),
-        }),
-      }),
-      [devFacet.targets],
-    ),
-  }
-
-  for (const facet of Object.values(facets)) {
-    bindings[`facet:${facet.name}`] = rdk.derive(
-      [{ tag: facet.targets }],
-      targets => ({ name: facet.name, targets: collectNamed('target', targets) }),
-      [facetsTag],
-    )
-  }
-
-  let calculations
-  bindings.index = rdk.derive(
-    [{ tag: facetsTag }, 'dev:sync/name', 'dev:sync/slug'],
-    (facetContributions, name, slug) => transform(
-      collectNamed('facet', facetContributions, facet => facet.targets),
-      { location, name, slug, calculations, features, packageManager: packageManager.name },
-    ),
-  )
-
-  graph = graph.merge(rdk.graph(bindings))
-  calculations = Object.freeze({
-    nodes: Object.freeze(Object.fromEntries([...graph.keys()].map(name => [
-      name,
-      graph.definitionOf(name),
-    ]))),
-  })
-
-  return graph
-    .shake(['index'])
-    .compile()
-    .index
-}
-
-function builder(options, features) {
-  const stack = declaration => createStack(options, features, declaration)
-  return Object.assign(stack, {
-    with(next) {
-      if (typeof next?.keys !== 'function' || typeof next?.definitionOf !== 'function') {
-        throw new Error('with() expects an RDK graph')
-      }
-      return builder(options, features.merge(next))
-    },
-    features,
+const declarationOf = ({ location, version = '0.1.0', deps = [], metadata = {} } = {}) => {
+  if (!location) throw new Error('A package declaration requires a location')
+  return rdk.graph({
+    '/package/location': rdk.value(location),
+    '/package/version': rdk.value(version),
+    '/package/dependencies': rdk.value(Object.freeze([...deps])),
+    '/package/metadata': rdk.value(Object.freeze({ ...metadata })),
   })
 }
 
-export default function typescript(options = {}) {
-  if (!options.base) throw new Error('typescript() requires a base target')
-  return builder({
-    ...options,
-    packageManager: resolvePackageManager(options.packageManager),
-  }, rdk.graph({}))
+/**
+ * Builds a callable composition from an argument initializer, a runner, and an immutable base graph.
+ */
+export function builder(init, run, graph = rdk.graph({})) {
+  if (typeof init !== 'function') throw new TypeError('builder init must be a function')
+  if (typeof run !== 'function') throw new TypeError('builder run must be a function')
+
+  const built = (...args) => run(graph.merge(init(...args)))
+  return Object.assign(built, {
+    graph,
+    with: feature => builder(init, run, graph.merge(feature)),
+  })
+}
+
+const renderIndex = graph => graph.compile(['/dagr/index'])['/dagr/index']
+
+/** A reusable graph composition applied to one irreducible package declaration. */
+export default function recipe(features = []) {
+  if (!Array.isArray(features)) throw new TypeError('recipe features must be an array')
+  return builder(declarationOf, renderIndex, rdk.merge(...features, index()))
 }

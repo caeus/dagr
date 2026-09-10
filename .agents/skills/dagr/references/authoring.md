@@ -113,7 +113,7 @@ Only the target explicitly requested by `dagr run` materializes its `EXPORT`. An
 
 Mounts are lazy. `dagr list` leaves them opaque; a target, import, or mounted `COPY` crossing the boundary causes materialization.
 
-A second `//` in a package path marks crossing a mount boundary, for example `//stacks/tools//c:ci:pack`.
+A second `//` in a package path marks crossing a mount boundary, for example `//recipes/tools//c:ci:pack`.
 
 ## Debugging workflow
 
