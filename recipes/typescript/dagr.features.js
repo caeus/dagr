@@ -211,7 +211,7 @@ export const sourceTarget = ({ intent, assets = false, export: exported } = {}) 
  * It deliberately does not install. Dependencies resolved inside a Linux image are the wrong ones for
  * a host, so `pnpm install` belongs to whoever owns the host, working from the manifest this writes.
  */
-export function devSync() {
+export function hostDev() {
   return rdk.graph({
     '/target/dev/sync': target(
       ['/image/base', '/source/ignore', '/package/local-dependencies'],

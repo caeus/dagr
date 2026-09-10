@@ -78,7 +78,7 @@ existing.
 
 ## Host files
 
-`devSync()` owns `/target/dev/sync`, which puts the generated files on the host so an editor reads
+`hostDev()` owns `/target/dev/sync`, which puts the generated files on the host so an editor reads
 what a container builds with. Do not add a second mechanism for this, and do not enumerate paths to
 export: the target copies no source, so everything under `/repo` is recipe output and
 `EXPORT: { '/repo/': './' }` is already exactly the generated set. A feature that starts generating a

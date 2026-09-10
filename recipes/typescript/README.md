@@ -171,12 +171,12 @@ Choose one product graph:
 - `viteReact()`
 
 Capabilities such as `prettier()`, `biome()`, `vitest()`, `eslint()`, `typedoc()`, `rollup()`, and
-`devSync()` add their own file, command, requirement, and target paths. They do not register
+`hostDev()` add their own file, command, requirement, and target paths. They do not register
 themselves with the core recipe.
 
 ## Working on a host
 
-`devSync()` adds `/target/dev/sync`, which writes the generated files into the package directory on
+`hostDev()` adds `/target/dev/sync`, which writes the generated files into the package directory on
 your machine so an editor reads the same configuration a container builds with. It renders the `dev`
 intent, copies local sibling tarballs, and exports everything:
 

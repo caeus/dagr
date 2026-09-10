@@ -124,7 +124,7 @@ describe('mountable TypeScript recipe', () => {
       ts.typescript({ base: '//base:ci:image', versions }),
       ts.yarn(),
       ts.viteReact(),
-      ts.devSync(),
+      ts.hostDev(),
     ])({ location: '//packages/web' })
 
     const sync = runTarget(index.dev.sync, { host: { os: 'linux', arch: 'arm64' } })
