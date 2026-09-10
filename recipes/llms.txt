@@ -1,6 +1,6 @@
 # Dagr reusable recipes
 
-> Independently consumable recipes for Dagr. RDK graphs use absolute semantic binding paths, exact dependencies, and glob-selected open collections.
+> Independently consumable recipes for Dagr. RDK graphs use absolute semantic binding paths, exact string dependencies, and nested-array glob dependencies.
 
 ## Start here
 
