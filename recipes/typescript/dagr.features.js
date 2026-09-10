@@ -19,8 +19,6 @@ import {
   versionOf,
 } from '//dagr.model.js'
 
-const nodeModulesExport = Object.freeze({ '/repo/node_modules': 'node_modules' })
-
 const metadataFields = Object.freeze([
   'author', 'bugs', 'contributors', 'description', 'funding', 'homepage', 'keywords', 'license', 'repository',
 ])
@@ -204,6 +202,40 @@ export const sourceTarget = ({ intent, assets = false, export: exported } = {}) 
     },
   },
 )
+
+/**
+ * Renders the generated files onto the host, so an editor reads the same configuration a container
+ * builds with. It copies no source, which is what makes the export precise: everything under /repo
+ * is something the recipe produced, so exporting the whole directory cannot touch anything else.
+ *
+ * It deliberately does not install. Dependencies resolved inside a Linux image are the wrong ones for
+ * a host, so `pnpm install` belongs to whoever owns the host, working from the manifest this writes.
+ */
+export function devSync() {
+  return rdk.graph({
+    '/target/dev/sync': target(
+      ['/image/base', '/source/ignore', '/package/local-dependencies'],
+      {
+        intent: 'dev',
+        render(context, base, ignore, localPackages) {
+          return {
+            deps: [base, ...localPackages.map(pkg => pkg.target)],
+            run: ({ images, host }) => ({
+              FROM: images[base],
+              steps: [
+                ...copyLocalPackages(localPackages, images),
+                { WORKDIR: '/repo' },
+                ...context.files({ host, install: true }),
+              ],
+              IGNORE: ignore,
+              EXPORT: { '/repo/': './' },
+            }),
+          }
+        },
+      },
+    ),
+  })
+}
 
 /** Common facts and the two universal generated files. All values are ordinary RDK nodes. */
 export function typescript({
@@ -415,32 +447,6 @@ export default defineConfig({
     }),
     '/target/ci/typecheck': sourceTarget(),
     '/target/ci/build': sourceTarget({ assets: true }),
-    '/target/dev/install': target(
-      [
-        '/image/base', '/source/ignore', '/package/local-dependencies', '/package-manager/exec',
-        '/package-manager/install',
-      ],
-      {
-        intent: 'dev',
-        render(context, base, ignore, localPackages, exec, install) {
-          return {
-            deps: [base, ...localPackages.map(pkg => pkg.target)],
-            run: ({ images, host }) => ({
-              FROM: images[base],
-              steps: [
-                ...copyLocalPackages(localPackages, images),
-                { WORKDIR: '/repo' },
-                ...context.files({ host, install: true }),
-                { RUN: install(host) },
-                ...runSteps(context.invocations({ host }), exec),
-              ],
-              IGNORE: ignore,
-              EXPORT: nodeModulesExport,
-            }),
-          }
-        },
-      },
-    ),
   })
 }
 
