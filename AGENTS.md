@@ -7,10 +7,17 @@ Read the nearest `README.md` before changing an area.
 
 Keep public documentation and machine-facing guidance synchronized with behavior. Structural or public API changes should update the relevant `README.md`, `AGENTS.md`, `llms.txt`, Agent Skill, workflows, mounts, and examples in the same change.
 
-The repository has two main areas:
+The repository has three areas:
 
 - `engine/` for Dagr execution and CLI behavior.
 - `recipes/` for independently consumable recipes.
+- `harness/` for tests that need more than one package at once.
+
+`harness/` contains nothing but mounts and a test target. A test that must see two packages together
+— the recipe and an index that consumes it — belongs there, because neither package may reach outside
+itself to find the other. Keeping it separate is what lets `//recipes:ci:test` still run with only
+`recipes/` present, which is the check that catches a recipe quietly depending on its consumer. Tests
+of that kind go under `recipes/tests/repository/`, outside the `tests/*.test.js` glob.
 
 A project's own conventions belong beside its mount, not inside it. `engine/recipes/` holds the
 `typescript/` mount and, next to it, `dagr.node-features.js` for features this repository adds and

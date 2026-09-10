@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { loadEngineIndex, loadTypeScript } from './dagr.typescript-loader.js'
+import { loadTypeScript } from './dagr.typescript-loader.js'
 
 const versions = {
   '@tailwindcss/vite': '4',
@@ -32,16 +32,6 @@ const runTarget = (target, extra = {}) => target.run({
 })
 
 describe('mountable TypeScript recipe', () => {
-  it('composes the engine package with semantic binding paths', async () => {
-    const { default: index } = await loadEngineIndex()
-
-    assert.deepEqual(Object.keys(index), ['ci', 'publish'])
-    assert.deepEqual(Object.keys(index.ci), [
-      'typecheck', 'build', 'pack', 'bundle', 'node-base', 'test', 'bundlecheck', 'image',
-    ])
-    assert.deepEqual(Object.keys(index.publish), ['pack'])
-  })
-
   it('loads with Dagr imports and exposes only contributed facets and targets', async () => {
     const ts = await loadTypeScript()
     const index = ts.default([
