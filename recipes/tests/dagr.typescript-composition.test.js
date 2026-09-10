@@ -81,11 +81,13 @@ describe('recipe architecture', () => {
     assert.deepEqual(graph.bindingOf('/output/layout').deps, [
       '/product/kind', '/output/directory', '/source/entry',
     ])
-    assert.ok(graph.bindingOf('/file/package-json').deps.includes('/requirement/*'))
+    assert.deepEqual(graph.bindingOf('/file/package-json').deps[1], ['/requirement/*'])
     assert.deepEqual(graph.bindingOf('/requirement/build-scripts/vitest').deps, [])
     // A tool command names what to run, so it needs no package manager to say it.
     assert.deepEqual(graph.bindingOf('/command/test/vitest').deps, ['/requirement/vitest'])
-    assert.deepEqual(graph.bindingOf('/target/ci/test').deps.slice(-2), ['/file/**', '/command/**'])
+    assert.deepEqual(graph.bindingOf('/target/ci/test').deps.slice(-2), [
+      ['/file/**'], ['/command/**'],
+    ])
     assert.equal(graph.bindingOf('/workspace'), undefined)
     assert.equal(graph.bindingOf('/package/json'), undefined)
     assert.equal(graph.bindingOf('/facet/ci'), undefined)
