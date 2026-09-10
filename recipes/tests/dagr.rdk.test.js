@@ -66,6 +66,8 @@ describe('rdk graph', () => {
   })
 
   it('requires named dependency declarations to use one() or many()', () => {
+    assert.throws(() => derive([], String), /dependencies must be an object/)
+    assert.throws(() => derive(['/value'], String), /dependencies must be an object/)
     assert.throws(() => derive({ value: '/value' }, String), /one\(\) or many\(\)/)
     assert.throws(() => derive({ value: ['/value'] }, String), /one\(\) or many\(\)/)
     assert.throws(() => derive({ [Symbol('value')]: one('/value') }, String), /names must be strings/)
