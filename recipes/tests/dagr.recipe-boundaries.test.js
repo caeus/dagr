@@ -17,7 +17,7 @@ async function filesBelow(path) {
 describe('mountable recipe boundaries', () => {
   it('do not expose repository test harnesses', async () => {
     const files = (await Promise.all(
-      ['rdk', 'typescript'].map(recipe => filesBelow(resolve(root, recipe))),
+      ['typescript'].map(recipe => filesBelow(resolve(root, recipe))),
     )).flat()
     const leaked = files
       .map(file => file.slice(root.length + 1))

@@ -17,7 +17,9 @@ src/
 │   ├── loader.ts               discovery, sandboxed modules, imports, and traversal
 │   ├── mount-request.ts        mount request parsing and validation
 │   ├── volume-registry.ts      root-owned identity and implementation policy
-│   ├── builtins.ts             dagr:yaml, dagr:toml, and dagr:glob
+│   ├── builtins.ts             dagr: library registration and sandbox bridges
+│   ├── glob.ts                 native dagr:glob implementation
+│   ├── rdk.ts                  native typed RDK implementation
 │   └── sandbox.ts              restricted VM context
 └── runner/
     ├── index.ts                addresses, dependency walk, cycles, and memoization
@@ -80,9 +82,12 @@ mountImplementation }` shape receives direct migration guidance.
 
 JavaScript imports use the same VM context. JSON, YAML, and TOML imports become deeply frozen
 `vm.SyntheticModule` values. The sandbox exposes standard JavaScript, `Buffer`, `dagr:yaml`,
-`dagr:toml`, and `dagr:glob`, but not Node filesystem, process, network, timer, or CommonJS APIs.
-The built-in modules are registered in one map and resolved by the same linker path before
-repository imports are considered.
+`dagr:toml`, `dagr:glob`, and `dagr:rdk`, but not Node filesystem, process, network, timer, or
+CommonJS APIs. Native library implementations run in the engine and may use engine or Node-side
+capabilities. `builtins.ts` exposes sandbox-realm wrapper functions and containers through
+`vm.SyntheticModule` so those host capabilities and constructors do not leak into build files.
+RDK and glob behavior therefore live in ordinary typed TypeScript modules while their public
+`dagr:` imports remain sandbox-safe. Built-ins are resolved before repository imports.
 
 `node:vm` reduces accidental ambient access. It is not a security boundary, so repository source
 and pinned images must still be trusted.

@@ -5,12 +5,13 @@ JavaScript environment.
 
 ## Available APIs
 
-Build files can use standard JavaScript values and `Buffer`. Dagr also provides:
+Build files can use standard JavaScript values and `Buffer`. Dagr also provides native libraries:
 
 ```js
 import YAML from 'dagr:yaml'
 import TOML from 'dagr:toml'
 import Glob from 'dagr:glob'
+import RDK from 'dagr:rdk'
 ```
 
 YAML and TOML expose `stringify` through their default export and as a named export. Glob exposes
@@ -32,6 +33,13 @@ segments, `*` matches exactly one non-empty segment, and `**` matches zero or mo
 segments. Wildcards must occupy an entire segment. Empty patterns, empty pattern segments, and
 partial wildcard segments such as `foo*` or `***` are rejected by `Glob.of(...)` rather than
 assigned extra glob semantics.
+
+RDK is the native Recipe Development Kit used to compose synchronous calculations as immutable
+semantic-path graphs. Its default export exposes `graph`, `merge`, `value`, `one`, `many`, `derive`,
+and `construct`; each is also available as a named export. `one('/path')` declares one exact
+required binding, while `many('/path/**')` selects a frozen record of matching bindings using
+`dagr:glob` semantics. `graph(...).compile(roots)` resolves the requested roots and their transitive
+dependencies, or every binding when roots are omitted.
 
 Build files cannot access the host environment, filesystem, network, processes, timers, CommonJS
 globals, or arbitrary Node modules. In particular, `process`, `require`, `fetch`, and `fs` are not

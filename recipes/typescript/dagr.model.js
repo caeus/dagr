@@ -1,4 +1,4 @@
-import rdk from '//rdk//dagr.rdk.js'
+import rdk from 'dagr:rdk'
 import { invocationsFor } from '//dagr.contributions.js'
 
 export const DEVELOPMENT_INTENTS = Object.freeze([

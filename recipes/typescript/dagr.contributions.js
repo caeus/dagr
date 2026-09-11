@@ -1,4 +1,4 @@
-import rdk from '//rdk//dagr.rdk.js'
+import rdk from 'dagr:rdk'
 
 const contributionValues = contributions => Reflect.ownKeys(contributions)
   .map(name => contributions[name])

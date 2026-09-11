@@ -6,8 +6,8 @@ Use this reference when authoring, extending, reviewing, or debugging reusable r
 ## Boundaries
 
 Each top-level recipe directory is independently consumable. Runtime files stay inside that
-directory; repository tests stay under `recipes/tests/`. Build recipes expose `dagr.recipe.js`, and
-the RDK exposes `dagr.rdk.js`.
+directory; repository tests stay under `recipes/tests/`. Build recipes expose `dagr.recipe.js` and
+may import Dagr's native libraries, including `dagr:rdk`, without mounting them.
 
 ## Composition
 
@@ -110,4 +110,5 @@ at copied tarballs; pack and publish manifests retain their external ranges.
 ## Publication
 
 Published recipe images are immutable filesystem images ending at `WORKDIR /recipe`. Consumers own
-their mount aliases. Recipe source must not assume a particular alias.
+their mount aliases. Recipe source must not assume a particular alias. Native libraries such as
+`dagr:rdk` ship with Dagr itself rather than as recipe images.

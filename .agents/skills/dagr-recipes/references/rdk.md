@@ -1,6 +1,10 @@
 # How Dagr recipes use RDK
 
-The RDK at `recipes/rdk/dagr.rdk.js` is the recipe's calculation engine.
+`dagr:rdk` is Dagr's native calculation library for recipe composition.
+
+```js
+import rdk from 'dagr:rdk'
+```
 
 ## Core model
 

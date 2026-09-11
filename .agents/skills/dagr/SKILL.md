@@ -1,6 +1,6 @@
 ---
 name: dagr
-description: Work effectively with Dagr repositories and the Dagr codebase. Use when authoring, modifying, debugging, reviewing, or explaining dagr.index.js, dagr.mount.yaml, .dagr configuration, Dagr target addresses, facets, targets, recipes, dependencies, exports, mounts, CLI commands, or Dagr engine implementation.
+description: Work effectively with Dagr repositories and the Dagr codebase. Use when authoring, modifying, debugging, reviewing, or explaining dagr.index.js, dagr.mount.yaml, .dagr configuration, Dagr target addresses, facets, targets, recipes, dependencies, exports, mounts, CLI commands, native libraries, or Dagr engine implementation.
 ---
 
 # Dagr
@@ -18,9 +18,11 @@ Use this skill whenever the task involves Dagr, whether Dagr is being used by an
 
 ## Core mental model
 
-Dagr is a programmable monorepo build system. A package is a directory containing `dagr.index.js`. Each package exports facets, and each facet contains targets. A target is a `{ deps, run }` pair. A completed target is a Docker image that downstream targets can continue from or copy files from.
+Dagr is a programmable monorepo build system. A package is a directory containing `dagr.index.js`. Each package exports facets, and each facet contains targets. A target is a `{ deps, run }` pair. A completed target is a Docker image that another target can continue from or copy files from.
 
 The graph is repository-owned JavaScript, not a fixed Dagr schema beyond the small target and recipe formats. Do not impose meanings on facet names such as `ci`.
+
+Build files can import Dagr-native libraries such as `dagr:yaml`, `dagr:toml`, `dagr:glob`, and `dagr:rdk`. RDK provides immutable semantic-path graphs for reusable synchronous calculations and recipe composition.
 
 ## Rules agents commonly get wrong
 

@@ -24,7 +24,6 @@ jobs:
             //engine:ci:bundlecheck \
             //engine:ci:image \
             //recipes:ci:test \
-            //recipes:ci:image-rdk \
             //recipes:ci:image-typescript \
             //harness:ci:test
 

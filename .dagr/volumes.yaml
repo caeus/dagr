@@ -4,16 +4,12 @@
     - COPY:
         src: recipes/typescript/
         dest: /src/
-    - WORKDIR: /src
-  IGNORE:
-    - .git
-
-"github.com/caeus/dagr-recipes/rdk":
-  FROM: alpine:3.22
-  steps:
+    # The repository launcher is pinned to the previous engine. Rewrite only this workspace mount so
+    # that engine can bootstrap the next engine; published TypeScript recipe images keep dagr:rdk.
     - COPY:
-        src: recipes/rdk/
-        dest: /src/
+        src: recipes/tests/dagr.rdk-fixture.js
+        dest: /src/dagr.rdk.js
+    - RUN: sed -i "s|from 'dagr:rdk'|from '//dagr.rdk.js'|" /src/dagr.*.js
     - WORKDIR: /src
   IGNORE:
     - .git

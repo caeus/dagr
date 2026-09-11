@@ -1,6 +1,8 @@
 import vm from 'node:vm'
 import { stringify as stringifyToml } from 'smol-toml'
 import { stringify as stringifyYaml } from 'yaml'
+import { of as nativeGlobOf } from '#pkg/glob.js'
+import * as nativeRdk from '#pkg/rdk.js'
 import { createSandboxStringifier } from '#pkg/sandbox.js'
 
 export const BUILTIN_PREFIX = 'dagr:'
@@ -8,68 +10,168 @@ export const BUILTIN_PREFIX = 'dagr:'
 type GlobPredicate = (path: string) => boolean
 type GlobFactory = (pattern: string) => GlobPredicate
 
+type UnknownRecord = Readonly<Record<string, unknown>>
+type UnknownFunction = (...args: never[]) => unknown
+
 function createGlobFactory(context: vm.Context): GlobFactory {
   const of = vm.compileFunction(`
-    if (typeof pattern !== 'string')
-      throw new TypeError('dagr:glob of expects a string pattern')
-    if (pattern === '')
-      throw new Error('Invalid Dagr glob pattern "": pattern must not be empty')
-
-    const patternSegments = pattern.split('/')
-    for (const segment of patternSegments) {
-      if (segment === '')
-        throw new Error('Invalid Dagr glob pattern ' + JSON.stringify(pattern) + ': segments must not be empty')
-      if (segment.includes('*') && segment !== '*' && segment !== '**')
-        throw new Error('Invalid Dagr glob pattern ' + JSON.stringify(pattern) + ': wildcards must occupy an entire segment')
-    }
-
-    const predicate = path => {
-      if (typeof path !== 'string')
-        throw new TypeError('dagr:glob predicate expects a string path')
-
-      const pathSegments = path === '' ? [] : path.split('/')
-      const memo = new Map()
-
-      const matches = (patternIndex, pathIndex) => {
-        const key = patternIndex + ':' + pathIndex
-        const cached = memo.get(key)
-        if (cached !== undefined) return cached
-
-        let result
-        if (patternIndex === patternSegments.length) {
-          result = pathIndex === pathSegments.length
-        } else {
-          const segment = patternSegments[patternIndex]
-          const pathSegment = pathSegments[pathIndex]
-          if (segment === '**') {
-            result = matches(patternIndex + 1, pathIndex)
-              || (
-                pathIndex < pathSegments.length
-                && pathSegment !== ''
-                && matches(patternIndex, pathIndex + 1)
-              )
-          } else {
-            result = pathIndex < pathSegments.length
-              && pathSegment !== ''
-              && (segment === '*' || segment === pathSegment)
-              && matches(patternIndex + 1, pathIndex + 1)
-          }
-        }
-
-        memo.set(key, result)
-        return result
-      }
-
-      return matches(0, 0)
-    }
-
-    return Object.freeze(predicate)
-  `, ['pattern'], { parsingContext: context }) as GlobFactory
+    const native = compile(pattern)
+    return Object.freeze(path => native(path))
+  `, ['pattern'], {
+    parsingContext: context,
+    contextExtensions: [{ compile: nativeGlobOf }],
+  }) as GlobFactory
 
   return Object.freeze(of)
 }
 
+/**
+ * Exposes the native RDK through sandbox-realm functions and containers. The implementation stays
+ * in rdk.ts; this code only prevents host-realm constructors from leaking through the VM boundary.
+ */
+function createRdkModule(context: vm.Context): vm.Module {
+  const graphFacades = new WeakMap<object, nativeRdk.Graph>()
+
+  const graphOf = (facade: unknown, position: number): nativeRdk.Graph => {
+    if (facade !== null && typeof facade === 'object') {
+      const graph = graphFacades.get(facade)
+      if (graph !== undefined) return graph
+    }
+    throw new TypeError(`Can only merge another graph, got ${typeof facade} at ${position}`)
+  }
+
+  const host = Object.freeze({
+    one: (args: readonly unknown[]) => Reflect.apply(
+      nativeRdk.one,
+      undefined,
+      args,
+    ) as nativeRdk.OneDependency,
+    many: (args: readonly unknown[]) => Reflect.apply(
+      nativeRdk.many,
+      undefined,
+      args,
+    ) as nativeRdk.ManyDependency,
+    value: (args: readonly unknown[]) => Reflect.apply(
+      nativeRdk.value,
+      undefined,
+      args,
+    ) as nativeRdk.Binding,
+    derive: (args: readonly unknown[]) => Reflect.apply(
+      nativeRdk.derive,
+      undefined,
+      args,
+    ) as nativeRdk.Binding,
+    construct: (args: readonly unknown[]) => Reflect.apply(
+      nativeRdk.construct,
+      undefined,
+      args,
+    ) as nativeRdk.Binding,
+    graph: (bindings: unknown) => nativeRdk.graph(bindings as nativeRdk.Bindings),
+    merge: (graph: nativeRdk.Graph, others: readonly unknown[]) => graph.merge(
+      ...others.map((other, position) => graphOf(other, position)),
+    ),
+    mergeAll: (graphs: readonly unknown[]) => nativeRdk.merge(
+      ...graphs.map((graph, position) => graphOf(graph, position)),
+    ),
+    bindingOf: (graph: nativeRdk.Graph, name: string) => graph.bindingOf(name),
+    keys: (graph: nativeRdk.Graph) => [...graph.keys()],
+    compile: (graph: nativeRdk.Graph, roots?: readonly string[]) => Object.entries(
+      roots === undefined ? graph.compile() : graph.compile(roots),
+    ),
+    invoke: (binding: nativeRdk.Binding, dependencies: UnknownRecord) => binding.factory(dependencies),
+    register: (facade: object, graph: nativeRdk.Graph) => graphFacades.set(facade, graph),
+  })
+
+  const namespace = vm.compileFunction(`
+    const DEPENDENCY = Symbol.for('caeus/dagr/rdk#Dependency')
+
+    const dependency = native => Object.freeze(native.path === undefined
+      ? { [DEPENDENCY]: 'many', selectors: Object.freeze([...native.selectors]) }
+      : { [DEPENDENCY]: 'one', path: native.path })
+
+    const copy = (entries, target) => {
+      for (const [name, value] of entries) {
+        Object.defineProperty(target, name, {
+          value, enumerable: true, writable: false, configurable: false,
+        })
+      }
+      return Object.freeze(target)
+    }
+    const record = entries => copy(entries, {})
+    const container = entries => copy(entries, Object.create(null))
+
+    const binding = native => {
+      const deps = {}
+      for (const [name, value] of Object.entries(native.deps)) {
+        Object.defineProperty(deps, name, {
+          value: dependency(value), enumerable: true, writable: false, configurable: false,
+        })
+      }
+
+      const argumentsOf = dependencies => {
+        const result = {}
+        for (const [name, value] of Object.entries(dependencies)) {
+          const declaration = native.deps[name]
+          Object.defineProperty(result, name, {
+            value: declaration.path === undefined
+              ? record(Object.entries(value))
+              : value,
+            enumerable: true,
+            writable: false,
+            configurable: false,
+          })
+        }
+        return Object.freeze(result)
+      }
+
+      return Object.freeze({
+        deps: Object.freeze(deps),
+        factory: dependencies => host.invoke(native, argumentsOf(dependencies)),
+      })
+    }
+
+    const wrap = native => {
+      let facade
+      facade = Object.freeze({
+        bindingOf: name => {
+          const found = host.bindingOf(native, name)
+          return found === undefined ? undefined : binding(found)
+        },
+        keys: () => Object.freeze([...host.keys(native)])[Symbol.iterator](),
+        merge: (...others) => wrap(host.merge(native, others)),
+        compile: roots => container(host.compile(native, roots)),
+      })
+      host.register(facade, native)
+      return facade
+    }
+
+    const graph = bindings => wrap(host.graph(bindings))
+    const merge = (...graphs) => wrap(host.mergeAll(graphs))
+    const value = (...args) => binding(host.value(args))
+    const one = (...args) => dependency(host.one(args))
+    const many = (...args) => dependency(host.many(args))
+    const derive = (...args) => binding(host.derive(args))
+    const construct = (...args) => binding(host.construct(args))
+
+    return Object.freeze({ graph, merge, value, one, many, derive, construct })
+  `, [], {
+    parsingContext: context,
+    contextExtensions: [{ host }],
+  })() as Readonly<Record<string, UnknownFunction>>
+
+  const names = Object.keys(namespace)
+  return new vm.SyntheticModule(
+    ['default', ...names],
+    function () {
+      this.setExport('default', namespace)
+      for (const name of names) this.setExport(name, namespace[name])
+    },
+    { context, identifier: 'dagr:rdk' },
+  )
+}
+
 export function createBuiltinModules(context: vm.Context): ReadonlyMap<string, vm.Module> {
+  const globOf = createGlobFactory(context)
   return new Map([
     builtin(
       'dagr:yaml',
@@ -89,7 +191,8 @@ export function createBuiltinModules(context: vm.Context): ReadonlyMap<string, v
         ),
       ),
     ),
-    builtin('dagr:glob', 'of', createGlobFactory(context)),
+    builtin('dagr:glob', 'of', globOf),
+    ['dagr:rdk', createRdkModule(context)],
   ])
 
   function builtin<T extends (...args: never[]) => unknown>(

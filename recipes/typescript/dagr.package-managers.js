@@ -1,4 +1,4 @@
-import rdk from '//rdk//dagr.rdk.js'
+import rdk from 'dagr:rdk'
 import { command, factsFor, file } from '//dagr.contributions.js'
 import { DEVELOPMENT_INTENTS } from '//dagr.model.js'
 import { writeYaml } from '//dagr.file-utils.js'

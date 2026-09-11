@@ -1,11 +1,11 @@
 ---
 name: dagr-recipes
-description: Work with Dagr reusable recipes and RDK contributions under recipes/. Use when modifying the TypeScript recipe, package-manager behavior, generated files, commands, targets, mounts, publication, or the inline Recipe Development Kit.
+description: Work with Dagr reusable recipes and native RDK contributions under recipes/. Use when modifying the TypeScript recipe, package-manager behavior, generated files, commands, targets, mounts, publication, or `dagr:rdk` composition.
 ---
 
 # Dagr recipes
 
-Use this skill for reusable recipes under `recipes/`, especially the TypeScript recipe and its synchronous RDK graph.
+Use this skill for reusable recipes under `recipes/`, especially the TypeScript recipe and its synchronous graph built with the engine-native `dagr:rdk` library.
 
 ## First orient yourself
 
@@ -32,6 +32,7 @@ The index derives facet and name from every `/target/<facet>/<name>` binding and
 
 ## Modeling rules
 
+- Import RDK from `dagr:rdk`; do not mount or publish a separate RDK recipe.
 - Keep declarations limited to `location`, `version`, dependencies, and metadata.
 - Keep shared semantics as ordinary RDK bindings with paths such as `/source/directory`.
 - Use `/requirement/*` bindings when files and commands must agree on tool packages or ambient types.
@@ -60,6 +61,5 @@ Validate with:
 
 ```sh
 dagr run //recipes:ci:test
-dagr run //recipes:ci:image-rdk
 dagr run //recipes:ci:image-typescript
 ```
