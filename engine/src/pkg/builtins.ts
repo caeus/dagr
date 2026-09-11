@@ -32,30 +32,47 @@ function createGlobFactory(context: vm.Context): GlobFactory {
 function createRdkModule(context: vm.Context): vm.Module {
   const graphFacades = new WeakMap<object, nativeRdk.Graph>()
 
-  const graphOf = (facade: unknown): nativeRdk.Graph => {
-    if (facade === null || typeof facade !== 'object') {
-      throw new TypeError('Can only merge another graph')
+  const graphOf = (facade: unknown, position: number): nativeRdk.Graph => {
+    if (facade !== null && typeof facade === 'object') {
+      const graph = graphFacades.get(facade)
+      if (graph !== undefined) return graph
     }
-    const graph = graphFacades.get(facade)
-    if (graph === undefined) throw new TypeError('Can only merge another graph')
-    return graph
+    throw new TypeError(`Can only merge another graph, got ${typeof facade} at ${position}`)
   }
 
   const host = Object.freeze({
-    one: (path: string) => nativeRdk.one(path),
-    many: (...selectors: string[]) => nativeRdk.many(...selectors),
-    value: (input: unknown) => nativeRdk.value(input),
-    derive: (deps: unknown, factory: unknown) => nativeRdk.derive(
-      deps as nativeRdk.Dependencies,
-      factory as (dependencies: UnknownRecord) => unknown,
-    ),
-    construct: (deps: unknown, Class: unknown) => nativeRdk.construct(
-      deps as nativeRdk.Dependencies,
-      Class as new (dependencies: UnknownRecord) => unknown,
-    ),
+    one: (args: readonly unknown[]) => Reflect.apply(
+      nativeRdk.one,
+      undefined,
+      args,
+    ) as nativeRdk.OneDependency,
+    many: (args: readonly unknown[]) => Reflect.apply(
+      nativeRdk.many,
+      undefined,
+      args,
+    ) as nativeRdk.ManyDependency,
+    value: (args: readonly unknown[]) => Reflect.apply(
+      nativeRdk.value,
+      undefined,
+      args,
+    ) as nativeRdk.Binding,
+    derive: (args: readonly unknown[]) => Reflect.apply(
+      nativeRdk.derive,
+      undefined,
+      args,
+    ) as nativeRdk.Binding,
+    construct: (args: readonly unknown[]) => Reflect.apply(
+      nativeRdk.construct,
+      undefined,
+      args,
+    ) as nativeRdk.Binding,
     graph: (bindings: unknown) => nativeRdk.graph(bindings as nativeRdk.Bindings),
-    merge: (graph: nativeRdk.Graph, others: readonly unknown[]) => graph.merge(...others.map(graphOf)),
-    mergeAll: (graphs: readonly unknown[]) => nativeRdk.merge(...graphs.map(graphOf)),
+    merge: (graph: nativeRdk.Graph, others: readonly unknown[]) => graph.merge(
+      ...others.map((other, position) => graphOf(other, position)),
+    ),
+    mergeAll: (graphs: readonly unknown[]) => nativeRdk.merge(
+      ...graphs.map((graph, position) => graphOf(graph, position)),
+    ),
     bindingOf: (graph: nativeRdk.Graph, name: string) => graph.bindingOf(name),
     keys: (graph: nativeRdk.Graph) => [...graph.keys()],
     compile: (graph: nativeRdk.Graph, roots?: readonly string[]) => Object.entries(
@@ -130,11 +147,11 @@ function createRdkModule(context: vm.Context): vm.Module {
 
     const graph = bindings => wrap(host.graph(bindings))
     const merge = (...graphs) => wrap(host.mergeAll(graphs))
-    const value = input => binding(host.value(input))
-    const one = path => dependency(host.one(path))
-    const many = (...selectors) => dependency(host.many(...selectors))
-    const derive = (deps, factory) => binding(host.derive(deps, factory))
-    const construct = (deps, Class) => binding(host.construct(deps, Class))
+    const value = (...args) => binding(host.value(args))
+    const one = (...args) => dependency(host.one(args))
+    const many = (...args) => dependency(host.many(args))
+    const derive = (...args) => binding(host.derive(args))
+    const construct = (...args) => binding(host.construct(args))
 
     return Object.freeze({ graph, merge, value, one, many, derive, construct })
   `, [], {
