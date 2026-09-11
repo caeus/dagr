@@ -15,7 +15,6 @@ export default {
           // The layout the loader expects: it reads /repo/tests, and resolves the engine as a sibling.
           { COPY: { src: 'recipes//tests/', dest: '/repo/tests/' } },
           { COPY: { src: 'recipes//typescript/', dest: '/repo/typescript/' } },
-          { COPY: { src: 'recipes//rdk/', dest: '/repo/rdk/' } },
           { COPY: { src: 'engine//dagr.index.js', dest: '/engine/dagr.index.js' } },
           { COPY: { src: 'engine//recipes/', dest: '/engine/recipes/' } },
           {
