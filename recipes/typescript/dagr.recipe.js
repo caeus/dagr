@@ -1,4 +1,4 @@
-import rdk from '//rdk//dagr.rdk.js'
+import rdk from 'dagr:rdk'
 import { index } from '//dagr.contributions.js'
 
 export { command, fact, factsFor, file, target } from '//dagr.contributions.js'
