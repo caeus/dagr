@@ -14,17 +14,6 @@ export const fileTarballs = (manifest, localPackages, _context) => localPackages
 const packDestination = command => slug =>
   `mkdir -p /tmp/pack /out && ${command} --pack-destination /tmp/pack && mv /tmp/pack/*.tgz /out/${slug}.tgz`
 
-const packCommand = command => ({
-  '/package-manager/install-manifest': rdk.value(fileTarballs),
-  '/package-manager/exec': rdk.value(invocation => `${command.exec}${invocation}`),
-  '/package-manager/script': rdk.value(invocation => invocation),
-  '/package-manager/install': rdk.value(command.install),
-  '/package-manager/pack': rdk.value(command.pack),
-  '/command/pack/package': commandContribution(command.pack),
-})
-
-const commandContribution = _unused => undefined
-
 export const npm = () => rdk.graph({
   '/package-manager/install-manifest': rdk.value(fileTarballs),
   '/package-manager/exec': rdk.value(invocation => `npm exec -- ${invocation}`),
