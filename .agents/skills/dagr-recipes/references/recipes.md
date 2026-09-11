@@ -41,8 +41,8 @@ Recipe graphs use absolute semantic paths. Ordinary facts and calculations inclu
 - `/requirement/*` for tool packages and ambient types;
 - `/requirement/build-scripts/**` for portable, intent-scoped build-script facts.
 
-Contribution helpers use the same named dependency model as RDK. Use `rdk.one('/path')` for one
-required binding and `rdk.many('/a/**', '/b/**')` for the union of one or more glob patterns.
+Contribution helpers use the same named input model as RDK. Use `rdk.one('/path')` for one required
+binding and `rdk.many('/a/**', '/b/**')` for the union of one or more glob patterns.
 
 ```js
 rdk.graph({
@@ -63,19 +63,19 @@ without a feature or target registry.
 
 ## Output bindings
 
-A file renderer receives `{ intent, facet, host }` plus one named dependency object and returns valid
+A file renderer receives `{ intent, facet, host }` plus one named input object and returns valid
 Dagr steps. An empty array means "nothing to do"; `undefined`, `null`, and `false` are errors. Files
 are context-aware because a tsconfig or manifest genuinely differs per intent.
 
-A command renderer receives one named dependency object and returns invocations: `{ tool }` for an
+A command renderer receives one named input object and returns invocations: `{ tool }` for an
 installed binary or `{ shell }` for a literal command line. It gets no context and returns no step.
 One command binding can become a container step, package.json script, or task in another runner.
 
 `for` is the intent gate. A renderer that reads `context.intent` merely to suppress itself has the
 wrong `for` value.
 
-A target binding receives `/file/**` and `/command/**` internally. Its own declared dependencies are
-passed as one named object beside the context. Its target path supplies the facet and name. The target
+A target binding receives `/file/**` and `/command/**` internally. Its own declared inputs are passed
+as one named object beside the context. Its target path supplies the facet and name. The target
 chooses its render context and materializes the contributions it needs. Host-sensitive output stays
 inside the native target's `run` function.
 

@@ -2,29 +2,29 @@ import { of as globOf } from 'dagr:glob'
 
 /**
  * @template T
- * @typedef {(dependencies: Readonly<Record<string, unknown>>) => T} Factory
+ * @typedef {(inputs: Readonly<Record<string, unknown>>) => T} Factory
  */
 
-const DEPENDENCY = Symbol.for('caeus/dagr/rdk#Dependency')
+const INPUT = Symbol.for('caeus/dagr/rdk#Input')
 
 /**
  * @typedef {Readonly<{
- *   [DEPENDENCY]: 'one',
+ *   [INPUT]: 'one',
  *   path: string,
  * }> | Readonly<{
- *   [DEPENDENCY]: 'many',
+ *   [INPUT]: 'many',
  *   selectors: readonly string[],
- * }>} Dependency
+ * }>} Input
  */
 
-/** @typedef {Readonly<Record<string, Dependency>>} Dependencies */
+/** @typedef {Readonly<Record<string, Input>>} Inputs */
 
 /**
  * A frozen recipe for producing one binding value.
  *
  * @template T
  * @typedef {Readonly<{
- *   deps: Dependencies,
+ *   inputs: Inputs,
  *   factory: Factory<T>,
  * }>} Binding
  */
@@ -38,7 +38,7 @@ const bindingName = name => JSON.stringify(name)
  * Validates an absolute semantic path and returns whether it is a glob selector.
  *
  * `dagr:glob` owns matching and wildcard grammar. RDK owns the absolute-path rules shared by
- * binding names, dependencies, and compile roots.
+ * binding names, inputs, and compile roots.
  *
  * @param {unknown} path
  * @param {string} role
@@ -82,56 +82,56 @@ function normalizeBindingName(name) {
 }
 
 /**
- * Declares one required exact dependency.
+ * Declares one required exact input.
  *
  * @param {string} path
- * @returns {Dependency}
+ * @returns {Input}
  */
 export function one(path) {
   if (arguments.length !== 1) throw new TypeError('one accepts exactly one argument')
-  validatePath(path, 'one dependency', false)
-  return Object.freeze({ [DEPENDENCY]: 'one', path })
+  validatePath(path, 'one input', false)
+  return Object.freeze({ [INPUT]: 'one', path })
 }
 
 /**
- * Declares a dependency containing every binding matching any selector.
+ * Declares an input containing every binding matching any selector.
  *
  * @param {...string} selectors
- * @returns {Dependency}
+ * @returns {Input}
  */
 export function many(...selectors) {
   if (selectors.length === 0) throw new TypeError('many requires at least one selector')
   selectors.forEach(selector => validatePath(selector, 'many selector', true))
   return Object.freeze({
-    [DEPENDENCY]: 'many',
+    [INPUT]: 'many',
     selectors: Object.freeze([...selectors]),
   })
 }
 
-/** @param {unknown} dependency */
-function normalizeDependency(dependency) {
-  if (dependency === null || typeof dependency !== 'object' || Array.isArray(dependency)) {
-    throw new TypeError('Binding dependency must be declared with one() or many()')
+/** @param {unknown} input */
+function normalizeInput(input) {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new TypeError('Binding input must be declared with one() or many()')
   }
 
-  if (dependency[DEPENDENCY] === 'one') return one(dependency.path)
-  if (dependency[DEPENDENCY] === 'many') return many(...dependency.selectors)
-  throw new TypeError('Binding dependency must be declared with one() or many()')
+  if (input[INPUT] === 'one') return one(input.path)
+  if (input[INPUT] === 'many') return many(...input.selectors)
+  throw new TypeError('Binding input must be declared with one() or many()')
 }
 
-/** @param {unknown} deps */
-function normalizeDependencies(deps) {
-  if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
-    throw new TypeError('Binding dependencies must be an object')
+/** @param {unknown} inputs */
+function normalizeInputs(inputs) {
+  if (inputs === null || typeof inputs !== 'object' || Array.isArray(inputs)) {
+    throw new TypeError('Binding inputs must be an object')
   }
 
   const normalized = {}
-  for (const key of Reflect.ownKeys(deps)) {
+  for (const key of Reflect.ownKeys(inputs)) {
     if (typeof key !== 'string') {
-      throw new TypeError('Binding dependency names must be strings')
+      throw new TypeError('Binding input names must be strings')
     }
     Object.defineProperty(normalized, key, {
-      value: normalizeDependency(deps[key]),
+      value: normalizeInput(inputs[key]),
       enumerable: true,
       writable: false,
       configurable: false,
@@ -142,15 +142,15 @@ function normalizeDependencies(deps) {
 
 /**
  * @template T
- * @param {unknown} deps
+ * @param {unknown} inputs
  * @param {Factory<T>} factory
  * @returns {Binding<T>}
  */
-function binding(deps, factory) {
+function binding(inputs, factory) {
   if (typeof factory !== 'function') {
     throw new TypeError('Binding factory must be a function')
   }
-  return Object.freeze({ deps: normalizeDependencies(deps), factory })
+  return Object.freeze({ inputs: normalizeInputs(inputs), factory })
 }
 
 /**
@@ -165,27 +165,27 @@ export function value(input) {
 
 /**
  * @template T
- * @param {Record<string, Dependency>} deps
+ * @param {Record<string, Input>} inputs
  * @param {Factory<T>} factory
  * @returns {Binding<T>}
  */
-export function derive(deps, factory) {
+export function derive(inputs, factory) {
   if (arguments.length !== 2) throw new TypeError('derive accepts exactly two arguments')
-  return binding(deps, factory)
+  return binding(inputs, factory)
 }
 
 /**
  * @template T
- * @param {Record<string, Dependency>} deps
- * @param {new (dependencies: Readonly<Record<string, unknown>>) => T} Class
+ * @param {Record<string, Input>} inputs
+ * @param {new (inputs: Readonly<Record<string, unknown>>) => T} Class
  * @returns {Binding<T>}
  */
-export function construct(deps, Class) {
+export function construct(inputs, Class) {
   if (arguments.length !== 2) throw new TypeError('construct accepts exactly two arguments')
   if (typeof Class !== 'function') {
     throw new TypeError('Binding class must be a constructor')
   }
-  return binding(deps, dependencies => new Class(dependencies))
+  return binding(inputs, resolved => new Class(resolved))
 }
 
 /**
@@ -206,7 +206,7 @@ function normalize(bindings) {
       if (input === null || typeof input !== 'object') {
         throw new TypeError(`Binding ${bindingName(name)} must be a binding`)
       }
-      return [name, binding(input.deps, input.factory)]
+      return [name, binding(input.inputs, input.factory)]
     }),
   )
 }
@@ -217,7 +217,7 @@ function normalize(bindings) {
  */
 const GRAPH = Symbol.for('caeus/dagr/rdk#Graph')
 
-/** An immutable dependency graph backed by a flat map of semantic paths. */
+/** An immutable graph backed by a flat map of semantic paths. */
 class Graph {
   /**
    * @param {unknown} other
@@ -273,7 +273,7 @@ class Graph {
 
   /**
    * Eagerly resolves every reachable binding once. When roots are omitted, every binding is
-   * resolved. Exact roots begin at one binding; glob roots begin at every match. Dependencies are
+   * resolved. Exact roots begin at one binding; glob roots begin at every match. Inputs are
    * discovered and resolved while traversing from those roots.
    *
    * @param {readonly string[]} [roots]
@@ -313,11 +313,11 @@ class Graph {
     /** @type {(name: string, requiredBy?: string) => unknown} */
     let resolve
 
-    /** @param {Dependency} dependency @param {string} requiredBy */
-    const resolveDependency = (dependency, requiredBy) => {
-      if (dependency[DEPENDENCY] === 'one') return resolve(dependency.path, requiredBy)
+    /** @param {Input} input @param {string} requiredBy */
+    const resolveInput = (input, requiredBy) => {
+      if (input[INPUT] === 'one') return resolve(input.path, requiredBy)
       const record = {}
-      for (const matched of matchingNames(dependency.selectors)) {
+      for (const matched of matchingNames(input.selectors)) {
         Object.defineProperty(record, matched, {
           value: resolve(matched, requiredBy),
           enumerable: true,
@@ -340,21 +340,21 @@ class Graph {
       const cycleAt = resolving.indexOf(name)
       if (cycleAt !== -1) {
         const cycle = [...resolving.slice(cycleAt), name].join(' -> ')
-        throw new Error(`Circular dependency: ${cycle}`)
+        throw new Error(`Circular input: ${cycle}`)
       }
 
       resolving.push(name)
       try {
-        const dependencies = {}
-        for (const [key, dependency] of Object.entries(current.deps)) {
-          Object.defineProperty(dependencies, key, {
-            value: resolveDependency(dependency, name),
+        const inputs = {}
+        for (const [key, input] of Object.entries(current.inputs)) {
+          Object.defineProperty(inputs, key, {
+            value: resolveInput(input, name),
             enumerable: true,
             writable: false,
             configurable: false,
           })
         }
-        const result = current.factory(Object.freeze(dependencies))
+        const result = current.factory(Object.freeze(inputs))
         values.set(name, result)
         return result
       } finally {
