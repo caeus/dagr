@@ -39,7 +39,6 @@ export type GraphValues<B extends Bindings> = Readonly<{
 
 type SemanticPath = string & { readonly [SEMANTIC_PATH_VALUE]: true }
 type Selector = string & { readonly [SELECTOR_VALUE]: true }
-type DependencyKind = 'one' | 'many'
 
 const DEPENDENCY = Symbol.for('caeus/dagr/rdk#Dependency')
 
@@ -138,12 +137,13 @@ function normalizeDependency(dependency: unknown): NormalizedDependency {
 
   const input = dependency as Record<PropertyKey, unknown>
   const kind = dependencyKind(dependency)
-  if (kind === 'one') return exactDependency(input.path)
+  if (kind === 'one') return exactDependency(input['path'])
   if (kind === 'many') {
-    if (!Array.isArray(input.selectors)) {
+    const selectors = input['selectors']
+    if (!Array.isArray(selectors)) {
       throw new TypeError('Binding dependency must be declared with one() or many()')
     }
-    return collectionDependency(input.selectors)
+    return collectionDependency(selectors)
   }
   throw new TypeError('Binding dependency must be declared with one() or many()')
 }
@@ -207,7 +207,9 @@ export function construct<const D extends Dependencies, T>(
   if (typeof Class !== 'function') throw new TypeError('Binding class must be a constructor')
   return normalizeBinding<T>(
     deps,
-    dependencies => new Class(dependencies as ResolvedDependencies<D>),
+    (dependencies: Readonly<Record<string, unknown>>) => (
+      new Class(dependencies as ResolvedDependencies<D>)
+    ),
   )
 }
 
@@ -225,7 +227,7 @@ function normalizeBindings(bindings: unknown): Map<SemanticPath, NormalizedBindi
     }
 
     const binding = candidate as Record<PropertyKey, unknown>
-    return [name, normalizeBinding(binding.deps, binding.factory)]
+    return [name, normalizeBinding(binding['deps'], binding['factory'])]
   }))
 }
 
