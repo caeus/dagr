@@ -88,20 +88,26 @@ const packageManifest = (
 
 /** Bundles the facts that describe the published package, so renderers take a named record. */
 const packageFacts = rdk.derive(
-  [
-    '/package/name', '/package/version', '/package/dependencies', '/package/metadata',
-    '/package/scope', '/javascript/module-format', '/product/kind', '/source/directory',
-    '/source/entry', '/output/layout', '/source/import-alias', '/package/runtime-dependencies',
-  ],
-  (name, version, deps, metadata, scope, format, product, source, entry, output, alias, runtime) =>
-    Object.freeze({
-      name, version, deps, metadata, scope, format, product, source, entry, output, alias, runtime,
-    }),
+  {
+    name: rdk.one('/package/name'),
+    version: rdk.one('/package/version'),
+    deps: rdk.one('/package/dependencies'),
+    metadata: rdk.one('/package/metadata'),
+    scope: rdk.one('/package/scope'),
+    format: rdk.one('/javascript/module-format'),
+    product: rdk.one('/product/kind'),
+    source: rdk.one('/source/directory'),
+    entry: rdk.one('/source/entry'),
+    output: rdk.one('/output/layout'),
+    alias: rdk.one('/source/import-alias'),
+    runtime: rdk.one('/package/runtime-dependencies'),
+  },
+  facts => Object.freeze({ ...facts }),
 )
 
 const packageJson = file(
   [
-    '/package/facts', '/requirement/*', '/version/catalog', '/package-manager/install-manifest',
+    '/package/facts', ['/requirement/*'], '/version/catalog', '/package-manager/install-manifest',
     '/package/local-dependencies', '/package/scripts',
   ],
   {
@@ -122,7 +128,7 @@ const tsconfig = file(
     '/product/kind', '/typescript/language-target', '/output/source-maps',
     '/typescript/emit-declarations', '/source/directory', '/output/layout',
     '/typescript/module-kind', '/typescript/module-resolution', '/typescript/libraries',
-    '/source/import-alias', '/requirement/*', '/version/catalog',
+    '/source/import-alias', ['/requirement/*'], '/version/catalog',
   ],
   {
     for: DEVELOPMENT_INTENTS,
@@ -259,17 +265,39 @@ export function typescript({
     '/output/directory': rdk.value(outputDirectory),
     '/javascript/module-format': rdk.value(javascriptModuleFormat),
     '/typescript/emit-declarations': rdk.value(true),
-    '/package/name': rdk.derive(['/package/location', '/package/scope'], projectName),
-    '/package/slug': rdk.derive(['/package/name'], name => name.slice(name.indexOf('/') + 1)),
-    '/source/layout': rdk.derive(['/source/directory', '/source/entry'], (directory, entry) => ({ directory, entry })),
-    '/output/layout': rdk.derive(['/product/kind', '/output/directory', '/source/entry'], (product, directory, entry) => {
-      if (product === 'worker') return undefined
-      if (product === 'web') return { directory }
-      const stem = entry.replace(/\.[^.]+$/, '')
-      return { directory, runtimeFile: `${directory}/${stem}.js`, declarationFile: `${directory}/${stem}.d.ts` }
-    }),
-    '/package/local-dependencies': rdk.derive(['/package/dependencies', '/package/scope'], localPackagesOf),
-    '/package/scripts': rdk.derive(['/command/**', '/package-manager/script'], scriptsFor),
+    '/package/name': rdk.derive(
+      { location: rdk.one('/package/location'), scope: rdk.one('/package/scope') },
+      ({ location, scope: packageScope }) => projectName(location, packageScope),
+    ),
+    '/package/slug': rdk.derive(
+      { name: rdk.one('/package/name') },
+      ({ name }) => name.slice(name.indexOf('/') + 1),
+    ),
+    '/source/layout': rdk.derive(
+      { directory: rdk.one('/source/directory'), entry: rdk.one('/source/entry') },
+      ({ directory, entry }) => ({ directory, entry }),
+    ),
+    '/output/layout': rdk.derive(
+      {
+        product: rdk.one('/product/kind'),
+        directory: rdk.one('/output/directory'),
+        entry: rdk.one('/source/entry'),
+      },
+      ({ product, directory, entry }) => {
+        if (product === 'worker') return undefined
+        if (product === 'web') return { directory }
+        const stem = entry.replace(/\.[^.]+$/, '')
+        return { directory, runtimeFile: `${directory}/${stem}.js`, declarationFile: `${directory}/${stem}.d.ts` }
+      },
+    ),
+    '/package/local-dependencies': rdk.derive(
+      { dependencies: rdk.one('/package/dependencies'), scope: rdk.one('/package/scope') },
+      ({ dependencies, scope: packageScope }) => localPackagesOf(dependencies, packageScope),
+    ),
+    '/package/scripts': rdk.derive(
+      { commands: rdk.many('/command/**'), script: rdk.one('/package-manager/script') },
+      ({ commands, script }) => scriptsFor(commands, script),
+    ),
     '/package/facts': packageFacts,
     '/file/package-json': packageJson,
     '/file/tsconfig': tsconfig,
@@ -374,9 +402,12 @@ export function cloudflareWorker({ language = 'ES2022' } = {}) {
     '/typescript/module-kind': rdk.value('NodeNext'),
     '/typescript/module-resolution': rdk.value('NodeNext'),
     '/typescript/libraries': rdk.value(Object.freeze([language])),
-    '/source/import-alias': rdk.derive(['/source/directory'], source => ({
-      specifier: '#/*', sourcePath: `./${source}/*`, runtimePath: `./${source}/*`,
-    })),
+    '/source/import-alias': rdk.derive(
+      { source: rdk.one('/source/directory') },
+      ({ source }) => ({
+        specifier: '#/*', sourcePath: `./${source}/*`, runtimePath: `./${source}/*`,
+      }),
+    ),
     '/requirement/typescript': requirement({
       packages,
       types: ['@cloudflare/workers-types'],
@@ -417,9 +448,12 @@ export function viteReact({ language = 'ES2020' } = {}) {
     '/typescript/module-kind': rdk.value('ESNext'),
     '/typescript/module-resolution': rdk.value('Bundler'),
     '/typescript/libraries': rdk.value(Object.freeze([language, 'DOM', 'DOM.Iterable'])),
-    '/source/import-alias': rdk.derive(['/source/directory'], source => ({
-      specifier: '#/*', sourcePath: `./${source}/*`, runtimePath: `./${source}/*`,
-    })),
+    '/source/import-alias': rdk.derive(
+      { source: rdk.one('/source/directory') },
+      ({ source }) => ({
+        specifier: '#/*', sourcePath: `./${source}/*`, runtimePath: `./${source}/*`,
+      }),
+    ),
     '/requirement/typescript': requirement({
       packages,
       types: ['node'],
@@ -638,8 +672,8 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
   return rdk.graph({
     '/output/bundle-directory': rdk.value(bundleDirectory),
     '/output/bundle-file': rdk.derive(
-      ['/output/bundle-directory', '/package/slug'],
-      (directory, slug) => `${directory}/${slug}.js`,
+      { directory: rdk.one('/output/bundle-directory'), slug: rdk.one('/package/slug') },
+      ({ directory, slug }) => `${directory}/${slug}.js`,
     ),
     '/requirement/rollup': requirement({
       packages: ['@rollup/plugin-commonjs', '@rollup/plugin-node-resolve', 'rollup'],

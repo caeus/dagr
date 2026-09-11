@@ -3,27 +3,49 @@ import { describe, it } from 'node:test'
 
 import { loadRdk } from './dagr.typescript-loader.js'
 
-const { construct, default: rdk, derive, value } = await loadRdk()
+const { construct, default: rdk, derive, many, one, value } = await loadRdk()
 
 describe('rdk graph', () => {
-  it('compiles absolute semantic-path bindings eagerly and once', () => {
-    let initialized = 0
+  it('injects named exact dependencies', () => {
+    const container = rdk.graph({
+      '/name': value('caeus'),
+      '/greeting': derive({ name: one('/name') }, ({ name }) => `hello ${name}`),
+    }).compile(['/greeting'])
+
+    assert.equal(container['/name'], 'caeus')
+    assert.equal(container['/greeting'], 'hello caeus')
+  })
+
+  it('constructs classes from one named dependency object', () => {
     class Greeter {
-      greet(name) {
-        return `hello ${name}`
+      constructor({ name }) {
+        this.name = name
+      }
+
+      greet() {
+        return `hello ${this.name}`
       }
     }
 
     const container = rdk.graph({
-      '/unused': derive([], () => ++initialized),
-      '/person/name': value('caeus'),
-      '/greeter': construct([], Greeter),
-      '/greeting': derive(['/person/name', '/greeter'], (name, greeter) => greeter.greet(name)),
-    }).compile()
+      '/name': value('caeus'),
+      '/greeter': construct({ name: one('/name') }, Greeter),
+    }).compile(['/greeter'])
 
+    assert.equal(container['/greeter'].greet(), 'hello caeus')
+  })
+
+  it('compiles all bindings eagerly and once when roots are omitted', () => {
+    let initialized = 0
+    const graph = rdk.graph({
+      '/value': derive({}, () => ++initialized),
+      '/copy': derive({ value: one('/value') }, ({ value }) => value),
+    })
+
+    const container = graph.compile()
+    assert.equal(container['/value'], 1)
+    assert.equal(container['/copy'], 1)
     assert.equal(initialized, 1)
-    assert.equal(container['/greeting'], 'hello caeus')
-    assert.equal(container['/unused'], 1)
   })
 
   it('rejects binding names that are not canonical absolute paths', () => {
@@ -43,21 +65,27 @@ describe('rdk graph', () => {
     assert.throws(() => rdk.graph({ [Symbol('binding')]: value(1) }), /absolute semantic path/)
   })
 
-  it('rejects non-absolute and malformed dependency selectors', () => {
-    for (const dependency of ['relative', '/', '/trailing/', '/double//slash', '/dot/./x']) {
-      assert.throws(() => derive([dependency], String))
-    }
-    assert.throws(() => derive([{ selector: '/file/**' }], String), /absolute semantic path/)
+  it('requires named dependency declarations to use one() or many()', () => {
+    assert.throws(() => derive([], String), /dependencies must be an object/)
+    assert.throws(() => derive(['/value'], String), /dependencies must be an object/)
+    assert.throws(() => derive({ value: '/value' }, String), /one\(\) or many\(\)/)
+    assert.throws(() => derive({ value: ['/value'] }, String), /one\(\) or many\(\)/)
+    assert.throws(() => derive({ [Symbol('value')]: one('/value') }, String), /names must be strings/)
   })
 
-  it('resolves exact dependencies to exact values', () => {
-    const container = rdk.graph({
-      '/name': value('caeus'),
-      '/greeting': derive(['/name'], name => `hello ${name}`),
-    }).compile(['/greeting'])
+  it('validates one() as an exact semantic path', () => {
+    for (const dependency of ['relative', '/', '/trailing/', '/double//slash', '/dot/./x']) {
+      assert.throws(() => one(dependency))
+    }
+    assert.throws(() => one('/file/**'), /reserved wildcards/)
+    assert.throws(() => one('/file/*'), /reserved wildcards/)
+    assert.throws(() => one('/a', '/b'), /exactly one argument/)
+  })
 
-    assert.equal(container['/name'], 'caeus')
-    assert.equal(container['/greeting'], 'hello caeus')
+  it('validates many() selectors and requires at least one', () => {
+    assert.throws(() => many(), /at least one selector/)
+    assert.throws(() => many('relative'), /must start with/)
+    assert.throws(() => many('/file/**', { selector: '/command/**' }), /absolute semantic path/)
   })
 
   it('resolves * as exactly one path segment', () => {
@@ -66,7 +94,7 @@ describe('rdk graph', () => {
       '/file/tsconfig': value(2),
       '/file/generated/types': value(3),
       '/files': value(4),
-      '/selection': derive(['/file/*'], files => files),
+      '/selection': derive({ files: many('/file/*') }, ({ files }) => files),
     }).compile(['/selection'])['/selection']
 
     assert.deepEqual(files, {
@@ -79,7 +107,7 @@ describe('rdk graph', () => {
     const files = rdk.graph({
       '/file/package-json': value(1),
       '/file/generated/types': value(2),
-      '/selection': derive(['/file/**'], files => files),
+      '/selection': derive({ files: many('/file/**') }, ({ files }) => files),
     }).compile(['/selection'])['/selection']
 
     assert.deepEqual(files, {
@@ -88,20 +116,48 @@ describe('rdk graph', () => {
     })
   })
 
-  it('returns a frozen empty record when a glob dependency has no matches', () => {
+  it('treats many() as a collection dependency even without wildcards', () => {
     const selection = rdk.graph({
-      '/selection': derive(['/missing/**'], bindings => bindings),
+      '/file/package-json': value(1),
+      '/selection': derive({ files: many('/file/package-json') }, ({ files }) => files),
+    }).compile(['/selection'])['/selection']
+
+    assert.deepEqual(selection, { '/file/package-json': 1 })
+  })
+
+  it('unions multiple selectors in one many() dependency without duplicates', () => {
+    const selection = rdk.graph({
+      '/file/package-json': value(1),
+      '/file/generated/types': value(2),
+      '/command/test': value(3),
+      '/ignored': value(4),
+      '/selection': derive(
+        { bindings: many('/file/*', '/file/**', '/command/**') },
+        ({ bindings }) => bindings,
+      ),
+    }).compile(['/selection'])['/selection']
+
+    assert.deepEqual(selection, {
+      '/file/package-json': 1,
+      '/file/generated/types': 2,
+      '/command/test': 3,
+    })
+  })
+
+  it('returns a frozen empty record when many() has no matches', () => {
+    const selection = rdk.graph({
+      '/selection': derive({ bindings: many('/missing/**') }, ({ bindings }) => bindings),
     }).compile(['/selection'])['/selection']
 
     assert.deepEqual(selection, {})
     assert.ok(Object.isFrozen(selection))
   })
 
-  it('returns frozen glob records keyed by complete binding paths', () => {
+  it('returns frozen many() records keyed by complete binding paths', () => {
     const selection = rdk.graph({
       '/command/test/vitest': value('vitest'),
       '/command/test/node': value('node --test'),
-      '/selection': derive(['/command/test/**'], commands => commands),
+      '/selection': derive({ commands: many('/command/test/**') }, ({ commands }) => commands),
     }).compile(['/selection'])['/selection']
 
     assert.deepEqual(Object.keys(selection), [
@@ -113,28 +169,41 @@ describe('rdk graph', () => {
     assert.throws(() => { selection['/command/test/vitest'] = 'changed' }, TypeError)
   })
 
-  it('preserves dependency positions when exact and glob dependencies mix', () => {
+  it('injects exact and collection dependencies by name', () => {
     const container = rdk.graph({
       '/prefix': value('commands:'),
       '/command/build/typescript': value('tsc'),
       '/command/test/vitest': value('vitest'),
       '/result': derive(
-        ['/prefix', '/command/**'],
-        (prefix, commands) => `${prefix}${Object.values(commands).join(',')}`,
+        { prefix: one('/prefix'), commands: many('/command/**') },
+        ({ prefix, commands }) => `${prefix}${Object.values(commands).join(',')}`,
       ),
     }).compile(['/result'])
 
     assert.equal(container['/result'], 'commands:tsc,vitest')
   })
 
-  it('compile roots resolve exact and glob dependencies transitively in one traversal', () => {
+  it('freezes the injected dependency object', () => {
+    const result = rdk.graph({
+      '/value': value(42),
+      '/result': derive({ value: one('/value') }, dependencies => {
+        assert.ok(Object.isFrozen(dependencies))
+        assert.throws(() => { dependencies.value = 0 }, TypeError)
+        return dependencies.value
+      }),
+    }).compile(['/result'])
+
+    assert.equal(result['/result'], 42)
+  })
+
+  it('compile roots resolve exact and many dependencies transitively in one traversal', () => {
     let initialized = false
     const container = rdk.graph({
       '/shared/prefix': value('item:'),
-      '/file/first': derive(['/shared/prefix'], prefix => `${prefix}first`),
+      '/file/first': derive({ prefix: one('/shared/prefix') }, ({ prefix }) => `${prefix}first`),
       '/file/second': value('second'),
-      '/ignored': derive(['/missing'], () => { initialized = true }),
-      '/files': derive(['/file/**'], files => files),
+      '/ignored': derive({ missing: one('/missing') }, () => { initialized = true }),
+      '/files': derive({ files: many('/file/**') }, ({ files }) => files),
     }).compile(['/files'])
 
     assert.deepEqual(Object.keys(container), [
@@ -150,7 +219,7 @@ describe('rdk graph', () => {
   it('accepts glob selectors directly as compile roots', () => {
     const container = rdk.graph({
       '/shared': value('shared'),
-      '/target/ci/build': derive(['/shared'], shared => `${shared}:build`),
+      '/target/ci/build': derive({ shared: one('/shared') }, ({ shared }) => `${shared}:build`),
       '/target/ci/test': value('test'),
       '/target/publish/pack': value('pack'),
       '/ignored': value(false),
@@ -165,9 +234,9 @@ describe('rdk graph', () => {
     assert.ok(Object.isFrozen(container))
   })
 
-  it('rejects cycles involving glob dependencies', () => {
+  it('rejects cycles involving many() dependencies', () => {
     const graph = rdk.graph({
-      '/item/value': derive(['/item/**'], values => values),
+      '/item/value': derive({ values: many('/item/**') }, ({ values }) => values),
     })
 
     assert.throws(
@@ -200,7 +269,7 @@ describe('rdk graph', () => {
     const graph = rdk.graph({
       '/file/first': value(1),
       '/file/second': value(2),
-      '/selection': derive(['/file/**'], files => Object.keys(files)),
+      '/selection': derive({ files: many('/file/**') }, ({ files }) => Object.keys(files)),
     }).merge(rdk.graph({
       '/file/first': value(10),
       '/file/third': value(3),
@@ -212,12 +281,6 @@ describe('rdk graph', () => {
     assert.deepEqual(graph.compile(['/selection'])['/selection'], [
       '/file/first', '/file/second', '/file/third',
     ])
-
-    const dependencyAfterConsumer = rdk.graph({
-      '/result': derive(['/dependency'], value => value),
-      '/dependency': value(42),
-    }).compile(['/result'])
-    assert.deepEqual(Object.keys(dependencyAfterConsumer), ['/result', '/dependency'])
   })
 
   it('merges graphs loaded through separate JavaScript module instances', async () => {
@@ -233,36 +296,52 @@ describe('rdk graph', () => {
     assert.equal(merged['/answer'], 42)
   })
 
+  it('normalizes dependency declarations across separate module instances', async () => {
+    const foreignRdk = (await loadRdk()).default
+    const graph = rdk.graph({
+      '/name': value('caeus'),
+      '/greeting': foreignRdk.derive(
+        { name: foreignRdk.one('/name') },
+        ({ name }) => `hello ${name}`,
+      ),
+    })
+
+    assert.equal(graph.compile(['/greeting'])['/greeting'], 'hello caeus')
+  })
+
   it('exposes immutable bindings through bindingOf', () => {
-    const graph = rdk.graph({ '/answer': value(42) })
-    const binding = graph.bindingOf('/answer')
+    const graph = rdk.graph({
+      '/answer': value(42),
+      '/copy': derive({ answer: one('/answer') }, ({ answer }) => answer),
+    })
+    const binding = graph.bindingOf('/copy')
 
     assert.deepEqual(Object.keys(binding), ['deps', 'factory'])
-    assert.deepEqual(binding.deps, [])
-    assert.equal(binding.factory(), 42)
+    assert.deepEqual(Object.keys(binding.deps), ['answer'])
     assert.ok(Object.isFrozen(binding))
     assert.ok(Object.isFrozen(binding.deps))
+    assert.ok(Object.isFrozen(binding.deps.answer))
     assert.equal(graph.bindingOf('/missing'), undefined)
-    assert.equal('definitionOf' in graph, false)
-    assert.equal('shake' in graph, false)
   })
 
   it('accepts only the current binding signatures', () => {
-    assert.throws(() => value(1, ['group']), /exactly one argument/)
-    assert.throws(() => derive([], () => 1, ['group']), /exactly two arguments/)
-    assert.throws(() => construct([], class {}, ['group']), /exactly two arguments/)
+    assert.throws(() => value(1, {}), /exactly one argument/)
+    assert.throws(() => derive({}, () => 1, {}), /exactly two arguments/)
+    assert.throws(() => construct({}, class {}, {}), /exactly two arguments/)
   })
 
   it('rejects missing exact bindings and exact cycles', () => {
-    const missing = rdk.graph({ '/greeting': derive(['/name'], name => `hello ${name}`) })
+    const missing = rdk.graph({
+      '/greeting': derive({ name: one('/name') }, ({ name }) => `hello ${name}`),
+    })
     assert.throws(
       () => missing.compile(['/greeting']),
       /Missing binding "\/name" required by "\/greeting"/,
     )
 
     const circular = rdk.graph({
-      '/a': derive(['/b'], value => value),
-      '/b': derive(['/a'], value => value),
+      '/a': derive({ b: one('/b') }, ({ b }) => b),
+      '/b': derive({ a: one('/a') }, ({ a }) => a),
     })
     assert.throws(() => circular.compile(), /Circular dependency: \/a -> \/b -> \/a/)
   })
@@ -271,7 +350,7 @@ describe('rdk graph', () => {
     const promise = Promise.resolve(42)
     const container = rdk.graph({
       '/promise': value(promise),
-      '/injected': derive(['/promise'], value => value),
+      '/injected': derive({ promise: one('/promise') }, ({ promise }) => promise),
     }).compile()
 
     assert.equal(container['/promise'], promise)

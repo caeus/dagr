@@ -5,8 +5,7 @@ description: Work with Dagr reusable recipes and RDK contributions under recipes
 
 # Dagr recipes
 
-Use this skill for reusable recipes under `recipes/`, especially the TypeScript recipe and its
-synchronous RDK graph.
+Use this skill for reusable recipes under `recipes/`, especially the TypeScript recipe and its synchronous RDK graph.
 
 ## First orient yourself
 
@@ -19,12 +18,9 @@ synchronous RDK graph.
 
 ## Core model
 
-A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed
-by absolute semantic paths. Exact dependencies name one binding and glob dependencies select open
-sets through `dagr:glob`. Files, commands, targets, and requirements use `/file/**`, `/command/**`,
-`/target/**`, and `/requirement/**`; their helpers add validation or rendering, not grouping. Fixed
-tool requirements occupy `/requirement/*`; adapter-interpreted build facts occupy
-`/requirement/build-scripts/**`.
+A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed by absolute semantic paths. Derived bindings declare a named dependency object: `rdk.one('/path')` injects one exact value and `rdk.many('/path/**')` injects a frozen record of every match. Multiple selectors passed to one `many()` are unioned into that same record. `many()` is the discriminator even when its selector has no wildcard.
+
+Files, commands, targets, and requirements use `/file/**`, `/command/**`, `/target/**`, and `/requirement/**`; their helpers add validation or rendering, not grouping. Fixed tool requirements occupy `/requirement/*`; adapter-interpreted build facts occupy `/requirement/build-scripts/**`.
 
 `recipe(features)` returns a builder. Applying one package declaration merges its facts and runs:
 
@@ -32,16 +28,14 @@ tool requirements occupy `/requirement/*`; adapter-interpreted build facts occup
 graph.compile(['/dagr/index'])['/dagr/index']
 ```
 
-The index derives facet and name from every `/target/<facet>/<name>` binding and returns the grouped
-result. There is no facet registry.
+The index derives facet and name from every `/target/<facet>/<name>` binding and returns the grouped result. There is no facet registry.
 
 ## Modeling rules
 
 - Keep declarations limited to `location`, `version`, dependencies, and metadata.
 - Keep shared semantics as ordinary RDK bindings with paths such as `/source/directory`.
 - Use `/requirement/*` bindings when files and commands must agree on tool packages or ambient types.
-- Use intent-scoped `fact` bindings under `/requirement/build-scripts/**` for dependencies whose
-  build scripts a package manager should permit.
+- Use intent-scoped `fact` bindings under `/requirement/build-scripts/**` for dependencies whose build scripts a package manager should permit.
 - Render generated files and executable commands only as contributions.
 - Pass `intent`, `facet`, and `host` through render context; never make all graph values contextual.
 - Let targets select their context and explicitly render the contributions they need.
@@ -52,23 +46,15 @@ result. There is no facet registry.
 
 ## Package managers
 
-Package managers are ordinary feature graphs. Built-ins are `npm()`, `pnpm()`, and `yarn()`. They
-provide `/package-manager/**`, `/command/pack/package`, and `/file/package-manager` bindings. Custom
-managers provide the same paths directly. Do not infer a manager from the base image or add a
-manager registry.
+Package managers are ordinary feature graphs. Built-ins are `npm()`, `pnpm()`, and `yarn()`. They provide `/package-manager/**`, `/command/pack/package`, and `/file/package-manager` bindings. Custom managers provide the same paths directly. Do not infer a manager from the base image or add a manager registry.
 
-Local package dependencies arrive from sibling `ci:pack` targets as tarballs. Install rendering may
-replace their manifest ranges with `file:` references. Pack and publish rendering restores the public
-ranges.
+Local package dependencies arrive from sibling `ci:pack` targets as tarballs. Install rendering may replace their manifest ranges with `file:` references. Pack and publish rendering restores the public ranges.
 
 ## Working procedure
 
-Trace behavior from an ordinary fact through the contribution that renders it and the local target
-that selects its context. Prefer deleting an abstraction over adapting it when normal RDK composition
-already handles the job.
+Trace behavior from an ordinary fact through the contribution that renders it and the local target that selects its context. Prefer deleting an abstraction over adapting it when normal RDK composition already handles the job.
 
-Keep `README.md`, `AGENTS.md`, `llms.txt`, this skill, workflows, mounts, and publication paths current
-when structure or public behavior changes.
+Keep `README.md`, `AGENTS.md`, `llms.txt`, this skill, workflows, mounts, and publication paths current when structure or public behavior changes.
 
 Validate with:
 

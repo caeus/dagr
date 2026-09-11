@@ -57,7 +57,10 @@ const nodeLibrary = (...features) => ts.default([
 describe('recipe architecture', () => {
   it('builds recipes from the generic init/run/graph builder', () => {
     const base = ts.rdk.graph({
-      '/calculation/doubled': ts.rdk.derive(['/calculation/input'], value => value * 2),
+      '/calculation/doubled': ts.rdk.derive(
+        { input: ts.rdk.one('/calculation/input') },
+        ({ input }) => input * 2,
+      ),
     })
     const calculation = ts.builder(
       value => ts.rdk.graph({ '/calculation/input': ts.rdk.value(value) }),
@@ -68,7 +71,10 @@ describe('recipe architecture', () => {
     assert.equal(calculation(3), 6)
     assert.equal(calculation.graph, base)
     assert.equal(calculation.with(ts.rdk.graph({
-      '/calculation/doubled': ts.rdk.derive(['/calculation/input'], value => value * 3),
+      '/calculation/doubled': ts.rdk.derive(
+        { input: ts.rdk.one('/calculation/input') },
+        ({ input }) => input * 3,
+      ),
     }))(3), 9)
     assert.equal(calculation(3), 6)
   })
@@ -77,15 +83,19 @@ describe('recipe architecture', () => {
     const built = nodeLibrary(ts.vitest(), ts.eslint(), ts.typedoc())
     const graph = built.graph
 
-    assert.deepEqual(graph.bindingOf('/source/directory').deps, [])
-    assert.deepEqual(graph.bindingOf('/output/layout').deps, [
-      '/product/kind', '/output/directory', '/source/entry',
+    assert.deepEqual(graph.bindingOf('/source/directory').deps, {})
+    assert.deepEqual(Object.keys(graph.bindingOf('/output/layout').deps), [
+      'product', 'directory', 'entry',
     ])
-    assert.ok(graph.bindingOf('/file/package-json').deps.includes('/requirement/*'))
-    assert.deepEqual(graph.bindingOf('/requirement/build-scripts/vitest').deps, [])
+    assert.equal(graph.bindingOf('/output/layout').deps.product.path, '/product/kind')
+    assert.deepEqual(graph.bindingOf('/file/package-json').deps.dep1.selectors, ['/requirement/*'])
+    assert.deepEqual(graph.bindingOf('/requirement/build-scripts/vitest').deps, {})
     // A tool command names what to run, so it needs no package manager to say it.
-    assert.deepEqual(graph.bindingOf('/command/test/vitest').deps, ['/requirement/vitest'])
-    assert.deepEqual(graph.bindingOf('/target/ci/test').deps.slice(-2), ['/file/**', '/command/**'])
+    assert.equal(graph.bindingOf('/command/test/vitest').deps.dep0.path, '/requirement/vitest')
+    assert.deepEqual(
+      Object.values(graph.bindingOf('/target/ci/test').deps).slice(-2).map(dependency => dependency.selectors),
+      [['/file/**'], ['/command/**']],
+    )
     assert.equal(graph.bindingOf('/workspace'), undefined)
     assert.equal(graph.bindingOf('/package/json'), undefined)
     assert.equal(graph.bindingOf('/facet/ci'), undefined)

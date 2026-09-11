@@ -2,17 +2,29 @@ import { of as globOf } from 'dagr:glob'
 
 /**
  * @template T
- * @typedef {(...dependencies: unknown[]) => T} Factory
+ * @typedef {(dependencies: Readonly<Record<string, unknown>>) => T} Factory
  */
 
-/** @typedef {string} Dependency */
+const DEPENDENCY = Symbol.for('caeus/dagr/rdk#Dependency')
+
+/**
+ * @typedef {Readonly<{
+ *   [DEPENDENCY]: 'one',
+ *   path: string,
+ * }> | Readonly<{
+ *   [DEPENDENCY]: 'many',
+ *   selectors: readonly string[],
+ * }>} Dependency
+ */
+
+/** @typedef {Readonly<Record<string, Dependency>>} Dependencies */
 
 /**
  * A frozen recipe for producing one binding value.
  *
  * @template T
  * @typedef {Readonly<{
- *   deps: readonly Dependency[],
+ *   deps: Dependencies,
  *   factory: Factory<T>,
  * }>} Binding
  */
@@ -69,30 +81,76 @@ function normalizeBindingName(name) {
   return name
 }
 
+/**
+ * Declares one required exact dependency.
+ *
+ * @param {string} path
+ * @returns {Dependency}
+ */
+export function one(path) {
+  if (arguments.length !== 1) throw new TypeError('one accepts exactly one argument')
+  validatePath(path, 'one dependency', false)
+  return Object.freeze({ [DEPENDENCY]: 'one', path })
+}
+
+/**
+ * Declares a dependency containing every binding matching any selector.
+ *
+ * @param {...string} selectors
+ * @returns {Dependency}
+ */
+export function many(...selectors) {
+  if (selectors.length === 0) throw new TypeError('many requires at least one selector')
+  selectors.forEach(selector => validatePath(selector, 'many selector', true))
+  return Object.freeze({
+    [DEPENDENCY]: 'many',
+    selectors: Object.freeze([...selectors]),
+  })
+}
+
 /** @param {unknown} dependency */
 function normalizeDependency(dependency) {
-  validatePath(dependency, 'Binding dependency', true)
-  return dependency
+  if (dependency === null || typeof dependency !== 'object' || Array.isArray(dependency)) {
+    throw new TypeError('Binding dependency must be declared with one() or many()')
+  }
+
+  if (dependency[DEPENDENCY] === 'one') return one(dependency.path)
+  if (dependency[DEPENDENCY] === 'many') return many(...dependency.selectors)
+  throw new TypeError('Binding dependency must be declared with one() or many()')
+}
+
+/** @param {unknown} deps */
+function normalizeDependencies(deps) {
+  if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
+    throw new TypeError('Binding dependencies must be an object')
+  }
+
+  const normalized = {}
+  for (const key of Reflect.ownKeys(deps)) {
+    if (typeof key !== 'string') {
+      throw new TypeError('Binding dependency names must be strings')
+    }
+    Object.defineProperty(normalized, key, {
+      value: normalizeDependency(deps[key]),
+      enumerable: true,
+      writable: false,
+      configurable: false,
+    })
+  }
+  return Object.freeze(normalized)
 }
 
 /**
  * @template T
- * @param {readonly Dependency[]} deps
+ * @param {unknown} deps
  * @param {Factory<T>} factory
  * @returns {Binding<T>}
  */
 function binding(deps, factory) {
-  if (!Array.isArray(deps)) {
-    throw new TypeError('Binding dependencies must be an array')
-  }
   if (typeof factory !== 'function') {
     throw new TypeError('Binding factory must be a function')
   }
-
-  return Object.freeze({
-    deps: Object.freeze(deps.map(normalizeDependency)),
-    factory,
-  })
+  return Object.freeze({ deps: normalizeDependencies(deps), factory })
 }
 
 /**
@@ -102,12 +160,12 @@ function binding(deps, factory) {
  */
 export function value(input) {
   if (arguments.length !== 1) throw new TypeError('value accepts exactly one argument')
-  return binding([], () => input)
+  return binding({}, () => input)
 }
 
 /**
  * @template T
- * @param {readonly Dependency[]} deps
+ * @param {Record<string, Dependency>} deps
  * @param {Factory<T>} factory
  * @returns {Binding<T>}
  */
@@ -118,8 +176,8 @@ export function derive(deps, factory) {
 
 /**
  * @template T
- * @param {readonly Dependency[]} deps
- * @param {new (...dependencies: unknown[]) => T} Class
+ * @param {Record<string, Dependency>} deps
+ * @param {new (dependencies: Readonly<Record<string, unknown>>) => T} Class
  * @returns {Binding<T>}
  */
 export function construct(deps, Class) {
@@ -127,7 +185,7 @@ export function construct(deps, Class) {
   if (typeof Class !== 'function') {
     throw new TypeError('Binding class must be a constructor')
   }
-  return binding(deps, (...args) => new Class(...args))
+  return binding(deps, dependencies => new Class(dependencies))
 }
 
 /**
@@ -238,8 +296,9 @@ class Graph {
       }
       return matches
     }
-    /** @param {string} selector */
-    const matchingNames = selector => [...this.#bindings.keys()].filter(matcher(selector))
+    /** @param {readonly string[]} selectorGroup */
+    const matchingNames = selectorGroup => [...this.#bindings.keys()]
+      .filter(name => selectorGroup.some(selector => matcher(selector)(name)))
 
     /** @type {string[]} */
     const normalizedRoots = roots === undefined
@@ -251,13 +310,25 @@ class Graph {
 
     const values = new Map()
     const resolving = []
+    /** @type {(name: string, requiredBy?: string) => unknown} */
+    let resolve
 
-    /**
-     * @param {string} name
-     * @param {string | undefined} [requiredBy]
-     * @returns {unknown}
-     */
-    const resolve = (name, requiredBy) => {
+    /** @param {Dependency} dependency @param {string} requiredBy */
+    const resolveDependency = (dependency, requiredBy) => {
+      if (dependency[DEPENDENCY] === 'one') return resolve(dependency.path, requiredBy)
+      const record = {}
+      for (const matched of matchingNames(dependency.selectors)) {
+        Object.defineProperty(record, matched, {
+          value: resolve(matched, requiredBy),
+          enumerable: true,
+          writable: false,
+          configurable: false,
+        })
+      }
+      return Object.freeze(record)
+    }
+
+    resolve = (name, requiredBy) => {
       if (values.has(name)) return values.get(name)
 
       const current = this.#bindings.get(name)
@@ -274,21 +345,16 @@ class Graph {
 
       resolving.push(name)
       try {
-        const dependencies = current.deps.map(dependency => {
-          if (!dependency.includes('*')) return resolve(dependency, name)
-
-          const record = {}
-          for (const matched of matchingNames(dependency)) {
-            Object.defineProperty(record, matched, {
-              value: resolve(matched, name),
-              enumerable: true,
-              writable: false,
-              configurable: false,
-            })
-          }
-          return Object.freeze(record)
-        })
-        const result = current.factory(...dependencies)
+        const dependencies = {}
+        for (const [key, dependency] of Object.entries(current.deps)) {
+          Object.defineProperty(dependencies, key, {
+            value: resolveDependency(dependency, name),
+            enumerable: true,
+            writable: false,
+            configurable: false,
+          })
+        }
+        const result = current.factory(Object.freeze(dependencies))
         values.set(name, result)
         return result
       } finally {
@@ -298,7 +364,7 @@ class Graph {
 
     for (const root of normalizedRoots) {
       if (root.includes('*')) {
-        for (const matched of matchingNames(root)) resolve(matched)
+        for (const matched of matchingNames([root])) resolve(matched)
       } else {
         resolve(root)
       }
@@ -337,4 +403,4 @@ export function merge(...graphs) {
   return graph({}).merge(...graphs)
 }
 
-export default Object.freeze({ graph, merge, value, derive, construct })
+export default Object.freeze({ graph, merge, value, one, many, derive, construct })
