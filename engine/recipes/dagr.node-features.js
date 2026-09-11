@@ -23,7 +23,7 @@ export function nodeBase({
   packageManager = 'pnpm@11.20.0',
 } = {}) {
   return rdk.graph({
-    [`/target/ci/${name}`]: target([], {
+    [`/target/ci/${name}`]: target({}, {
       render: () => ({
         deps: [],
         run: () => ({
@@ -64,16 +64,19 @@ export function nodeTest({
     '/requirement/node-test': requirement({
       packages: ['tsx'],
     }),
-    '/requirement/build-scripts/node-test': fact([], {
+    '/requirement/build-scripts/node-test': fact({}, {
       for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
       value: ['esbuild'],
     }),
-    '/command/test/node': command(['/requirement/node-test'], {
+    '/command/test/node': command({ requirement: rdk.one('/requirement/node-test') }, {
       for: ['test'],
       run: () => ({ shell: invocation }),
     }),
-    '/target/ci/test': target(['/source/ignore', '/package-manager/exec'], {
-      render: (context, ignore, exec) => ({
+    '/target/ci/test': target({
+      ignore: rdk.one('/source/ignore'),
+      exec: rdk.one('/package-manager/exec'),
+    }, {
+      render: (context, { ignore, exec }) => ({
         deps: ['build'],
         run: ({ images }) => ({
           FROM: images.build,

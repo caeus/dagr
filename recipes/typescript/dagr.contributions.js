@@ -30,24 +30,21 @@ const normalizeOrder = (kind, order = 0) => {
   return order
 }
 
-const positionalDependencies = deps => Object.fromEntries(deps.map((dependency, index) => [
-  `dep${index}`,
-  Array.isArray(dependency) ? rdk.many(...dependency) : rdk.one(dependency),
-]))
-
-const derivePositional = (deps, factory) => rdk.derive(
-  positionalDependencies(deps),
-  dependencies => factory(...Object.values(dependencies)),
-)
+const deriveContribution = (kind, deps, factory) => {
+  if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
+    throw new TypeError(`${kind} contribution dependencies must be an object`)
+  }
+  return rdk.derive(deps, factory)
+}
 
 /** A graph binding carrying an intent-scoped fact for consumers to interpret. */
 export const fact = (deps, options = {}) => {
-  if (!Array.isArray(deps)) throw new TypeError('fact contribution dependencies must be an array')
   const intents = normalizeFor('fact', options.for)
   if (intents === undefined) {
     throw new TypeError('fact contribution needs for, the intents whose fact it is')
   }
-  return derivePositional(
+  return deriveContribution(
+    'fact',
     deps,
     () => Object.freeze({
       for: intents,
@@ -68,16 +65,16 @@ export const factsFor = (contributions, intent) => [...new Set(
  * context-aware kind: what a tsconfig or a manifest contains genuinely differs per intent.
  */
 export const file = (deps, options = {}) => {
-  if (!Array.isArray(deps)) throw new TypeError('file contribution dependencies must be an array')
   if (typeof options.render !== 'function') throw new TypeError('file contribution needs render')
   const intents = normalizeFor('file', options.for)
   const order = normalizeOrder('file', options.order)
-  return derivePositional(
+  return deriveContribution(
+    'file',
     deps,
-    (...values) => Object.freeze({
+    dependencies => Object.freeze({
       for: intents,
       order,
-      render: context => normalizeSteps(options.render(context, ...values)),
+      render: context => normalizeSteps(options.render(context, dependencies)),
     }),
   )
 }
@@ -105,19 +102,19 @@ const normalizeInvocations = rendered => {
 
 /** A graph binding declaring what an intent runs, for any renderer to materialize. */
 export const command = (deps, options = {}) => {
-  if (!Array.isArray(deps)) throw new TypeError('command contribution dependencies must be an array')
   if (typeof options.run !== 'function') throw new TypeError('command contribution needs run')
   const intents = normalizeFor('command', options.for)
   if (intents === undefined) {
     throw new TypeError('command contribution needs for, the intents whose run it is')
   }
   const order = normalizeOrder('command', options.order)
-  return derivePositional(
+  return deriveContribution(
+    'command',
     deps,
-    (...values) => Object.freeze({
+    dependencies => Object.freeze({
       for: intents,
       order,
-      invocations: normalizeInvocations(options.run(...values)),
+      invocations: normalizeInvocations(options.run(dependencies)),
     }),
   )
 }
@@ -156,30 +153,42 @@ export const contextFor = (context, files, commands) => {
   })
 }
 
+const TARGET_FILES = '$files'
+const TARGET_COMMANDS = '$commands'
+
 /**
  * A target binding. File and command collections are selected automatically; ordinary graph
- * dependencies keep their normal positions before the context. Its `/target/<facet>/<name>` path
- * supplies the Dagr facet and target name when the index materializes it.
+ * dependencies are injected by name beside the context. Its `/target/<facet>/<name>` path supplies
+ * the Dagr facet and target name when the index materializes it.
  */
 export function target(deps, {
   intent,
   render,
 } = {}) {
-  if (!Array.isArray(deps)) throw new TypeError('target contribution dependencies must be an array')
+  if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
+    throw new TypeError('target contribution dependencies must be an object')
+  }
+  if (TARGET_FILES in deps || TARGET_COMMANDS in deps) {
+    throw new TypeError(`target contribution dependency names ${TARGET_FILES} and ${TARGET_COMMANDS} are reserved`)
+  }
   if (intent !== undefined && (typeof intent !== 'string' || intent === '')) {
     throw new Error('target contribution intent must be a non-empty string')
   }
   if (typeof render !== 'function') throw new Error('target contribution needs render')
 
-  return derivePositional(
-    [...deps, ['/file/**'], ['/command/**']],
-    (...values) => {
-      const commands = values.pop()
-      const files = values.pop()
+  return rdk.derive(
+    {
+      ...deps,
+      [TARGET_FILES]: rdk.many('/file/**'),
+      [TARGET_COMMANDS]: rdk.many('/command/**'),
+    },
+    dependencies => {
+      const { [TARGET_FILES]: files, [TARGET_COMMANDS]: commands, ...values } = dependencies
+      const named = Object.freeze(values)
       return Object.freeze({
         materialize(name, facet) {
           const context = contextFor({ intent: intent ?? name, facet, host: undefined }, files, commands)
-          const rendered = render(context, ...values)
+          const rendered = render(context, named)
           if (rendered === null || typeof rendered !== 'object' || Array.isArray(rendered)) {
             throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} render must return a Dagr target`)
           }

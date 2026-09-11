@@ -1,7 +1,7 @@
 # Composable TypeScript recipe
 
 This recipe builds a Dagr index from one immutable RDK graph. Every binding has an absolute semantic
-path. Exact dependencies name one binding; glob dependencies discover open collections.
+path. Dependencies are declared by name with `rdk.one()` and `rdk.many()`.
 
 ```js
 import recipe, {
@@ -74,21 +74,25 @@ Ordinary values use paths such as `/package/name`, `/source/directory`, `/output
 const health = () => rdk.graph({
   '/health/message': rdk.value('healthy'),
 
-  '/file/health': file(['/health/message'], {
+  '/file/health': file({
+    message: rdk.one('/health/message'),
+  }, {
     for: ['test'],
-    render(_context, message) {
+    render(_context, { message }) {
       return writeText('/repo/health.txt', message)
     },
   }),
 
-  '/command/test/health': command([], {
+  '/command/test/health': command({}, {
     for: ['test'],
     run: () => ({ shell: 'test -s health.txt' }),
   }),
 
-  '/target/quality/health': target(['/package-manager/exec'], {
+  '/target/quality/health': target({
+    exec: rdk.one('/package-manager/exec'),
+  }, {
     intent: 'test',
-    render(context, exec) {
+    render(context, { exec }) {
       return {
         deps: [],
         run: ({ host }) => ({
@@ -107,14 +111,16 @@ becomes `quality:health`.
 
 ## Files, commands, and facts
 
-Files are context-aware; commands are not.
+Files are context-aware; commands are not. `fact`, `file`, `command`, and `target` all take a named
+dependency object. Use `rdk.one('/path')` for one required binding and
+`rdk.many('/first/**', '/second/**')` for the union of one or more glob patterns.
 
-A file renderer receives `{ intent, facet, host }` plus dependency values and returns one Dagr step
-or nested arrays of steps. An empty array means "nothing to do". Any non-step value, including
-`undefined` and `false`, is an error. A file binding may render `COPY`, an inline write, `CMD`, or any
-other step.
+A file renderer receives `{ intent, facet, host }` plus one named dependency object and returns one
+Dagr step or nested arrays of steps. An empty array means "nothing to do". Any non-step value,
+including `undefined` and `false`, is an error. A file binding may render `COPY`, an inline write,
+`CMD`, or any other step.
 
-A command renderer receives only dependency values and returns invocations: `{ tool }` for an
+A command renderer receives one named dependency object and returns invocations: `{ tool }` for an
 installed binary or `{ shell }` for a literal command line. A consumer decides how to materialize an
 invocation:
 
@@ -125,8 +131,8 @@ invocation:
 `runSteps(invocations, exec)` performs container materialization. Installation is not a
 contribution; a target calls `/package-manager/install` when it creates a fresh image.
 
-`for` is the intent gate. A target receives `/file/**` and `/command/**`, then asks for the values
-matching its context:
+`for` is the intent gate. A target receives `/file/**` and `/command/**` internally, then asks for the
+values matching its context:
 
 - `context.files(overrides)` renders applicable file bindings;
 - `context.invocations(overrides)` returns applicable invocations.
@@ -134,10 +140,10 @@ matching its context:
 Files and commands default to `order: 0`. Equal orders retain graph key order. Use another numeric
 order only where sequence is behavior.
 
-Facts carry an intent list and an opaque value without rendering it. Consumers glob their semantic
-namespace and use `factsFor` to select the current intent, flatten the values, and remove duplicates.
-For example, build-script allowances live under `/requirement/build-scripts/**`; each package-manager
-feature renders that portable fact in its own dialect.
+Facts carry an intent list and an opaque value without rendering it. Consumers select their semantic
+namespace with `rdk.many()` and use `factsFor` to select the current intent, flatten the values, and
+remove duplicates. For example, build-script allowances live under `/requirement/build-scripts/**`;
+each package-manager feature renders that portable fact in its own dialect.
 
 ## Requirements and versions
 
@@ -235,12 +241,15 @@ const bun = () => rdk.graph({
   '/package-manager/pack': rdk.value(slug =>
     `bun pm pack --destination /out --filename ${slug}.tgz`),
 
-  '/command/pack/package': command(['/package-manager/pack', '/package/slug'], {
+  '/command/pack/package': command({
+    pack: rdk.one('/package-manager/pack'),
+    slug: rdk.one('/package/slug'),
+  }, {
     for: ['pack', 'publish'],
-    run: (pack, slug) => ({ shell: pack(slug) }),
+    run: ({ pack, slug }) => ({ shell: pack(slug) }),
   }),
 
-  '/file/package-manager': file([], {
+  '/file/package-manager': file({}, {
     for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
     render: () => writeText('/repo/bunfig.toml', '[install]\nexact = true\n'),
   }),
