@@ -36,7 +36,7 @@ export type GraphValues<B extends Bindings> = Readonly<{
 }>
 
 const DEPENDENCY = Symbol.for('caeus/dagr/rdk#Dependency')
-const bindingName = (name: unknown): string => JSON.stringify(name)
+const bindingName = (name: unknown): string => JSON.stringify(name) ?? String(name)
 
 function validatePath(path: unknown, role: string, allowGlob: boolean): boolean {
   if (typeof path !== 'string') {
@@ -205,7 +205,7 @@ export class Graph<B extends Bindings = Bindings> {
       if (!(other instanceof Graph)) {
         throw new TypeError(`Can only merge another graph, got ${typeof other} at ${position}`)
       }
-      for (const name of other.keys()) merged.set(name, other.bindingOf(name))
+      for (const name of other.keys()) merged.set(name, other.bindingOf(name)!)
     })
     return new Graph(merged)
   }
