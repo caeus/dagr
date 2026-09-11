@@ -25,6 +25,10 @@ function createGlobFactory(context: vm.Context): GlobFactory {
   return Object.freeze(of)
 }
 
+/**
+ * Exposes the native RDK through sandbox-realm functions and containers. The implementation stays
+ * in rdk.ts; this code only prevents host-realm constructors from leaking through the VM boundary.
+ */
 function createRdkModule(context: vm.Context): vm.Module {
   const graphFacades = new WeakMap<object, nativeRdk.Graph>()
 
@@ -68,19 +72,6 @@ function createRdkModule(context: vm.Context): vm.Module {
       ? { [DEPENDENCY]: 'many', selectors: Object.freeze([...native.selectors]) }
       : { [DEPENDENCY]: 'one', path: native.path })
 
-    const binding = native => {
-      const deps = {}
-      for (const [name, value] of Object.entries(native.deps)) {
-        Object.defineProperty(deps, name, {
-          value: dependency(value), enumerable: true, writable: false, configurable: false,
-        })
-      }
-      return Object.freeze({
-        deps: Object.freeze(deps),
-        factory: dependencies => host.invoke(native, dependencies),
-      })
-    }
-
     const container = entries => {
       const result = Object.create(null)
       for (const [name, value] of entries) {
@@ -89,6 +80,36 @@ function createRdkModule(context: vm.Context): vm.Module {
         })
       }
       return Object.freeze(result)
+    }
+
+    const binding = native => {
+      const deps = {}
+      for (const [name, value] of Object.entries(native.deps)) {
+        Object.defineProperty(deps, name, {
+          value: dependency(value), enumerable: true, writable: false, configurable: false,
+        })
+      }
+
+      const argumentsOf = dependencies => {
+        const result = {}
+        for (const [name, value] of Object.entries(dependencies)) {
+          const declaration = native.deps[name]
+          Object.defineProperty(result, name, {
+            value: declaration.path === undefined
+              ? container(Object.entries(value))
+              : value,
+            enumerable: true,
+            writable: false,
+            configurable: false,
+          })
+        }
+        return Object.freeze(result)
+      }
+
+      return Object.freeze({
+        deps: Object.freeze(deps),
+        factory: dependencies => host.invoke(native, argumentsOf(dependencies)),
+      })
     }
 
     const wrap = native => {
