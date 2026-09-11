@@ -98,7 +98,7 @@ export function createBuiltinModules(context: vm.Context): ReadonlyMap<string, v
         context,
         identifier: 'dagr:rdk',
       }),
-    ],
+    ] as const,
   ])
 
   function builtin<T extends (...args: never[]) => unknown>(
