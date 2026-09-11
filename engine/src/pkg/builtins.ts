@@ -1,6 +1,7 @@
 import vm from 'node:vm'
 import { stringify as stringifyToml } from 'smol-toml'
 import { stringify as stringifyYaml } from 'yaml'
+import { RDK_SOURCE } from '#pkg/rdk.js'
 import { createSandboxStringifier } from '#pkg/sandbox.js'
 
 export const BUILTIN_PREFIX = 'dagr:'
@@ -70,6 +71,7 @@ function createGlobFactory(context: vm.Context): GlobFactory {
 }
 
 export function createBuiltinModules(context: vm.Context): ReadonlyMap<string, vm.Module> {
+  const globOf = createGlobFactory(context)
   return new Map([
     builtin(
       'dagr:yaml',
@@ -89,7 +91,14 @@ export function createBuiltinModules(context: vm.Context): ReadonlyMap<string, v
         ),
       ),
     ),
-    builtin('dagr:glob', 'of', createGlobFactory(context)),
+    builtin('dagr:glob', 'of', globOf),
+    [
+      'dagr:rdk',
+      new vm.SourceTextModule(RDK_SOURCE, {
+        context,
+        identifier: 'dagr:rdk',
+      }),
+    ],
   ])
 
   function builtin<T extends (...args: never[]) => unknown>(
