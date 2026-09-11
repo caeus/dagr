@@ -8,16 +8,6 @@
   IGNORE:
     - .git
 
-"github.com/caeus/dagr-recipes/rdk":
-  FROM: alpine:3.22
-  steps:
-    - COPY:
-        src: recipes/rdk/
-        dest: /src/
-    - WORKDIR: /src
-  IGNORE:
-    - .git
-
 # Subtrees the test harness mounts. Only the harness uses these: they exist so a test can see two
 # packages at once without either package reaching outside itself.
 "github.com/caeus/dagr/recipes":
