@@ -7,9 +7,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const repository = resolve(root, '..')
 const engine = resolve(repository, 'engine')
 const recipe = resolve(root, 'typescript')
-const rdk = resolve(root, 'rdk')
+const rdkFixture = resolve(root, 'tests/dagr.rdk-fixture.js')
 
-// Test double for the engine-provided module. Production RDK always imports `dagr:glob`.
+// Recipe tests stay self-contained, so this mirrors the engine-provided glob used by the RDK fixture.
 const globOf = pattern => Object.freeze(path => matchesGlob(path, pattern))
 
 const synthetic = async (specifier, exports) => {
@@ -63,11 +63,9 @@ const createLoader = () => {
       if (specifier === 'dagr:glob') {
         return synthetic(specifier, { default: Object.freeze({ of: globOf }), of: globOf })
       }
+      if (specifier === 'dagr:rdk') return load(rdkFixture)
       if (!specifier.startsWith('//')) {
         throw new Error(`Dagr imports must start with //, got: ${specifier}`)
-      }
-      if (specifier.startsWith('//rdk//')) {
-        return load(resolve(rdk, specifier.slice('//rdk//'.length)))
       }
       if (specifier.startsWith('//engine/recipes/typescript//')) {
         return load(resolve(recipe, specifier.slice('//engine/recipes/typescript//'.length)))
@@ -91,7 +89,5 @@ const evaluate = async path => {
 }
 
 export const loadTypeScript = () => evaluate(resolve(recipe, 'dagr.recipe.js'))
-
-export const loadRdk = () => evaluate(resolve(rdk, 'dagr.rdk.js'))
 
 export const loadEngineIndex = () => evaluate(resolve(engine, 'dagr.index.js'))
