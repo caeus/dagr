@@ -17,7 +17,8 @@ src/
 │   ├── loader.ts               discovery, sandboxed modules, imports, and traversal
 │   ├── mount-request.ts        mount request parsing and validation
 │   ├── volume-registry.ts      root-owned identity and implementation policy
-│   ├── builtins.ts             dagr:yaml, dagr:toml, and dagr:glob
+│   ├── builtins.ts             native dagr: libraries and registration
+│   ├── rdk.ts                  sandbox-native dagr:rdk module source
 │   └── sandbox.ts              restricted VM context
 └── runner/
     ├── index.ts                addresses, dependency walk, cycles, and memoization
@@ -80,9 +81,10 @@ mountImplementation }` shape receives direct migration guidance.
 
 JavaScript imports use the same VM context. JSON, YAML, and TOML imports become deeply frozen
 `vm.SyntheticModule` values. The sandbox exposes standard JavaScript, `Buffer`, `dagr:yaml`,
-`dagr:toml`, and `dagr:glob`, but not Node filesystem, process, network, timer, or CommonJS APIs.
-The built-in modules are registered in one map and resolved by the same linker path before
-repository imports are considered.
+`dagr:toml`, `dagr:glob`, and `dagr:rdk`, but not Node filesystem, process, network, timer, or
+CommonJS APIs. The RDK itself is a `vm.SourceTextModule` in that same context and imports the native
+`dagr:glob` module through the normal built-in linker. Built-in modules are registered in one map and
+resolved by the same linker path before repository imports are considered.
 
 `node:vm` reduces accidental ambient access. It is not a security boundary, so repository source
 and pinned images must still be trusted.
