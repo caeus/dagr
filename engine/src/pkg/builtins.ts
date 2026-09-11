@@ -72,15 +72,16 @@ function createRdkModule(context: vm.Context): vm.Module {
       ? { [DEPENDENCY]: 'many', selectors: Object.freeze([...native.selectors]) }
       : { [DEPENDENCY]: 'one', path: native.path })
 
-    const container = entries => {
-      const result = Object.create(null)
+    const copy = (entries, target) => {
       for (const [name, value] of entries) {
-        Object.defineProperty(result, name, {
+        Object.defineProperty(target, name, {
           value, enumerable: true, writable: false, configurable: false,
         })
       }
-      return Object.freeze(result)
+      return Object.freeze(target)
     }
+    const record = entries => copy(entries, {})
+    const container = entries => copy(entries, Object.create(null))
 
     const binding = native => {
       const deps = {}
@@ -96,7 +97,7 @@ function createRdkModule(context: vm.Context): vm.Module {
           const declaration = native.deps[name]
           Object.defineProperty(result, name, {
             value: declaration.path === undefined
-              ? container(Object.entries(value))
+              ? record(Object.entries(value))
               : value,
             enumerable: true,
             writable: false,
