@@ -1,79 +1,121 @@
-export const RDK_SOURCE = String.raw`
-import { of as globOf } from 'dagr:glob'
+import { of as globOf } from '#pkg/glob.js'
+
+declare const DEPENDENCY_VALUE: unique symbol
+declare const BINDING_VALUE: unique symbol
+
+export interface Dependency<T = unknown> {
+  readonly [DEPENDENCY_VALUE]?: T
+}
+
+export interface OneDependency<T = unknown> extends Dependency<T> {
+  readonly path: string
+  readonly selectors?: never
+}
+
+export interface ManyDependency<T = unknown> extends Dependency<Readonly<Record<string, T>>> {
+  readonly selectors: readonly string[]
+  readonly path?: never
+}
+
+export type AnyDependency = OneDependency | ManyDependency
+export type Dependencies = Readonly<Record<string, AnyDependency>>
+export type ResolvedDependencies<D extends Dependencies> = Readonly<{
+  [K in keyof D]: D[K] extends Dependency<infer T> ? T : never
+}>
+
+export interface Binding<T = unknown> {
+  readonly deps: Dependencies
+  readonly factory: (dependencies: Readonly<Record<string, unknown>>) => T
+  readonly [BINDING_VALUE]?: T
+}
+
+export type Bindings = Readonly<Record<string, Binding>>
+export type BindingValue<B> = B extends Binding<infer T> ? T : never
+export type GraphValues<B extends Bindings> = Readonly<{
+  [K in keyof B]: BindingValue<B[K]>
+}>
 
 const DEPENDENCY = Symbol.for('caeus/dagr/rdk#Dependency')
-const GRAPH = Symbol.for('caeus/dagr/rdk#Graph')
-const bindingName = name => JSON.stringify(name)
+const bindingName = (name: unknown): string => JSON.stringify(name)
 
-function validatePath(path, role, allowGlob) {
+function validatePath(path: unknown, role: string, allowGlob: boolean): boolean {
   if (typeof path !== 'string') {
-    throw new TypeError(role + ' must be an absolute semantic path')
+    throw new TypeError(`${role} must be an absolute semantic path`)
   }
   if (!path.startsWith('/')) {
-    throw new Error(role + ' ' + bindingName(path) + ' must start with "/"')
+    throw new Error(`${role} ${bindingName(path)} must start with "/"`)
   }
-  if (path === '/') throw new Error(role + ' cannot be "/"')
+  if (path === '/') throw new Error(`${role} cannot be "/"`)
   if (path.endsWith('/')) {
-    throw new Error(role + ' ' + bindingName(path) + ' must not end with "/"')
+    throw new Error(`${role} ${bindingName(path)} must not end with "/"`)
   }
 
   const segments = path.slice(1).split('/')
   if (segments.includes('')) {
-    throw new Error(role + ' ' + bindingName(path) + ' must not contain "//"')
+    throw new Error(`${role} ${bindingName(path)} must not contain "//"`)
   }
   if (segments.some(segment => segment === '.' || segment === '..')) {
-    throw new Error(role + ' ' + bindingName(path) + ' must not contain "." or ".." segments')
+    throw new Error(`${role} ${bindingName(path)} must not contain "." or ".." segments`)
   }
 
   const wildcard = segments.some(segment => segment.includes('*'))
   if (wildcard && !allowGlob) {
-    throw new Error(role + ' ' + bindingName(path) + ' must not contain reserved wildcards "*" or "**"')
+    throw new Error(`${role} ${bindingName(path)} must not contain reserved wildcards "*" or "**"`)
   }
   if (wildcard) globOf(path.slice(1))
   return wildcard
 }
 
-function normalizeBindingName(name) {
+function normalizeBindingName(name: unknown): string {
   validatePath(name, 'Binding name', false)
-  return name
+  return name as string
 }
 
-export function one(path) {
+function dependencyKind(dependency: object): unknown {
+  return (dependency as Record<PropertyKey, unknown>)[DEPENDENCY]
+}
+
+export function one<T = unknown>(path: string): OneDependency<T> {
   if (arguments.length !== 1) throw new TypeError('one accepts exactly one argument')
   validatePath(path, 'one dependency', false)
-  return Object.freeze({ [DEPENDENCY]: 'one', path })
+  return Object.freeze({ [DEPENDENCY]: 'one', path }) as OneDependency<T>
 }
 
-export function many(...selectors) {
+export function many<T = unknown>(...selectors: string[]): ManyDependency<T> {
   if (selectors.length === 0) throw new TypeError('many requires at least one selector')
   selectors.forEach(selector => validatePath(selector, 'many selector', true))
   return Object.freeze({
     [DEPENDENCY]: 'many',
     selectors: Object.freeze([...selectors]),
-  })
+  }) as ManyDependency<T>
 }
 
-function normalizeDependency(dependency) {
+function normalizeDependency(dependency: unknown): AnyDependency {
   if (dependency === null || typeof dependency !== 'object' || Array.isArray(dependency)) {
     throw new TypeError('Binding dependency must be declared with one() or many()')
   }
-  if (dependency[DEPENDENCY] === 'one') return one(dependency.path)
-  if (dependency[DEPENDENCY] === 'many') return many(...dependency.selectors)
+  if (dependencyKind(dependency) === 'one') {
+    return one((dependency as { path?: unknown }).path as string)
+  }
+  if (dependencyKind(dependency) === 'many') {
+    return many(...((dependency as { selectors?: unknown }).selectors as string[]))
+  }
   throw new TypeError('Binding dependency must be declared with one() or many()')
 }
 
-function normalizeDependencies(deps) {
+function normalizeDependencies(deps: unknown): Dependencies {
   if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
     throw new TypeError('Binding dependencies must be an object')
   }
 
-  const normalized = {}
-  for (const key of Reflect.ownKeys(deps)) {
+  const input = deps as Record<PropertyKey, unknown>
+  const normalized: Record<string, AnyDependency> = {}
+  for (const key of Reflect.ownKeys(input)) {
     if (typeof key !== 'string') {
       throw new TypeError('Binding dependency names must be strings')
     }
     Object.defineProperty(normalized, key, {
-      value: normalizeDependency(deps[key]),
+      value: normalizeDependency(input[key]),
       enumerable: true,
       writable: false,
       configurable: false,
@@ -82,84 +124,101 @@ function normalizeDependencies(deps) {
   return Object.freeze(normalized)
 }
 
-function binding(deps, factory) {
+function binding<T>(
+  deps: unknown,
+  factory: (dependencies: Readonly<Record<string, unknown>>) => T,
+): Binding<T> {
   if (typeof factory !== 'function') throw new TypeError('Binding factory must be a function')
   return Object.freeze({ deps: normalizeDependencies(deps), factory })
 }
 
-export function value(input) {
+export function value<T>(input: T): Binding<T> {
   if (arguments.length !== 1) throw new TypeError('value accepts exactly one argument')
   return binding({}, () => input)
 }
 
-export function derive(deps, factory) {
+export function derive<const D extends Dependencies, T>(
+  deps: D,
+  factory: (dependencies: ResolvedDependencies<D>) => T,
+): Binding<T> {
   if (arguments.length !== 2) throw new TypeError('derive accepts exactly two arguments')
-  return binding(deps, factory)
+  return binding(deps, factory as (dependencies: Readonly<Record<string, unknown>>) => T)
 }
 
-export function construct(deps, Class) {
+export function construct<const D extends Dependencies, T>(
+  deps: D,
+  Class: new (dependencies: ResolvedDependencies<D>) => T,
+): Binding<T> {
   if (arguments.length !== 2) throw new TypeError('construct accepts exactly two arguments')
   if (typeof Class !== 'function') throw new TypeError('Binding class must be a constructor')
-  return binding(deps, dependencies => new Class(dependencies))
+  return binding(
+    deps,
+    dependencies => new Class(dependencies as ResolvedDependencies<D>),
+  )
 }
 
-function normalize(bindings) {
+function normalize(bindings: unknown): Map<string, Binding> {
   if (bindings === null || typeof bindings !== 'object' || Array.isArray(bindings)) {
     throw new TypeError('Graph bindings must be an object')
   }
 
-  return new Map(Reflect.ownKeys(bindings).map(inputName => {
+  const input = bindings as Record<PropertyKey, unknown>
+  return new Map(Reflect.ownKeys(input).map(inputName => {
     const name = normalizeBindingName(inputName)
-    const input = bindings[name]
-    if (input === null || typeof input !== 'object') {
-      throw new TypeError('Binding ' + bindingName(name) + ' must be a binding')
+    const candidate = input[name]
+    if (candidate === null || typeof candidate !== 'object') {
+      throw new TypeError(`Binding ${bindingName(name)} must be a binding`)
     }
-    return [name, binding(input.deps, input.factory)]
+    const bindingInput = candidate as Partial<Binding>
+    return [
+      name,
+      binding(
+        bindingInput.deps,
+        bindingInput.factory as (dependencies: Readonly<Record<string, unknown>>) => unknown,
+      ),
+    ]
   }))
 }
 
-class Graph {
-  static [Symbol.hasInstance](other) {
-    return other !== null && typeof other === 'object' && other[GRAPH] === true
-  }
+/** Immutable RDK dependency graph. */
+export class Graph<B extends Bindings = Bindings> {
+  readonly #bindings: ReadonlyMap<string, Binding>
 
-  #bindings
-
-  constructor(bindings) {
+  constructor(bindings: ReadonlyMap<string, Binding>) {
     this.#bindings = bindings
     Object.freeze(this)
   }
 
-  get [GRAPH]() {
-    return true
-  }
-
-  bindingOf(name) {
+  bindingOf<K extends keyof B & string>(name: K): B[K] | undefined
+  bindingOf(name: string): Binding | undefined
+  bindingOf(name: string): Binding | undefined {
     return this.#bindings.get(normalizeBindingName(name))
   }
 
-  keys() {
-    return this.#bindings.keys()
+  keys(): IterableIterator<keyof B & string> {
+    return this.#bindings.keys() as IterableIterator<keyof B & string>
   }
 
-  merge(...others) {
+  merge(...others: readonly Graph[]): Graph {
     const merged = new Map(this.#bindings)
     others.forEach((other, position) => {
       if (!(other instanceof Graph)) {
-        throw new TypeError('Can only merge another graph, got ' + typeof other + ' at ' + position)
+        throw new TypeError(`Can only merge another graph, got ${typeof other} at ${position}`)
       }
       for (const name of other.keys()) merged.set(name, other.bindingOf(name))
     })
     return new Graph(merged)
   }
 
-  compile(roots) {
+  compile(): GraphValues<B>
+  compile(roots: readonly string[]): Partial<GraphValues<B>>
+  compile(roots?: readonly string[]): GraphValues<B> | Partial<GraphValues<B>> {
     if (roots !== undefined && !Array.isArray(roots)) {
       throw new TypeError('Compile roots must be an array of absolute semantic paths')
     }
 
-    const selectors = new Map()
-    const matcher = selector => {
+    const selectors = new Map<string, (path: string) => boolean>()
+    const matcher = (selector: string): ((path: string) => boolean) => {
       let matches = selectors.get(selector)
       if (matches === undefined) {
         const relative = globOf(selector.slice(1))
@@ -168,7 +227,7 @@ class Graph {
       }
       return matches
     }
-    const matchingNames = selectorGroup => [...this.#bindings.keys()]
+    const matchingNames = (selectorGroup: readonly string[]): string[] => [...this.#bindings.keys()]
       .filter(name => selectorGroup.some(selector => matcher(selector)(name)))
 
     const normalizedRoots = roots === undefined
@@ -178,14 +237,13 @@ class Graph {
           return root
         })
 
-    const values = new Map()
-    const resolving = []
-    let resolve
+    const values = new Map<string, unknown>()
+    const resolving: string[] = []
 
-    const resolveDependency = (dependency, requiredBy) => {
-      if (dependency[DEPENDENCY] === 'one') return resolve(dependency.path, requiredBy)
-      const record = {}
-      for (const matched of matchingNames(dependency.selectors)) {
+    const resolveDependency = (dependency: AnyDependency, requiredBy: string): unknown => {
+      if (dependencyKind(dependency) === 'one') return resolve(dependency.path!, requiredBy)
+      const record: Record<string, unknown> = {}
+      for (const matched of matchingNames(dependency.selectors!)) {
         Object.defineProperty(record, matched, {
           value: resolve(matched, requiredBy),
           enumerable: true,
@@ -196,24 +254,24 @@ class Graph {
       return Object.freeze(record)
     }
 
-    resolve = (name, requiredBy) => {
+    const resolve = (name: string, requiredBy?: string): unknown => {
       if (values.has(name)) return values.get(name)
 
       const current = this.#bindings.get(name)
       if (!current) {
-        const suffix = requiredBy === undefined ? '' : ' required by ' + bindingName(requiredBy)
-        throw new Error('Missing binding ' + bindingName(name) + suffix)
+        const suffix = requiredBy === undefined ? '' : ` required by ${bindingName(requiredBy)}`
+        throw new Error(`Missing binding ${bindingName(name)}${suffix}`)
       }
 
       const cycleAt = resolving.indexOf(name)
       if (cycleAt !== -1) {
         const cycle = [...resolving.slice(cycleAt), name].join(' -> ')
-        throw new Error('Circular dependency: ' + cycle)
+        throw new Error(`Circular dependency: ${cycle}`)
       }
 
       resolving.push(name)
       try {
-        const dependencies = {}
+        const dependencies: Record<string, unknown> = {}
         for (const [key, dependency] of Object.entries(current.deps)) {
           Object.defineProperty(dependencies, key, {
             value: resolveDependency(dependency, name),
@@ -238,7 +296,7 @@ class Graph {
       }
     }
 
-    const container = Object.create(null)
+    const container: Record<string, unknown> = Object.create(null)
     for (const name of this.#bindings.keys()) {
       if (!values.has(name)) continue
       Object.defineProperty(container, name, {
@@ -248,17 +306,14 @@ class Graph {
         configurable: false,
       })
     }
-    return Object.freeze(container)
+    return Object.freeze(container) as GraphValues<B> | Partial<GraphValues<B>>
   }
 }
 
-export function graph(bindings) {
-  return new Graph(normalize(bindings))
+export function graph<const B extends Bindings>(bindings: B): Graph<B> {
+  return new Graph<B>(normalize(bindings))
 }
 
-export function merge(...graphs) {
+export function merge(...graphs: readonly Graph[]): Graph {
   return graph({}).merge(...graphs)
 }
-
-export default Object.freeze({ graph, merge, value, one, many, derive, construct })
-`
