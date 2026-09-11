@@ -1,12 +1,12 @@
 # Dagr reusable recipes
 
-> Independently consumable recipes for Dagr. RDK graphs use absolute semantic binding paths and named dependency objects built with `one()` and `many()`.
+> Independently consumable recipes for Dagr. Recipe graphs use the native `dagr:rdk` library with absolute semantic binding paths and named dependency objects built with `one()` and `many()`.
 
 ## Start here
 
 - [Recipes overview](https://github.com/caeus/dagr/blob/main/recipes/README.md): recipe boundaries, publication, mounting, and validation.
 - [TypeScript recipe](https://github.com/caeus/dagr/blob/main/recipes/typescript/README.md): recipe builders, contextual contributions, products, capabilities, and package-manager graphs.
-- [RDK](https://github.com/caeus/dagr/blob/main/recipes/rdk/README.md): semantic binding paths, named exact and collection dependencies, merging, and rooted compilation.
+- [Native libraries](https://github.com/caeus/dagr/blob/main/engine/docs/04-sandbox-and-imports.md): `dagr:rdk`, `dagr:glob`, YAML, and TOML.
 
 ## Agent guidance
 
@@ -16,6 +16,5 @@
 ## Validation
 
 - `dagr run //recipes:ci:test`
-- `dagr run //recipes:ci:image-rdk`
 - `dagr run //recipes:ci:image-typescript`
 - `dagr run //harness:ci:test` (tests needing the recipe and a consuming index together)
