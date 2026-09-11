@@ -1,5 +1,5 @@
 import bundledVersions from '//dagr.versions.yaml'
-import rdk from '//rdk//dagr.rdk.js'
+import rdk from 'dagr:rdk'
 import { command, fact, file, target } from '//dagr.contributions.js'
 import { writeJson, writeText } from '//dagr.file-utils.js'
 import { RECOMMENDED_IGNORE } from '//dagr.dockerignore.js'
