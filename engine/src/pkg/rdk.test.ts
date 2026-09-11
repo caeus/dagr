@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import vm from 'node:vm'
 import {
   construct,
   derive,
@@ -157,5 +158,31 @@ describe('dagr:rdk bridge', () => {
     }
     const dagr = rdk.graph({ '/answer': rdk.value(42) })
     assert.equal(dagr.compile()['/answer'], 42)
+  })
+
+  it('passes dependency records to callbacks in the sandbox realm', async () => {
+    const context = createSandboxContext()
+    const builtins = createBuiltinModules(context)
+    const consumer = new vm.SourceTextModule(`
+      import rdk from 'dagr:rdk'
+
+      const dagr = rdk.graph({
+        '/file/example': rdk.value('example'),
+        '/result': rdk.derive({ files: rdk.many('/file/**') }, ({ files }) => (
+          Object.getPrototypeOf(files) === Object.prototype
+          && files['/file/example'] === 'example'
+        )),
+      })
+
+      export default dagr.compile(['/result'])['/result']
+    `, { context })
+
+    await consumer.link(specifier => {
+      const builtin = builtins.get(specifier)
+      assert.ok(builtin, `Unknown built-in ${specifier}`)
+      return builtin
+    })
+    await consumer.evaluate()
+    assert.equal(consumer.namespace.default, true)
   })
 })
