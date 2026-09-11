@@ -26,7 +26,6 @@ export default {
         IGNORE: ignore,
       }),
     },
-    'image-rdk': recipeImage('rdk'),
     'image-typescript': recipeImage('typescript'),
   },
 }
