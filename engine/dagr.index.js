@@ -30,8 +30,8 @@ const dagr = rdk.graph({
     }),
   ),
 
-  '/target/ci/bundlecheck': target(['/source/ignore'], {
-    render: (_context, ignore) => ({
+  '/target/ci/bundlecheck': target({ ignore: rdk.one('/source/ignore') }, {
+    render: (_context, { ignore }) => ({
       deps: ['ci:bundle'],
       run: ({ images }) => ({
         FROM: images['ci:bundle'],
@@ -41,7 +41,7 @@ const dagr = rdk.graph({
     }),
   }),
 
-  '/target/ci/image': target([], {
+  '/target/ci/image': target({}, {
     render: () => ({
       deps: ['ci:bundlecheck'],
       run: ({ images }) => ({
