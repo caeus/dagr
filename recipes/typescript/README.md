@@ -65,7 +65,8 @@ Paths carry both identity and hierarchy. The main open namespaces are:
 
 Tool requirements occupy `/requirement/*`. Intent-scoped facts that adapters interpret occupy nested
 namespaces such as `/requirement/build-scripts/**`, keeping them out of the universal requirement
-shape.
+shape. A file opts into host materialization structurally by using a binding path matching
+`/**/hoisted` or `/**/hoisted/*`.
 
 Ordinary values use paths such as `/package/name`, `/source/directory`, `/output/layout`, and
 `/package-manager/install`. There is no separate contribution registry.
@@ -187,26 +188,47 @@ Choose one product graph:
 - `viteReact()`
 
 Capabilities such as `prettier()`, `biome()`, `vitest()`, `eslint()`, `typedoc()`, `rollup()`, and
-`hostDev()` add their own file, command, requirement, and target paths. They do not register
+`hoister()` add their own file, command, requirement, and target paths. They do not register
 themselves with the core recipe.
 
 ## Working on a host
 
-`hostDev()` adds `/target/dev/sync`, which writes the generated files into the package directory on
-your machine so an editor reads the same configuration a container builds with. It renders the `dev`
-intent, copies local sibling tarballs, and exports everything:
+`hoister()` adds `/target/dev/hoist`. It discovers file contributions structurally with
+`rdk.many('/**/hoisted', '/**/hoisted/*')` and materializes only those contributions with the `dev`
+intent and the actual host context.
 
-```sh
-dagr run //packages/example:dev:sync
+A producer opts in by choosing the path. There is no registration call and no dependency on
+`hoister()`:
+
+```js
+const editorConfig = () => rdk.graph({
+  '/file/editor/hoisted': file({}, {
+    for: ['dev'],
+    render: () => writeJson('/repo/.editor.json', { formatOnSave: true }),
+  }),
+})
+
+const ideFiles = () => rdk.graph({
+  '/file/ide/hoisted/settings': file({}, {
+    for: ['dev'],
+    render: () => writeJson('/repo/.vscode/settings.json', {}),
+  }),
+})
 ```
 
-It copies no source, and that is what makes the export safe rather than clever: every path under
-`/repo` is something the recipe produced, so `EXPORT: { '/repo/': './' }` cannot touch your working
-tree. Nothing needs to enumerate which files exist.
+The built-in generated manifest, TypeScript config, development tool configs, and package-manager
+config use the same convention. A bundle-only file such as Rollup config is not hoisted because it is
+not a host development file.
 
-It does not install. Dependencies resolved inside a Linux image are the wrong ones for a host, so run
-`pnpm install` yourself afterwards; the manifest it wrote refers to local siblings as
-`file:./<slug>.tgz`, and the matching tarballs are exported beside it.
+Run the hoist target with:
+
+```sh
+dagr run //packages/example:dev:hoist
+```
+
+The target copies local sibling tarballs but no source, renders the marked files, and exports
+`/repo/` to the package directory. It does not install. Dependencies resolved inside a Linux image
+are the wrong ones for a host, so run the package manager on the host afterwards.
 
 `sourceTarget({ intent, assets, export })` implements targets that copy local tarballs and source,
 render files, install dependencies, run commands, and optionally export results. The target's graph
@@ -225,7 +247,7 @@ path supplies its name and facet.
 - `/package-manager/install`
 - `/package-manager/pack`
 - `/command/pack/package`
-- `/file/package-manager`
+- `/file/package-manager/hoisted`
 
 Because the paths are shared, normal right-biased graph merging makes the last manager complete. The
 base image does not imply a manager.
@@ -249,7 +271,7 @@ const bun = () => rdk.graph({
     run: ({ pack, slug }) => ({ shell: pack(slug) }),
   }),
 
-  '/file/package-manager': file({}, {
+  '/file/package-manager/hoisted': file({}, {
     for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
     render: () => writeText('/repo/bunfig.toml', '[install]\nexact = true\n'),
   }),
@@ -257,5 +279,5 @@ const bun = () => rdk.graph({
 ```
 
 Local package dependencies arrive from sibling `ci:pack` targets as tarballs. Install rendering may
-replace their manifest ranges with `file:` references. Pack and publish rendering restores public
+replace their manifest ranges with `file:` references. Pack and publish rendering restores the public
 ranges.
