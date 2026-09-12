@@ -27,7 +27,7 @@ export const npm = () => rdk.graph({
     for: ['pack', 'publish'],
     run: ({ pack, slug }) => ({ shell: pack(slug) }),
   }),
-  '/file/package-manager': file({}, {
+  '/file/package-manager/hoisted': file({}, {
     for: DEVELOPMENT_INTENTS,
     render: () => [],
   }),
@@ -46,7 +46,7 @@ export const pnpm = () => rdk.graph({
     for: ['pack', 'publish'],
     run: ({ pack, slug }) => ({ shell: pack(slug) }),
   }),
-  '/file/package-manager': file({
+  '/file/package-manager/hoisted': file({
     builds: rdk.many('/requirement/build-scripts/**'),
   }, {
     for: DEVELOPMENT_INTENTS,
@@ -90,7 +90,7 @@ export const yarn = () => rdk.graph({
     for: ['pack', 'publish'],
     run: ({ pack, slug }) => ({ shell: pack(slug) }),
   }),
-  '/file/package-manager': file({}, {
+  '/file/package-manager/hoisted': file({}, {
     for: DEVELOPMENT_INTENTS,
     render: context => writeYaml('/repo/.yarnrc.yml', {
       enableScripts: false,
