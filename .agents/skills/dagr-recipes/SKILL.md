@@ -18,7 +18,7 @@ Use this skill for reusable recipes under `recipes/`, especially the TypeScript 
 
 ## Core model
 
-A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed by absolute semantic paths. Derived bindings declare a named dependency object: `rdk.one('/path')` injects one exact value and `rdk.many('/path/**')` injects a frozen record of every match. Multiple selectors passed to one `many()` are unioned into that same record.
+A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed by absolute semantic paths. Derived bindings declare a named dependency object: `rdk.one('/path')` injects one exact value and `rdk.many('/path/**')` injects a frozen record of every match. Multiple selectors passed to one `many()` are unioned into that same record. `many()` is the discriminator even when its selector has no wildcard.
 
 Files, commands, targets, and requirements use `/file/**`, `/command/**`, `/target/**`, and `/requirement/**`; their helpers add validation or rendering, not grouping. Fixed tool requirements occupy `/requirement/*`; adapter-interpreted build facts occupy `/requirement/build-scripts/**`.
 
