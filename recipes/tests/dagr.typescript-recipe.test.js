@@ -121,25 +121,42 @@ describe('mountable TypeScript recipe', () => {
     assert.equal(npmAfterPnpm.steps.at(-2).RUN, 'npm install --include=dev')
   })
 
-  it('passes host context only where a target chooses to render with it', async () => {
+  it('hoists structurally marked files and passes host context only to that materialization', async () => {
     const ts = await loadTypeScript()
+    const extra = ts.rdk.graph({
+      '/file/example/hoisted': ts.file({}, {
+        for: ['dev'],
+        render: () => ({ RUN: 'write directly hoisted' }),
+      }),
+      '/file/example-group/hoisted/editor': ts.file({}, {
+        for: ['dev'],
+        render: () => ({ RUN: 'write grouped hoisted' }),
+      }),
+      '/file/example-unhoisted': ts.file({}, {
+        for: ['dev'],
+        render: () => ({ RUN: 'write unhoisted' }),
+      }),
+    })
     const index = ts.default([
       ts.typescript({ base: '//base:ci:image', versions }),
       ts.yarn(),
       ts.viteReact(),
-      ts.hostDev(),
+      extra,
+      ts.hoister(),
     ])({ location: '//packages/web' })
 
-    const sync = runTarget(index.dev.sync, { host: { os: 'linux', arch: 'arm64' } })
-    assert.deepEqual(decodeWritten(sync.steps, '.yarnrc.yml'), {
+    const hoist = runTarget(index.dev.hoist, { host: { os: 'linux', arch: 'arm64' } })
+    assert.deepEqual(decodeWritten(hoist.steps, '.yarnrc.yml'), {
       enableScripts: false,
       nodeLinker: 'node-modules',
       supportedArchitectures: { os: ['linux'], cpu: ['arm64'] },
     })
-    // Nothing but generated files reaches /repo, so exporting all of it is precise.
-    assert.deepEqual(sync.EXPORT, { '/repo/': './' })
-    assert.equal(sync.steps.some(step => step.COPY?.src === 'src'), false)
-    assert.equal(sync.steps.some(step => step.RUN?.includes('install')), false)
+    assert.equal(hoist.steps.some(step => step.RUN === 'write directly hoisted'), true)
+    assert.equal(hoist.steps.some(step => step.RUN === 'write grouped hoisted'), true)
+    assert.equal(hoist.steps.some(step => step.RUN === 'write unhoisted'), false)
+    assert.deepEqual(hoist.EXPORT, { '/repo/': './' })
+    assert.equal(hoist.steps.some(step => step.COPY?.src === 'src'), false)
+    assert.equal(hoist.steps.some(step => step.RUN?.includes('install')), false)
 
     const build = runTarget(index.ci.build, { host: { os: 'linux', arch: 'arm64' } })
     assert.deepEqual(decodeWritten(build.steps, '.yarnrc.yml'), {
@@ -213,7 +230,7 @@ describe('mountable TypeScript recipe', () => {
         }),
         ts.library(),
       ])({ location: '//x' }),
-      /Missing binding "\/package-manager\/install-manifest" required by "\/file\/package-json"/,
+      /Missing binding "\/package-manager\/install-manifest" required by "\/file\/package-json\/hoisted"/,
     )
     assert.deepEqual(
       ts.default([ts.typescript({ base: '//base:ci:image', versions }), ts.npm()])({ location: '//x' }),
