@@ -79,8 +79,8 @@ describe('recipe architecture', () => {
     assert.equal(calculation(3), 6)
   })
 
-  it('discovers files, commands, targets, requirements, and facts by semantic path', () => {
-    const built = nodeLibrary(ts.vitest(), ts.eslint(), ts.typedoc())
+  it('discovers files, commands, targets, requirements, facts, and hoisted nodes by semantic path', () => {
+    const built = nodeLibrary(ts.vitest(), ts.eslint(), ts.typedoc(), ts.hoister())
     const graph = built.graph
 
     assert.deepEqual(graph.bindingOf('/source/directory').deps, {})
@@ -88,12 +88,15 @@ describe('recipe architecture', () => {
       'product', 'directory', 'entry',
     ])
     assert.equal(graph.bindingOf('/output/layout').deps.product.path, '/product/kind')
-    assert.deepEqual(graph.bindingOf('/file/package-json').deps.requirements.selectors, ['/requirement/*'])
+    assert.deepEqual(graph.bindingOf('/file/package-json/hoisted').deps.requirements.selectors, ['/requirement/*'])
     assert.deepEqual(graph.bindingOf('/requirement/build-scripts/vitest').deps, {})
     // A tool command names what to run, so it needs no package manager to say it.
     assert.equal(graph.bindingOf('/command/test/vitest').deps.requirement.path, '/requirement/vitest')
     assert.deepEqual(graph.bindingOf('/target/ci/test').deps.$files.selectors, ['/file/**'])
     assert.deepEqual(graph.bindingOf('/target/ci/test').deps.$commands.selectors, ['/command/**'])
+    assert.deepEqual(graph.bindingOf('/target/dev/hoist').deps.hoisted.selectors, [
+      '/**/hoisted', '/**/hoisted/*',
+    ])
     assert.equal(graph.bindingOf('/workspace'), undefined)
     assert.equal(graph.bindingOf('/package/json'), undefined)
     assert.equal(graph.bindingOf('/facet/ci'), undefined)
