@@ -1,6 +1,6 @@
 import bundledVersions from '//dagr.versions.yaml'
 import rdk from 'dagr:rdk'
-import { command, fact, file, target } from '//dagr.contributions.js'
+import { command, fact, file, filesFor, target } from '//dagr.contributions.js'
 import { writeJson, writeText } from '//dagr.file-utils.js'
 import { RECOMMENDED_IGNORE } from '//dagr.dockerignore.js'
 import {
@@ -225,25 +225,19 @@ export const sourceTarget = ({ intent, assets = false, export: exported } = {}) 
   },
 )
 
-/**
- * Renders the generated files onto the host, so an editor reads the same configuration a container
- * builds with. It copies no source, which is what makes the export precise: everything under /repo
- * is something the recipe produced, so exporting the whole directory cannot touch anything else.
- *
- * It deliberately does not install. Dependencies resolved inside a Linux image are the wrong ones for
- * a host, so `pnpm install` belongs to whoever owns the host, working from the manifest this writes.
- */
-export function hostDev() {
+/** Materializes every structurally hoisted file contribution onto the host. */
+export function hoister() {
   return rdk.graph({
-    '/target/dev/sync': target(
+    '/target/dev/hoist': target(
       {
         base: rdk.one('/image/base'),
         ignore: rdk.one('/source/ignore'),
         localPackages: rdk.one('/package/local-dependencies'),
+        hoisted: rdk.many('/**/hoisted', '/**/hoisted/*'),
       },
       {
         intent: 'dev',
-        render(context, { base, ignore, localPackages }) {
+        render(context, { base, ignore, localPackages, hoisted }) {
           return {
             deps: [base, ...localPackages.map(pkg => pkg.target)],
             run: ({ images, host }) => ({
@@ -251,7 +245,12 @@ export function hostDev() {
               steps: [
                 ...copyLocalPackages(localPackages, images),
                 { WORKDIR: '/repo' },
-                ...context.files({ host, install: true }),
+                ...filesFor(hoisted, {
+                  intent: context.intent,
+                  facet: context.facet,
+                  host,
+                  install: true,
+                }),
               ],
               IGNORE: ignore,
               EXPORT: { '/repo/': './' },
@@ -319,8 +318,8 @@ export function typescript({
       ({ commands, script }) => scriptsFor(commands, script),
     ),
     '/package/facts': packageFacts,
-    '/file/package-json': packageJson,
-    '/file/tsconfig': tsconfig,
+    '/file/package-json/hoisted': packageJson,
+    '/file/tsconfig/hoisted': tsconfig,
   })
 }
 
@@ -490,7 +489,7 @@ export function viteReact({ language = 'ES2020' } = {}) {
       for: DEVELOPMENT_INTENTS,
       value: ['esbuild'],
     }),
-    '/file/vite-config': file({ source: rdk.one('/source/directory') }, {
+    '/file/vite-config/hoisted': file({ source: rdk.one('/source/directory') }, {
       for: ['dev', 'test', 'build'],
       render(_context, { source }) {
         return writeText('/repo/vite.config.ts', `import { fileURLToPath, URL } from 'node:url'
@@ -530,7 +529,7 @@ export function prettier({
       for: ['dev'],
       packages: ['prettier'],
     }),
-    '/file/prettier-config': file({}, {
+    '/file/prettier-config/hoisted': file({}, {
       for: ['dev', 'lint'],
       render: () => writeJson('/repo/.prettierrc.json', {
         $schema: 'https://json.schemastore.org/prettierrc',
@@ -546,7 +545,7 @@ export function prettier({
 
 export function biome({ formatter = true, linter = true } = {}) {
   return rdk.graph({
-    '/file/biome-config': file({}, {
+    '/file/biome-config/hoisted': file({}, {
       for: ['dev', 'lint'],
       render: () => writeJson('/repo/biome.json', {
         formatter: { enabled: formatter },
@@ -569,10 +568,10 @@ export function biome({ formatter = true, linter = true } = {}) {
 
 export function vitest({ environment = 'node', globals = false, typecheck = false } = {}) {
   const configDeps = environment === 'jsdom'
-    ? { viteConfig: rdk.one('/file/vite-config') }
+    ? { viteConfig: rdk.one('/file/vite-config/hoisted') }
     : {}
   return rdk.graph({
-    '/file/vitest-config': file(configDeps, {
+    '/file/vitest-config/hoisted': file(configDeps, {
       for: ['dev', 'test'],
       render() {
         if (environment === 'jsdom') return writeText('/repo/vitest.config.ts', `import { fileURLToPath } from 'node:url'
@@ -623,7 +622,7 @@ export function eslint({ prettier: enforceFormatting = false, explicitReturnType
     ...(enforceFormatting ? ['eslint-plugin-prettier', 'prettier'] : []),
   ]
   return rdk.graph({
-    '/file/eslint-config': file({ source: rdk.one('/source/directory') }, {
+    '/file/eslint-config/hoisted': file({ source: rdk.one('/source/directory') }, {
       for: ['dev', 'lint'],
       render(_context, { source }) {
         const rules = {
@@ -744,7 +743,7 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
 
 export function typedoc({ title } = {}) {
   return rdk.graph({
-    '/file/typedoc-config': file({
+    '/file/typedoc-config/hoisted': file({
       source: rdk.one('/source/directory'),
       entry: rdk.one('/source/entry'),
       name: rdk.one('/package/name'),
