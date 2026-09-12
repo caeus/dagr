@@ -14,6 +14,6 @@ describe('repository engine index', () => {
       'typecheck', 'build', 'pack', 'bundle', 'node-base', 'test', 'bundlecheck', 'image',
     ])
     assert.deepEqual(Object.keys(index.publish), ['pack'])
-    assert.deepEqual(Object.keys(index.dev), ['sync'])
+    assert.deepEqual(Object.keys(index.dev), ['hoist'])
   })
 })
