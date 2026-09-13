@@ -106,8 +106,8 @@ describe('recipe architecture', () => {
     assert.deepEqual(graph.bindingOf('/typescript/compiler').inputs.$files.selectors, [
       '/typescript/tsconfig',
     ])
-    assert.equal(graph.bindingOf('/tester').inputs.value.path, '/vitest/tester')
-    assert.equal(graph.bindingOf('/target/ci/test').inputs.command.path, '/tester')
+    assert.equal(graph.bindingOf('/typescript/tester').inputs.value.path, '/vitest/tester')
+    assert.equal(graph.bindingOf('/target/ci/test').inputs.command.path, '/typescript/tester')
     assert.deepEqual(graph.bindingOf('/target/ci/test').inputs.files.selectors, [
       '/typescript/package-json',
       '/package-manager/config',
@@ -120,6 +120,9 @@ describe('recipe architecture', () => {
     assert.deepEqual(graph.bindingOf('/target/dev/hoist').inputs.hoisted.selectors, [
       '/**/hoisted', '/**/hoisted/*',
     ])
+    for (const path of ['/compiler', '/typechecker', '/tester', '/linter', '/bundler', '/documenter']) {
+      assert.equal(graph.bindingOf(path), undefined)
+    }
     assert.equal(graph.bindingOf('/workspace'), undefined)
     assert.equal(graph.bindingOf('/package/json'), undefined)
     assert.equal(graph.bindingOf('/facet/ci'), undefined)
@@ -303,7 +306,7 @@ describe('recipe architecture', () => {
       assert.equal('scripts' in decodeWritten(runTarget(index, 'publish', 'pack').steps, 'package.json'), false)
     }
 
-    // One exact compiler capability may itself contain an ordered invocation pipeline.
+    // Replacing the exact capability also replaces the package.json script that projects it.
     const extended = ts.default([
       ts.typescript({ base: '//base:ci:image', versions }), ts.pnpm(), ts.library({ runtime: 'node' }),
       ts.rdk.graph({
@@ -311,8 +314,7 @@ describe('recipe architecture', () => {
           for: ['build'],
           run: () => [{ tool: 'tsc' }, { shell: 'verify' }],
         }),
-        '/compiler': ts.adapter('/verified/compiler'),
-        '/compiler/package-json/script': ts.adapter('/verified/compiler'),
+        '/typescript/compiler': ts.adapter('/verified/compiler'),
       }),
     ])({ location: '//packages/example' })
     const build = runTarget(extended, 'ci', 'build')
@@ -519,19 +521,19 @@ describe('recipe architecture', () => {
     assert.deepEqual(decodeWritten(docs.steps, 'typedoc.json').entryPoints, ['source/index.ts'])
   })
 
-  it('selects one replaceable compiler through an exact binding', () => {
+  it('selects one replaceable TypeScript compiler through an exact binding', () => {
     const extension = ts.rdk.graph({
       '/verified/compiler': ts.command({}, {
         for: ['build'], run: () => [{ tool: 'tsc' }, { shell: 'verify build' }],
       }),
-      '/compiler': ts.adapter('/verified/compiler'),
-      '/compiler/package-json/script': ts.adapter('/verified/compiler'),
+      '/typescript/compiler': ts.adapter('/verified/compiler'),
     })
     const index = nodeLibrary().with(extension)({ location: '//packages/example' })
     const build = runTarget(index, 'ci', 'build')
 
     assert.equal(build.steps.at(-2).RUN, 'pnpm exec tsc')
     assert.equal(build.steps.at(-1).RUN, 'verify build')
+    assert.equal(decodeWritten(build.steps, 'package.json').scripts.build, 'tsc && verify build')
   })
 
   it('derives worker and Vite outputs from their product facts', () => {
