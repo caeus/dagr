@@ -393,17 +393,15 @@ export function library({
       files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
-    '/typechecker': adapter('/typescript/typechecker'),
-    '/typechecker/package-json/script': adapter('/typescript/typechecker'),
+    '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
     '/typescript/compiler': command({}, {
       for: ['build'],
       files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc' }),
     }),
-    '/compiler': adapter('/typescript/compiler'),
-    '/compiler/package-json/script': adapter('/typescript/compiler'),
-    '/target/ci/typecheck': sourceTarget({ command: rdk.one('/typechecker') }),
-    '/target/ci/build': sourceTarget({ command: rdk.one('/compiler'), assets: true }),
+    '/typescript/compiler/package-json/script': adapter('/typescript/compiler'),
+    '/target/ci/typecheck': sourceTarget({ command: rdk.one('/typescript/typechecker') }),
+    '/target/ci/build': sourceTarget({ command: rdk.one('/typescript/compiler'), assets: true }),
     '/target/ci/pack': target(
       {
         ignore: rdk.one('/source/ignore'),
@@ -491,9 +489,8 @@ export function cloudflareWorker({ language = 'ES2022' } = {}) {
       files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
-    '/typechecker': adapter('/typescript/typechecker'),
-    '/typechecker/package-json/script': adapter('/typescript/typechecker'),
-    '/target/ci/typecheck': sourceTarget({ command: rdk.one('/typechecker') }),
+    '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
+    '/target/ci/typecheck': sourceTarget({ command: rdk.one('/typescript/typechecker') }),
   })
 }
 
@@ -556,17 +553,16 @@ export default defineConfig({
       files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
-    '/typechecker': adapter('/typescript/typechecker'),
-    '/typechecker/package-json/script': adapter('/typescript/typechecker'),
+    '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
     '/vite/compiler': command({}, {
       for: ['build'],
       files: rdk.many('/typescript/tsconfig', '/vite/config'),
       run: () => ({ tool: 'vite build' }),
     }),
-    '/compiler': adapter('/vite/compiler'),
-    '/compiler/package-json/script': adapter('/vite/compiler'),
-    '/target/ci/typecheck': sourceTarget({ command: rdk.one('/typechecker') }),
-    '/target/ci/build': sourceTarget({ command: rdk.one('/compiler'), assets: true }),
+    '/typescript/compiler': adapter('/vite/compiler'),
+    '/typescript/compiler/package-json/script': adapter('/typescript/compiler'),
+    '/target/ci/typecheck': sourceTarget({ command: rdk.one('/typescript/typechecker') }),
+    '/target/ci/build': sourceTarget({ command: rdk.one('/typescript/compiler'), assets: true }),
   })
 }
 
@@ -619,9 +615,9 @@ export function biome({ formatter = true, linter = true } = {}) {
         files: rdk.many('/biome/config'),
         run: () => ({ tool: 'biome check .' }),
       }),
-      '/linter': adapter('/biome/linter'),
-      '/linter/package-json/script': adapter('/biome/linter'),
-      '/target/ci/lint': sourceTarget({ command: rdk.one('/linter') }),
+      '/typescript/linter': adapter('/biome/linter'),
+      '/typescript/linter/package-json/script': adapter('/typescript/linter'),
+      '/target/ci/lint': sourceTarget({ command: rdk.one('/typescript/linter') }),
     } : {}),
   })
 }
@@ -675,9 +671,9 @@ export default defineConfig({ test: {
       ),
       run: () => ({ tool: 'vitest run' }),
     }),
-    '/tester': adapter('/vitest/tester'),
-    '/tester/package-json/script': adapter('/vitest/tester'),
-    '/target/ci/test': sourceTarget({ command: rdk.one('/tester') }),
+    '/typescript/tester': adapter('/vitest/tester'),
+    '/typescript/tester/package-json/script': adapter('/typescript/tester'),
+    '/target/ci/test': sourceTarget({ command: rdk.one('/typescript/tester') }),
   })
 }
 
@@ -739,9 +735,9 @@ ${enforceFormatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}exp
       ),
       run: () => ({ tool: 'eslint .' }),
     }),
-    '/linter': adapter('/eslint/linter'),
-    '/linter/package-json/script': adapter('/eslint/linter'),
-    '/target/ci/lint': sourceTarget({ command: rdk.one('/linter') }),
+    '/typescript/linter': adapter('/eslint/linter'),
+    '/typescript/linter/package-json/script': adapter('/typescript/linter'),
+    '/target/ci/lint': sourceTarget({ command: rdk.one('/typescript/linter') }),
   })
 }
 
@@ -751,7 +747,7 @@ import { builtinModules } from 'node:module'
 
 const builtins = new Set([
   ...builtinModules,
-  ...builtinModules.map((name) => \`node:\${name}\`),
+  ...builtinModules.map((name) => `node:${name}`),
 ])
 
 export default {
@@ -802,12 +798,12 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
       files: rdk.many('/rollup/config'),
       run: () => ({ tool: 'rollup --config rollup.config.js' }),
     }),
-    '/bundler': adapter('/rollup/bundler'),
+    '/typescript/bundler': adapter('/rollup/bundler'),
     '/target/ci/bundle': target({
       ignore: rdk.one('/source/ignore'),
       exec: rdk.one('/package-manager/exec'),
       bundleFile: rdk.one('/output/bundle-file'),
-      bundler: rdk.one('/bundler'),
+      bundler: rdk.one('/typescript/bundler'),
     }, {
       render: (context, { ignore, exec, bundleFile, bundler }) => ({
         deps: ['build'],
@@ -855,10 +851,10 @@ export function typedoc({ title } = {}) {
       files: rdk.many('/typescript/tsconfig', '/typedoc/config'),
       run: () => ({ tool: 'typedoc' }),
     }),
-    '/documenter': adapter('/typedoc/documenter'),
-    '/documenter/package-json/script': adapter('/typedoc/documenter'),
+    '/typescript/documenter': adapter('/typedoc/documenter'),
+    '/typescript/documenter/package-json/script': adapter('/typescript/documenter'),
     '/target/ci/docs': sourceTarget({
-      command: rdk.one('/documenter'),
+      command: rdk.one('/typescript/documenter'),
       export: { '/repo/docs/': 'docs/' },
     }),
   })
