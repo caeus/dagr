@@ -87,8 +87,9 @@ export class RootVolumeRegistry {
     }
 
     const context = createConfigSandboxContext()
+    const SandboxError = vm.runInContext('Error', context) as ErrorConstructor
     const rejectImport = (specifier: string): never => {
-      throw new Error(`Root ${CONFIG_FILE} cannot import ${specifier}`)
+      throw new SandboxError(`Root ${CONFIG_FILE} cannot import ${specifier}`)
     }
 
     let mod: vm.SourceTextModule
