@@ -21,10 +21,11 @@ Use this skill for reusable recipes under `recipes/`, especially the TypeScript 
 A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed by absolute semantic paths. Derived bindings declare a named input object: `rdk.one('/path')` requires one exact value, `rdk.many('/path')` injects an exact value optionally, and wildcard `many()` selectors collect open aggregates. Every `many()` returns a frozen record, and multiple selectors are unioned into it.
 
 Features own canonical values such as `/typescript/package-json`, `/vitest/tester`, and
-`/eslint/tooling`. Singular abstractions use exact capability paths such as `/compiler`, `/tester`,
-and `/linter`. Open integration uses additional adapter bindings ending in protocol paths such as
-`/hoisted`, `/package-json/dependencies`, `/package-json/script`, `/tsconfig/types`, or
-`/package-manager/builds`.
+`/eslint/tooling`. Singular language capabilities stay in their semantic namespace, for example
+`/typescript/compiler`, `/typescript/tester`, and `/typescript/linter`. An implementation-owned
+binding may project into that capability path. Open integration uses additional adapter bindings
+ending in protocol paths such as `/hoisted`, `/package-json/dependencies`, `/package-json/script`,
+`/tsconfig/types`, or `/package-manager/builds`.
 
 `recipe(features)` returns a builder. Applying one package declaration merges its facts and runs:
 
@@ -40,8 +41,10 @@ The index derives facet and name from every `/target/<facet>/<name>` binding and
 - Keep declarations limited to `location`, `version`, dependencies, and metadata.
 - Keep shared semantics as ordinary RDK bindings with paths such as `/source/directory`.
 - Give each feature canonical bindings for its rendered files, tooling, and executable commands.
-- Project canonical commands into exact capability bindings. A target that needs one compiler,
-  tester, linter, documenter, or bundler declares that path with `one()`.
+- Project canonical commands into exact capability bindings inside the semantic domain that owns the
+  abstraction. TypeScript targets use `/typescript/compiler`, `/typescript/tester`,
+  `/typescript/linter`, `/typescript/documenter`, and `/typescript/bundler`, leaving other language
+  namespaces free to coexist in the same graph.
 - Put dependencies at their semantic cause-site. A compiler names its tsconfig; a linter names its
   config. Commands carry exact optional file sets to their targets. Never wildcard-discover normal
   target files. Project canonical files into `/**/hoisted` only for the open host-output protocol.
