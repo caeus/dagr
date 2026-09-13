@@ -64,9 +64,9 @@ Paths carry identity and hierarchy. Features own their canonical values:
 - `/target/<facet>/<name>`
 
 Additional bindings integrate those canonical values with another feature's protocol. `adapter(path)`
-projects one exact canonical binding. Normal targets discover `/**/materialized`; `hoister()`
-discovers `/**/hoisted`; package.json discovers `/**/package-json/script`; TypeScript and package
-managers discover only the tooling explicitly projected to them.
+projects one exact canonical binding. `hoister()` discovers `/**/hoisted`; package.json discovers
+`/**/package-json/script`; TypeScript and package managers discover only the tooling explicitly
+projected to them. Normal targets name every canonical file they require with `rdk.one()`.
 
 Singular capabilities use exact paths such as `/compiler`, `/typechecker`, `/tester`, `/linter`,
 `/documenter`, and `/bundler`. Their producer adapters are right-biased like every other binding.
@@ -87,8 +87,6 @@ const health = () => rdk.graph({
       return writeText('/repo/health.txt', message)
     },
   }),
-  '/health/report/materialized': adapter('/health/report'),
-
   '/health/tester': command({}, {
     for: ['test'],
     run: () => ({ shell: 'test -s health.txt' }),
@@ -98,15 +96,16 @@ const health = () => rdk.graph({
 
   '/target/quality/health': target({
     exec: rdk.one('/package-manager/exec'),
+    report: rdk.one('/health/report'),
     tester: rdk.one('/tester'),
   }, {
     intent: 'test',
-    render(context, { exec, tester }) {
+    render(context, { exec, report, tester }) {
       return {
         deps: [],
         run: ({ host }) => ({
           FROM: 'alpine:3.22',
-          steps: [...context.files({ host }), ...runSteps(tester.invocations, exec)],
+          steps: [...context.files({ report }, { host }), ...runSteps(tester.invocations, exec)],
           IGNORE: [],
         }),
       }
@@ -140,10 +139,10 @@ invocation:
 `runSteps(invocations, exec)` performs container materialization. Installation is not a
 contribution; a target calls `/package-manager/install` when it creates a fresh image.
 
-`for` is the intent gate. A target receives file adapters matching `/**/materialized` and
-`/**/materialized/*`, then `context.files(overrides)` renders the values matching its context.
-Executable dependencies remain ordinary named inputs. A source target receives one exact command
-capability and materializes its invocations with `runSteps`.
+`for` is the intent gate. A target declares each canonical file with `rdk.one()` and passes those
+resolved values to `context.files(files, overrides)`. Executable dependencies remain ordinary named
+inputs. A source target receives one exact command capability and materializes its invocations with
+`runSteps`.
 
 Files and commands default to `order: 0`. Equal orders retain graph key order. Use another numeric
 order only where sequence is behavior.
@@ -234,9 +233,10 @@ The target copies local sibling tarballs but no source, renders the marked files
 `/repo/` to the package directory. It does not install. Dependencies resolved inside a Linux image
 are the wrong ones for a host, so run the package manager on the host afterwards.
 
-`sourceTarget({ intent, command, assets, export })` implements targets that copy local tarballs and
-source, render structurally materialized files, install dependencies, run one exact command
-capability, and optionally export results. The target's graph path supplies its name and facet.
+`sourceTarget({ intent, command, files, assets, export })` implements targets that copy local tarballs
+and source, render its exact canonical file dependencies, install dependencies, run one exact
+command capability, and optionally export results. It always depends on package.json, tsconfig, and
+the package-manager config; `files` is a named object of additional exact RDK inputs.
 
 `rollup({ bundleDirectory, strict })` adds `/target/ci/bundle` and supporting bindings. It consumes
 `/output/layout` and `/package/slug`; a product that emits no JavaScript entry is rejected.
@@ -251,7 +251,6 @@ capability, and optionally export results. The target's graph path supplies its 
 - `/package-manager/install`
 - `/package-manager/pack`
 - `/package-manager/config`
-- `/package-manager/config/materialized`
 - `/package-manager/config/hoisted`
 
 Because the paths are shared, normal right-biased graph merging makes the last manager complete. The
@@ -272,7 +271,6 @@ const bun = () => rdk.graph({
     for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
     render: () => writeText('/repo/bunfig.toml', '[install]\nexact = true\n'),
   }),
-  '/package-manager/config/materialized': adapter('/package-manager/config'),
   '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })
 ```

@@ -108,7 +108,7 @@ export const invocationsFor = (contributions, intent) => contributionValues(cont
   .sort((left, right) => left.order - right.order)
   .flatMap(contribution => contribution.invocations)
 
-export const contextFor = (context, files) => {
+export const contextFor = context => {
   const base = Object.freeze({
     intent: context.intent,
     facet: context.facet,
@@ -122,16 +122,13 @@ export const contextFor = (context, files) => {
 
   return Object.freeze({
     ...base,
-    files: overrides => filesFor(files, withContext(overrides)),
+    files: (files, overrides) => filesFor(files, withContext(overrides)),
   })
 }
 
-const TARGET_FILES = '$files'
-
 /**
- * A target binding. Structurally materialized files are selected automatically; singular
- * capabilities and other ordinary graph dependencies are injected exactly by name beside the
- * context. Its `/target/<facet>/<name>` path supplies the Dagr facet and target name.
+ * A target binding. Graph dependencies are injected exactly by name beside the context. Its
+ * `/target/<facet>/<name>` path supplies the Dagr facet and target name.
  */
 export function target(deps, {
   intent,
@@ -140,44 +137,34 @@ export function target(deps, {
   if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
     throw new TypeError('target contribution dependencies must be an object')
   }
-  if (TARGET_FILES in deps) {
-    throw new TypeError(`target contribution dependency name ${TARGET_FILES} is reserved`)
-  }
   if (intent !== undefined && (typeof intent !== 'string' || intent === '')) {
     throw new Error('target contribution intent must be a non-empty string')
   }
   if (typeof render !== 'function') throw new Error('target contribution needs render')
 
-  return rdk.derive(
-    {
-      ...deps,
-      [TARGET_FILES]: rdk.many('/**/materialized', '/**/materialized/*'),
-    },
-    dependencies => {
-      const { [TARGET_FILES]: files, ...values } = dependencies
-      const named = Object.freeze(values)
-      return Object.freeze({
-        materialize(name, facet) {
-          const context = contextFor({ intent: intent ?? name, facet, host: undefined }, files)
-          const rendered = render(context, named)
-          if (rendered === null || typeof rendered !== 'object' || Array.isArray(rendered)) {
-            throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} render must return a Dagr target`)
-          }
-          if (!Array.isArray(rendered.deps)) {
-            throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs deps`)
-          }
-          if (typeof rendered.run !== 'function') {
-            throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs run`)
-          }
-          return Object.freeze({
-            name,
-            deps: Object.freeze([...rendered.deps]),
-            run: rendered.run,
-          })
-        },
-      })
-    },
-  )
+  return rdk.derive(deps, dependencies => {
+    const named = Object.freeze({ ...dependencies })
+    return Object.freeze({
+      materialize(name, facet) {
+        const context = contextFor({ intent: intent ?? name, facet, host: undefined })
+        const rendered = render(context, named)
+        if (rendered === null || typeof rendered !== 'object' || Array.isArray(rendered)) {
+          throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} render must return a Dagr target`)
+        }
+        if (!Array.isArray(rendered.deps)) {
+          throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs deps`)
+        }
+        if (typeof rendered.run !== 'function') {
+          throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs run`)
+        }
+        return Object.freeze({
+          name,
+          deps: Object.freeze([...rendered.deps]),
+          run: rendered.run,
+        })
+      },
+    })
+  })
 }
 
 const targetCoordinates = path => {

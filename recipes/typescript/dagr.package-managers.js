@@ -24,7 +24,6 @@ export const npm = () => rdk.graph({
     for: DEVELOPMENT_INTENTS,
     render: () => [],
   }),
-  '/package-manager/config/materialized': adapter('/package-manager/config'),
   '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })
 
@@ -47,7 +46,6 @@ export const pnpm = () => rdk.graph({
           })
     },
   }),
-  '/package-manager/config/materialized': adapter('/package-manager/config'),
   '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })
 
@@ -83,6 +81,5 @@ export const yarn = () => rdk.graph({
         : {}),
     }),
   }),
-  '/package-manager/config/materialized': adapter('/package-manager/config'),
   '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })

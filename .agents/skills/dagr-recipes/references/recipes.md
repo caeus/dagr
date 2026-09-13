@@ -36,9 +36,8 @@ Recipe graphs use absolute semantic paths. A feature owns canonical facts, calcu
 files, tooling, and executable commands under its own namespace. Examples include
 `/typescript/package-json`, `/vitest/config`, `/vitest/tooling`, and `/vitest/tester`.
 
-Cross-feature integration is a separate adapter binding. Normal targets consume file adapters ending
-in `/materialized`; `hoister()` consumes adapters ending in `/hoisted`; package.json consumes command
-adapters ending in `/package-json/script`; TypeScript and package-manager tooling consumers use
+Cross-feature open integration is a separate adapter binding. `hoister()` consumes adapters ending in
+`/hoisted`; package.json consumes command adapters ending in `/package-json/script`; TypeScript and package-manager tooling consumers use
 `/tooling/for/typescript` and `/tooling/for/package-manager` respectively. Producers opt into these
 protocols without importing or registering with the consumer.
 
@@ -54,10 +53,12 @@ rdk.graph({
     for: ['test'],
     render: (_context, { source }) => render(source),
   }),
-  '/health/report/materialized': adapter('/health/report'),
   '/health/tester': command({}, { for: ['test'], run }),
   '/tester': adapter('/health/tester'),
-  '/target/ci/test': target({ tester: rdk.one('/tester') }, { render: renderTarget }),
+  '/target/ci/test': target({
+    report: rdk.one('/health/report'),
+    tester: rdk.one('/tester'),
+  }, { render: renderTarget }),
 })
 ```
 
@@ -77,12 +78,11 @@ One command binding can become a container step, package.json script, or task in
 `for` is the intent gate. A renderer that reads `context.intent` merely to suppress itself has the
 wrong `for` value.
 
-A target binding receives structurally materialized files internally. Its own exact inputs are passed
-as one named object beside the context. Its target path supplies the facet and name. A target that
-needs one compiler, tester, linter, documenter, or bundler declares that exact abstraction with
-`one()`. Host-sensitive output stays inside the native target's `run` function.
+A target binding receives its exact inputs as one named object beside the context. Its target path
+supplies the facet and name. Files and singular capabilities such as a compiler, tester, linter,
+documenter, or bundler are ordinary `one()` dependencies. Host-sensitive output stays inside the
+native target's `run` function.
 
-File adapters retain graph-key order, with numeric `order` used only where step sequence is behavior.
 An exact command capability may return multiple ordered invocations.
 
 The `/dagr/index` calculation selects `/target/**`, groups targets by the facet and name in their
@@ -122,8 +122,8 @@ hoisted.
 
 Manager selection is an explicit feature graph. A manager supplies exact `/package-manager/**`
 functions, owns canonical `/package-manager/config`, and projects that config into
-`/package-manager/config/materialized` plus `/package-manager/config/hoisted`. A custom manager uses
-the same paths, not a registry. Normal right-biased graph merging makes the last manager complete.
+`/package-manager/config/hoisted`. A custom manager uses the same paths, not a registry. Normal
+right-biased graph merging makes the last manager complete.
 
 Local package dependencies are copied from sibling `ci:pack` targets. Install manifests may point
 at copied tarballs; pack and publish manifests retain their external ranges.

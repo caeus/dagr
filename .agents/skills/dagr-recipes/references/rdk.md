@@ -40,8 +40,8 @@ Use names that describe the input's role in the factory rather than repeating it
 rdk.derive({
   source: rdk.one('/source/directory'),
   compiler: rdk.one('/compiler'),
-  files: rdk.many('/**/materialized', '/**/materialized/*'),
-}, ({ source, compiler, files }) => ...)
+  config: rdk.one('/vitest/config'),
+}, ({ source, compiler, config }) => ...)
 ```
 
 `one()` only accepts an exact absolute semantic path and rejects wildcards. Use it for every singular
@@ -69,13 +69,14 @@ Canonical bindings live with the feature that owns their meaning:
 Integration uses an additional binding that depends exactly on the canonical value. `adapter(path)`
 creates that identity projection. Current open protocols are:
 
-- `/**/materialized` and `/**/materialized/*` for files rendered into normal targets;
 - `/**/hoisted` and `/**/hoisted/*` for files exported to the host;
 - `/**/package-json/script` for the open set of package scripts;
 - `/**/tooling/for/typescript` and `/**/tooling/for/package-manager` for explicit tooling consumers.
 
 Exact shared capability paths such as `/compiler` are adapters too, but they are resolved with
 `one()`, not globbing. Right-biased merge replacement selects the concrete implementation.
+Targets likewise depend exactly on the canonical files they render. File rendering does not use an
+open collection protocol.
 
 The `file`, `command`, `target`, and `tooling` helpers validate or render values; paths carry identity
 and protocol participation. Files and invocations have numeric `order`, defaulting to zero. Equal
@@ -86,6 +87,6 @@ orders retain graph-key order. Use ordering only inside a genuinely plural value
 Factories stay synchronous and deterministic. Do not build bindings around network access, ambient environment state, mutable registries, or asynchronous resolution. Promises are ordinary values and are not awaited by `compile()`.
 
 `many()` matches follow graph key order. A merge replacement keeps the existing key position, while
-a new binding appends in merge order. Each graph derives a segment index from its keys; selectors use
-literal segments to narrow candidates before the unchanged `dagr:glob` matcher runs. Patterns with no
-literal segments may still scan every key.
+a new binding appends in merge order. Compilation lazily derives a segment index when it first
+resolves a selector; literal segments narrow candidates before the unchanged `dagr:glob` matcher
+runs. Patterns with no literal segments may still scan every key.

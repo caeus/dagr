@@ -103,9 +103,13 @@ describe('recipe architecture', () => {
     assert.deepEqual(graph.bindingOf('/vitest/tester').inputs, {})
     assert.equal(graph.bindingOf('/tester').inputs.value.path, '/vitest/tester')
     assert.equal(graph.bindingOf('/target/ci/test').inputs.command.path, '/tester')
-    assert.deepEqual(graph.bindingOf('/target/ci/test').inputs.$files.selectors, [
-      '/**/materialized', '/**/materialized/*',
-    ])
+    assert.equal(
+      graph.bindingOf('/target/ci/test').inputs.packageJson.path,
+      '/typescript/package-json',
+    )
+    assert.equal(graph.bindingOf('/target/ci/test').inputs.tsconfig.path, '/typescript/tsconfig')
+    assert.equal(graph.bindingOf('/target/ci/test').inputs.vitestConfig.path, '/vitest/config')
+    assert.equal(graph.bindingOf('/typescript/package-json/materialized'), undefined)
     assert.deepEqual(graph.bindingOf('/target/dev/hoist').inputs.hoisted.selectors, [
       '/**/hoisted', '/**/hoisted/*',
     ])
@@ -158,7 +162,7 @@ describe('recipe architecture', () => {
     assert.deepEqual(ts.buildsFor(packageManager, 'lint'), [])
   })
 
-  it('renders open file adapters and one exact execution capability', () => {
+  it('renders exact file dependencies and one exact execution capability', () => {
     const seen = []
     const feature = ts.rdk.graph({
       '/test/message': ts.rdk.value('hello'),
@@ -170,17 +174,14 @@ describe('recipe architecture', () => {
           return { RUN: `write ${message}` }
         },
       }),
-      '/test/generated/materialized': ts.adapter('/test/generated'),
       '/test/host-aware': ts.file({}, {
         for: ['test'],
         render: context => ({ CMD: ['done', context.host.arch] }),
       }),
-      '/test/host-aware/materialized': ts.adapter('/test/host-aware'),
       '/test/skipped': ts.file({}, {
         for: ['build'],
         render: () => ({ RUN: 'wrong intent' }),
       }),
-      '/test/skipped/materialized': ts.adapter('/test/skipped'),
       '/test/runner': ts.command({ message: ts.rdk.one('/test/message') }, {
         for: ['test'],
         run: ({ message }) => [
@@ -192,13 +193,19 @@ describe('recipe architecture', () => {
       '/target/quality/inspect': ts.target({
         exec: ts.rdk.one('/package-manager/exec'),
         runner: ts.rdk.one('/runner'),
+        generated: ts.rdk.one('/test/generated'),
+        hostAware: ts.rdk.one('/test/host-aware'),
+        skipped: ts.rdk.one('/test/skipped'),
       }, {
         intent: 'test',
-        render: (context, { exec, runner }) => ({
+        render: (context, { exec, runner, generated, hostAware, skipped }) => ({
           deps: [],
           run: ({ host }) => ({
             FROM: 'scratch',
-            steps: [...context.files({ host }), ...ts.runSteps(runner.invocations, exec)],
+            steps: [
+              ...context.files({ generated, hostAware, skipped }, { host }),
+              ...ts.runSteps(runner.invocations, exec),
+            ],
             IGNORE: [],
           }),
         }),
@@ -216,6 +223,10 @@ describe('recipe architecture', () => {
       { RUN: 'echo done > /tmp/log' },
     ])
     assert.deepEqual(seen, [{ intent: 'test', facet: 'quality', host: { os: 'linux', arch: 'arm64' } }])
+    assert.throws(
+      () => ts.sourceTarget({ files: { generated: ts.rdk.many('/test/**') } }),
+      /sourceTarget files must use one\(\): generated/,
+    )
   })
 
   it('derives target identity from paths and resolves ownership collisions by normal replacement', () => {
@@ -387,26 +398,24 @@ describe('recipe architecture', () => {
 
   it('rejects rendered steps that are not steps, and packages with no catalog version', () => {
     const build = contribution => ts.default([contribution, ts.rdk.graph({
-      '/target/ci/build': ts.target({}, {
+      '/target/ci/build': ts.target({ invalid: ts.rdk.one('/invalid/file') }, {
         intent: 'build',
-        render: context => ({
+        render: (context, { invalid }) => ({
           deps: [],
-          run: () => ({ FROM: 'scratch', steps: context.files(), IGNORE: [] }),
+          run: () => ({ FROM: 'scratch', steps: context.files({ invalid }), IGNORE: [] }),
         }),
       }),
     })])({ location: '//example' }).ci.build.run({ images: {} })
 
     assert.throws(
       () => build(ts.rdk.graph({
-        '/invalid/nothing': ts.file({}, { for: ['build'], render: () => undefined }),
-        '/invalid/nothing/materialized': ts.adapter('/invalid/nothing'),
+        '/invalid/file': ts.file({}, { for: ['build'], render: () => undefined }),
       })),
       /file contribution render must return a Dagr step or an array of steps/,
     )
     assert.throws(
       () => build(ts.rdk.graph({
-        '/invalid/falsy': ts.file({}, { for: ['build'], render: () => [false] }),
-        '/invalid/falsy/materialized': ts.adapter('/invalid/falsy'),
+        '/invalid/file': ts.file({}, { for: ['build'], render: () => [false] }),
       })),
       /file contribution render must return a Dagr step or an array of steps/,
     )
@@ -488,13 +497,8 @@ describe('recipe architecture', () => {
     assert.deepEqual(decodeWritten(docs.steps, 'typedoc.json').entryPoints, ['source/index.ts'])
   })
 
-  it('combines open file integration with one replaceable compiler binding', () => {
+  it('selects one replaceable compiler through an exact binding', () => {
     const extension = ts.rdk.graph({
-      '/notice/file': ts.file({}, {
-        for: ['build'],
-        render: () => ({ RUN: 'write build notice' }),
-      }),
-      '/notice/file/materialized': ts.adapter('/notice/file'),
       '/verified/compiler': ts.command({}, {
         for: ['build'], run: () => [{ tool: 'tsc' }, { shell: 'verify build' }],
       }),
@@ -504,7 +508,6 @@ describe('recipe architecture', () => {
     const index = nodeLibrary().with(extension)({ location: '//packages/example' })
     const build = runTarget(index, 'ci', 'build')
 
-    assert.ok(build.steps.some(step => step.RUN === 'write build notice'))
     assert.equal(build.steps.at(-2).RUN, 'pnpm exec tsc')
     assert.equal(build.steps.at(-1).RUN, 'verify build')
   })

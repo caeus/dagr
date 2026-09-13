@@ -90,9 +90,9 @@ capabilities. `builtins.ts` exposes sandbox-realm wrapper functions and containe
 RDK and glob behavior therefore live in ordinary typed TypeScript modules while their public
 `dagr:` imports remain sandbox-safe. Built-ins are resolved before repository imports.
 
-RDK graphs derive an immutable segment index from their binding keys. Exact selectors use direct
-lookup. Structural selectors choose the smallest posting list for their literal path segments and
-then apply `dagr:glob` as the final matcher. Patterns made entirely of wildcards still inspect every
+RDK compilation lazily derives an immutable segment index from the graph's binding keys when it first
+resolves a selector. Exact selectors use direct lookup. Structural selectors choose the smallest
+posting list for their literal path segments and then apply `dagr:glob` as the final matcher. Patterns made entirely of wildcards still inspect every
 key. Matching results are restored to graph-key order before resolution, preserving selector-union,
 deduplication, and merge ordering semantics.
 

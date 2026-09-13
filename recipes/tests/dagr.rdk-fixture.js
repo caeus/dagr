@@ -229,29 +229,10 @@ class Graph {
 
   /** @type {Map<string, Binding<unknown>>} */
   #bindings
-  /** @type {readonly string[]} */
-  #keys
-  /** @type {Map<string, number>} */
-  #positions
-  /** @type {Map<string, readonly string[]>} */
-  #bySegment
 
   /** @param {Map<string, Binding<unknown>>} bindings */
   constructor(bindings) {
     this.#bindings = bindings
-    this.#keys = Object.freeze([...bindings.keys()])
-    this.#positions = new Map(this.#keys.map((key, position) => [key, position]))
-    const bySegment = new Map()
-    for (const key of this.#keys) {
-      for (const segment of new Set(key.slice(1).split('/'))) {
-        const indexed = bySegment.get(segment) ?? []
-        indexed.push(key)
-        bySegment.set(segment, indexed)
-      }
-    }
-    this.#bySegment = new Map(
-      [...bySegment].map(([segment, indexed]) => [segment, Object.freeze(indexed)]),
-    )
     Object.freeze(this)
   }
 
@@ -315,18 +296,41 @@ class Graph {
       }
       return matches
     }
+    let pathIndex
+    const indexedPaths = () => {
+      if (pathIndex !== undefined) return pathIndex
+      const keys = Object.freeze([...this.#bindings.keys()])
+      const positions = new Map(keys.map((key, position) => [key, position]))
+      const bySegment = new Map()
+      for (const key of keys) {
+        for (const segment of new Set(key.slice(1).split('/'))) {
+          const indexed = bySegment.get(segment) ?? []
+          indexed.push(key)
+          bySegment.set(segment, indexed)
+        }
+      }
+      pathIndex = {
+        keys,
+        positions,
+        bySegment: new Map(
+          [...bySegment].map(([segment, indexed]) => [segment, Object.freeze(indexed)]),
+        ),
+      }
+      return pathIndex
+    }
     /** @param {readonly string[]} selectorGroup */
     const matchingNames = selectorGroup => {
+      const { keys, positions, bySegment } = indexedPaths()
       const found = new Set()
       for (const selector of selectorGroup) {
         if (!selector.includes('*')) {
           if (this.#bindings.has(selector)) found.add(selector)
           continue
         }
-        let candidates = this.#keys
+        let candidates = keys
         for (const segment of selector.slice(1).split('/')) {
           if (segment === '*' || segment === '**') continue
-          const indexed = this.#bySegment.get(segment) ?? []
+          const indexed = bySegment.get(segment) ?? []
           if (indexed.length < candidates.length) candidates = indexed
         }
         for (const candidate of candidates) {
@@ -334,7 +338,7 @@ class Graph {
         }
       }
       return [...found].sort((left, right) => (
-        this.#positions.get(left) - this.#positions.get(right)
+        positions.get(left) - positions.get(right)
       ))
     }
 

@@ -179,7 +179,6 @@ describe('mountable TypeScript recipe', () => {
         for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
         render: () => ({ RUN: 'write bunfig.toml' }),
       }),
-      '/package-manager/config/materialized': ts.adapter('/package-manager/config'),
       '/package-manager/config/hoisted': ts.adapter('/package-manager/config'),
     })
     const index = ts.default([

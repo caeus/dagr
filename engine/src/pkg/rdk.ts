@@ -239,11 +239,9 @@ function normalizeBindings(bindings: unknown): Map<SemanticPath, NormalizedBindi
 /** Immutable RDK graph. */
 export class Graph<B extends Bindings = Bindings> {
   readonly #bindings: ReadonlyMap<SemanticPath, NormalizedBinding>
-  readonly #index: SemanticPathIndex<SemanticPath>
 
   constructor(bindings: ReadonlyMap<SemanticPath, NormalizedBinding>) {
     this.#bindings = bindings
-    this.#index = new SemanticPathIndex(bindings.keys())
     Object.freeze(this)
   }
 
@@ -285,9 +283,11 @@ export class Graph<B extends Bindings = Bindings> {
       }
       return matches
     }
+    let index: SemanticPathIndex<SemanticPath> | undefined
     const matchingNames = (patterns: readonly Selector[]): SemanticPath[] => {
       const predicates = new Map(patterns.map(pattern => [pattern, matcher(pattern)]))
-      return this.#index.matching(patterns, (pattern, name) => predicates.get(pattern as Selector)!(name))
+      index ??= new SemanticPathIndex(this.#bindings.keys())
+      return index.matching(patterns, (pattern, name) => predicates.get(pattern as Selector)!(name))
     }
 
     const normalizedRoots: readonly CompileRoot[] = roots === undefined

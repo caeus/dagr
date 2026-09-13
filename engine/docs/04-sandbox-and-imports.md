@@ -40,10 +40,9 @@ and `construct`; each is also available as a named export. `one('/path')` declar
 while `many('/path/**')` declares a collection input containing a frozen record of matching
 bindings using `dagr:glob` semantics. Derived bindings expose those declarations as `binding.inputs`
 and factories receive the corresponding frozen input object. `graph(...).compile(roots)` resolves
-the requested roots and their transitive inputs, or every binding when roots are omitted. Each
-immutable graph derives a segment index from its keys. Selectors with literal segments use the
-smallest indexed candidate set before applying the unchanged glob matcher; selector unions and
-results still follow graph-key order.
+the requested roots and their transitive inputs, or every binding when roots are omitted. Compilation
+lazily derives a segment index when it first resolves a selector. Selectors with literal segments use
+the smallest indexed candidate set before applying the unchanged glob matcher; selector unions and results still follow graph-key order.
 
 Build files cannot access the host environment, filesystem, network, processes, timers, CommonJS
 globals, or arbitrary Node modules. In particular, `process`, `require`, `fetch`, and `fs` are not
