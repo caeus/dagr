@@ -70,9 +70,12 @@ projects one exact canonical binding. `hoister()` discovers `/**/hoisted`; packa
 canonical files it needs, using `one()` when required or `many()` with exact paths for an optional
 set, and carries that set to its target.
 
-Singular capabilities use exact paths such as `/compiler`, `/typechecker`, `/tester`, `/linter`,
-`/documenter`, and `/bundler`. Their producer adapters are right-biased like every other binding.
-Consumers use `rdk.one()` and never select an implementation from a collection.
+Singular capabilities stay inside the semantic domain that owns them. TypeScript uses exact paths
+such as `/typescript/compiler`, `/typescript/typechecker`, `/typescript/tester`,
+`/typescript/linter`, `/typescript/documenter`, and `/typescript/bundler`. Implementations such as
+`/vitest/tester` or `/eslint/linter` can project into those paths. Another language can own
+`/python/compiler`, `/python/tester`, and so on in the same graph without competing for a global
+capability name. Consumers use `rdk.one()` and never select an implementation from a collection.
 
 Ordinary values use paths such as `/package/name`, `/source/directory`, `/output/layout`, and
 `/package-manager/install`. There is no separate contribution registry.
@@ -94,12 +97,12 @@ const health = () => rdk.graph({
     files: rdk.many('/health/report'),
     run: () => ({ shell: 'test -s health.txt' }),
   }),
-  '/tester': adapter('/health/tester'),
-  '/tester/package-json/script': adapter('/health/tester'),
+  '/typescript/tester': adapter('/health/tester'),
+  '/typescript/tester/package-json/script': adapter('/typescript/tester'),
 
   '/target/quality/health': target({
     exec: rdk.one('/package-manager/exec'),
-    tester: rdk.one('/tester'),
+    tester: rdk.one('/typescript/tester'),
   }, {
     intent: 'test',
     render(context, { exec, tester }) {
@@ -145,6 +148,10 @@ contribution; a target calls `/package-manager/install` when it creates a fresh 
 paths. This puts the dependency on the capability that needs it: a compiler names tsconfig, and a
 linter names its configuration. A target passes the capability's resolved `files` record to
 `context.files(files, overrides)` and materializes its invocations with `runSteps`.
+
+Package-script projections depend on the language capability rather than directly on the current
+implementation. Replacing `/typescript/compiler` therefore updates both the build target and the
+`build` script with one graph replacement.
 
 Files and commands default to `order: 0`. Equal orders retain graph key order. Use another numeric
 order only where sequence is behavior.
@@ -193,7 +200,7 @@ Choose one product graph:
 
 Capabilities such as `prettier()`, `biome()`, `vitest()`, `eslint()`, `typedoc()`, `rollup()`, and
 `hoister()` own their canonical file, command, tooling, and target paths. Their adapters implement
-only the integration protocols they need.
+only the integration and language-capability protocols they need.
 
 ## Working on a host
 
