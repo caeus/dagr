@@ -11,14 +11,14 @@ Use this skill for reusable recipes under `recipes/`, especially the TypeScript 
 
 1. Read `recipes/README.md` and the nearest recipe `README.md`.
 2. Classify each value as an irreducible fact, an ordinary calculation, or a rendered output.
-3. Inspect the current dependency path before adding a binding.
+3. Inspect the current input path before adding a binding.
 4. Read the relevant reference:
    - [Recipe architecture](references/recipes.md)
    - [How recipes use RDK](references/rdk.md)
 
 ## Core model
 
-A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed by absolute semantic paths. Derived bindings declare a named dependency object: `rdk.one('/path')` injects one exact value and `rdk.many('/path/**')` injects a frozen record of every match. Multiple selectors passed to one `many()` are unioned into that same record. `many()` is the discriminator even when its selector has no wildcard.
+A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed by absolute semantic paths. Derived bindings declare a named input object: `rdk.one('/path')` injects one exact value and `rdk.many('/path/**')` injects a frozen record of every match. Multiple selectors passed to one `many()` are unioned into that same record. `many()` is the discriminator even when its selector has no wildcard.
 
 Files, commands, targets, and requirements use `/file/**`, `/command/**`, `/target/**`, and `/requirement/**`; their helpers add validation or rendering, not grouping. Fixed tool requirements occupy `/requirement/*`; adapter-interpreted build facts occupy `/requirement/build-scripts/**`.
 

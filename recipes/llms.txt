@@ -1,6 +1,6 @@
 # Dagr reusable recipes
 
-> Independently consumable recipes for Dagr. Recipe graphs use the native `dagr:rdk` library with absolute semantic binding paths and named dependency objects built with `one()` and `many()`.
+> Independently consumable recipes for Dagr. Recipe graphs use the native `dagr:rdk` library with absolute semantic binding paths and named input objects built with `one()` and `many()`.
 
 ## Start here
 
