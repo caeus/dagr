@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
 import { createBuiltinModules } from '#pkg/builtins.js'
 import { createSandboxContext } from '#pkg/sandbox.js'
@@ -17,6 +18,14 @@ async function globModule() {
     readonly of: (pattern: string) => (path: string) => boolean
   }
 }
+
+describe('built-in bridges', () => {
+  it('keeps bridge logic in TypeScript instead of embedded VM source', async () => {
+    const source = await readFile(new URL('./builtins.ts', import.meta.url), 'utf8')
+    assert.doesNotMatch(source, /vm\.compileFunction/)
+    assert.doesNotMatch(source, /vm\.runInContext/)
+  })
+})
 
 describe('dagr:glob', () => {
   it('registers and exposes of like the other built-ins', async () => {
@@ -54,7 +63,7 @@ describe('dagr:glob', () => {
     assert.equal(of('file/*')('file/'), false)
   })
 
-  it('matches ** as zero or more segments', async () => {
+  it('matches ** across nested path segments', async () => {
     const { of } = await globModule()
     assert.equal(of('file/**')('file/foo/bar'), true)
     assert.equal(of('**/vitest')('command/test/vitest'), true)
