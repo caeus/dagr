@@ -361,6 +361,7 @@ export class Graph<B extends Bindings = Bindings> {
     }
     let index: SemanticPathIndex<SemanticPath> | undefined
     const matchingNames = (patterns: readonly Selector[]): SemanticPath[] => {
+      if (patterns.length === 0) return []
       const predicates = new Map(patterns.map(pattern => [pattern, matcher(pattern)]))
       index ??= new SemanticPathIndex(this.#bindings.keys())
       return index.matching(patterns, (pattern, name) => predicates.get(pattern as Selector)!(name))
