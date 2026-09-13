@@ -7,6 +7,8 @@ Read the nearest `README.md` before changing an area.
 
 Keep public documentation and machine-facing guidance synchronized with behavior. Structural or public API changes should update the relevant `README.md`, `AGENTS.md`, `llms.txt`, Agent Skill, workflows, mounts, and examples in the same change.
 
+Do not hide nontrivial JavaScript or TypeScript implementation inside strings or template literals in JavaScript or TypeScript source. This is very strongly discouraged, including `vm.compileFunction(...)` and multiline `vm.runInContext(...)` source strings. Keep implementation as ordinary typed source code. Strings passed to VM APIs are appropriate for actual externally supplied/user-authored module source or tiny intrinsic lookups such as `globalThis`, not for nested engine implementations.
+
 The repository has three areas:
 
 - `engine/` for Dagr execution and CLI behavior.
