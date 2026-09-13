@@ -37,29 +37,6 @@ const deriveContribution = (kind, deps, factory) => {
   return rdk.derive(deps, factory)
 }
 
-/** A graph binding carrying an intent-scoped fact for consumers to interpret. */
-export const fact = (deps, options = {}) => {
-  const intents = normalizeFor('fact', options.for)
-  if (intents === undefined) {
-    throw new TypeError('fact contribution needs for, the intents whose fact it is')
-  }
-  return deriveContribution(
-    'fact',
-    deps,
-    () => Object.freeze({
-      for: intents,
-      value: options.value,
-    }),
-  )
-}
-
-/** Every fact applying to an intent, flattened and deduplicated in contribution order. */
-export const factsFor = (contributions, intent) => [...new Set(
-  contributionValues(contributions)
-    .filter(contribution => contribution.for.includes(intent))
-    .flatMap(contribution => contribution.value),
-)]
-
 /**
  * A graph binding whose value renders one or more steps that materialize files. Files are the
  * context-aware kind: what a tsconfig or a manifest contains genuinely differs per intent.
@@ -86,6 +63,8 @@ export const filesFor = (contributions, context) => contributionValues(contribut
   .flatMap(contribution => contribution.render(context))
 
 const INVOCATION_KINDS = Object.freeze(['tool', 'shell'])
+const COMMAND_FILES = '$files'
+const EMPTY_FILES = Object.freeze({})
 
 /**
  * An invocation names what to run and nothing about where: `tool` resolves from the package's
@@ -106,9 +85,24 @@ const normalizeInvocations = rendered => {
   }))
 }
 
-/** A graph binding declaring what an intent runs, for any renderer to materialize. */
+/**
+ * A graph binding declaring what an intent runs. `files` is an exact-path `many()` input containing
+ * the canonical files that invocation needs, so a target can materialize the capability as a unit.
+ */
 export const command = (deps, options = {}) => {
   if (typeof options.run !== 'function') throw new TypeError('command contribution needs run')
+  if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
+    throw new TypeError('command contribution dependencies must be an object')
+  }
+  if (COMMAND_FILES in deps) {
+    throw new TypeError(`command contribution dependency name ${COMMAND_FILES} is reserved`)
+  }
+  if (options.files !== undefined && (
+    !Array.isArray(options.files.selectors)
+    || options.files.selectors.some(path => typeof path !== 'string' || path.includes('*'))
+  )) {
+    throw new TypeError('command contribution files must use many() with exact semantic paths')
+  }
   const intents = normalizeFor('command', options.for)
   if (intents === undefined) {
     throw new TypeError('command contribution needs for, the intents whose run it is')
@@ -116,12 +110,19 @@ export const command = (deps, options = {}) => {
   const order = normalizeOrder('command', options.order)
   return deriveContribution(
     'command',
-    deps,
-    dependencies => Object.freeze({
-      for: intents,
-      order,
-      invocations: normalizeInvocations(options.run(dependencies)),
-    }),
+    {
+      ...deps,
+      ...(options.files === undefined ? {} : { [COMMAND_FILES]: options.files }),
+    },
+    dependencies => {
+      const { [COMMAND_FILES]: files = EMPTY_FILES, ...values } = dependencies
+      return Object.freeze({
+        for: intents,
+        order,
+        files,
+        invocations: normalizeInvocations(options.run(Object.freeze(values))),
+      })
+    },
   )
 }
 
@@ -131,7 +132,7 @@ export const invocationsFor = (contributions, intent) => contributionValues(cont
   .sort((left, right) => left.order - right.order)
   .flatMap(contribution => contribution.invocations)
 
-export const contextFor = (context, files, commands) => {
+export const contextFor = context => {
   const base = Object.freeze({
     intent: context.intent,
     facet: context.facet,
@@ -145,18 +146,13 @@ export const contextFor = (context, files, commands) => {
 
   return Object.freeze({
     ...base,
-    files: overrides => filesFor(files, withContext(overrides)),
-    invocations: overrides => invocationsFor(commands, withContext(overrides).intent),
+    files: (files, overrides) => filesFor(files, withContext(overrides)),
   })
 }
 
-const TARGET_FILES = '$files'
-const TARGET_COMMANDS = '$commands'
-
 /**
- * A target binding. File and command collections are selected automatically; ordinary graph
- * dependencies are injected by name beside the context. Its `/target/<facet>/<name>` path supplies
- * the Dagr facet and target name when the index materializes it.
+ * A target binding. Graph dependencies are injected exactly by name beside the context. Its
+ * `/target/<facet>/<name>` path supplies the Dagr facet and target name.
  */
 export function target(deps, {
   intent,
@@ -165,45 +161,34 @@ export function target(deps, {
   if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
     throw new TypeError('target contribution dependencies must be an object')
   }
-  if (TARGET_FILES in deps || TARGET_COMMANDS in deps) {
-    throw new TypeError(`target contribution dependency names ${TARGET_FILES} and ${TARGET_COMMANDS} are reserved`)
-  }
   if (intent !== undefined && (typeof intent !== 'string' || intent === '')) {
     throw new Error('target contribution intent must be a non-empty string')
   }
   if (typeof render !== 'function') throw new Error('target contribution needs render')
 
-  return rdk.derive(
-    {
-      ...deps,
-      [TARGET_FILES]: rdk.many('/file/**'),
-      [TARGET_COMMANDS]: rdk.many('/command/**'),
-    },
-    dependencies => {
-      const { [TARGET_FILES]: files, [TARGET_COMMANDS]: commands, ...values } = dependencies
-      const named = Object.freeze(values)
-      return Object.freeze({
-        materialize(name, facet) {
-          const context = contextFor({ intent: intent ?? name, facet, host: undefined }, files, commands)
-          const rendered = render(context, named)
-          if (rendered === null || typeof rendered !== 'object' || Array.isArray(rendered)) {
-            throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} render must return a Dagr target`)
-          }
-          if (!Array.isArray(rendered.deps)) {
-            throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs deps`)
-          }
-          if (typeof rendered.run !== 'function') {
-            throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs run`)
-          }
-          return Object.freeze({
-            name,
-            deps: Object.freeze([...rendered.deps]),
-            run: rendered.run,
-          })
-        },
-      })
-    },
-  )
+  return rdk.derive(deps, dependencies => {
+    const named = Object.freeze({ ...dependencies })
+    return Object.freeze({
+      materialize(name, facet) {
+        const context = contextFor({ intent: intent ?? name, facet, host: undefined })
+        const rendered = render(context, named)
+        if (rendered === null || typeof rendered !== 'object' || Array.isArray(rendered)) {
+          throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} render must return a Dagr target`)
+        }
+        if (!Array.isArray(rendered.deps)) {
+          throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs deps`)
+        }
+        if (typeof rendered.run !== 'function') {
+          throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs run`)
+        }
+        return Object.freeze({
+          name,
+          deps: Object.freeze([...rendered.deps]),
+          run: rendered.run,
+        })
+      },
+    })
+  })
 }
 
 const targetCoordinates = path => {
@@ -257,4 +242,4 @@ export const index = () => rdk.graph({
   }),
 })
 
-export default Object.freeze({ fact, file, filesFor, command, target })
+export default Object.freeze({ file, filesFor, command, target })

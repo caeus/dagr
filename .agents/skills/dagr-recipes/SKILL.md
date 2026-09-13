@@ -18,9 +18,14 @@ Use this skill for reusable recipes under `recipes/`, especially the TypeScript 
 
 ## Core model
 
-A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed by absolute semantic paths. Derived bindings declare a named input object: `rdk.one('/path')` injects one exact value and `rdk.many('/path/**')` injects a frozen record of every match. Multiple selectors passed to one `many()` are unioned into that same record. `many()` is the discriminator even when its selector has no wildcard.
+A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed by absolute semantic paths. Derived bindings declare a named input object: `rdk.one('/path')` requires one exact value, `rdk.many('/path')` injects an exact value optionally, and wildcard `many()` selectors collect open aggregates. Every `many()` returns a frozen record, and multiple selectors are unioned into it.
 
-Files, commands, targets, and requirements use `/file/**`, `/command/**`, `/target/**`, and `/requirement/**`; their helpers add validation or rendering, not grouping. Fixed tool requirements occupy `/requirement/*`; adapter-interpreted build facts occupy `/requirement/build-scripts/**`.
+Features own canonical values such as `/typescript/package-json`, `/vitest/tester`, and
+`/eslint/tooling`. Singular language capabilities stay in their semantic namespace, for example
+`/typescript/compiler`, `/typescript/tester`, and `/typescript/linter`. An implementation-owned
+binding may project into that capability path. Open integration uses additional adapter bindings
+ending in protocol paths such as `/hoisted`, `/package-json/dependencies`, `/package-json/script`,
+`/tsconfig/types`, or `/package-manager/builds`.
 
 `recipe(features)` returns a builder. Applying one package declaration merges its facts and runs:
 
@@ -35,10 +40,19 @@ The index derives facet and name from every `/target/<facet>/<name>` binding and
 - Import RDK from `dagr:rdk`; do not mount or publish a separate RDK recipe.
 - Keep declarations limited to `location`, `version`, dependencies, and metadata.
 - Keep shared semantics as ordinary RDK bindings with paths such as `/source/directory`.
-- Use `/requirement/*` bindings when files and commands must agree on tool packages or ambient types.
-- Use intent-scoped `fact` bindings under `/requirement/build-scripts/**` for dependencies whose build scripts a package manager should permit.
-- Render generated files and executable commands only as contributions.
-- Mark host-materialized file contributions structurally with paths matching `/**/hoisted` or `/**/hoisted/*`; `hoister()` discovers them with `many()`, so producers do not register with or depend on it.
+- Give each feature canonical bindings for its rendered files, tooling, and executable commands.
+- Project canonical commands into exact capability bindings inside the semantic domain that owns the
+  abstraction. TypeScript targets use `/typescript/compiler`, `/typescript/tester`,
+  `/typescript/linter`, `/typescript/documenter`, and `/typescript/bundler`, leaving other language
+  namespaces free to coexist in the same graph.
+- Put dependencies at their semantic cause-site. A compiler names its tsconfig; a linter names its
+  config. Commands carry exact optional file sets to their targets. Never wildcard-discover normal
+  target files. Project canonical files into `/**/hoisted` only for the open host-output protocol.
+- Project canonical tooling into the aggregate that consumes each field: package names into
+  `/**/package-json/dependencies`, ambient types into `/**/tsconfig/types`, and build allowances into
+  `/**/package-manager/builds`.
+- Use wildcard `many()` selectors only for genuinely plural, open aggregates. Exact-path `many()` is
+  optional injection. Do not rank, filter, or pick one member to satisfy a singular dependency.
 - Pass `intent`, `facet`, and `host` through render context; never make all graph values contextual.
 - Let targets select their context and explicitly render the contributions they need.
 - Keep target values native Dagr `{ name, deps, run }` objects.
@@ -48,7 +62,10 @@ The index derives facet and name from every `/target/<facet>/<name>` binding and
 
 ## Package managers
 
-Package managers are ordinary feature graphs. Built-ins are `npm()`, `pnpm()`, and `yarn()`. They provide `/package-manager/**`, `/command/pack/package`, and `/file/package-manager/hoisted` bindings. Custom managers provide the same paths directly. Do not infer a manager from the base image or add a manager registry.
+Package managers are ordinary feature graphs. Built-ins are `npm()`, `pnpm()`, and `yarn()`. They
+provide the exact `/package-manager/**` capabilities, canonical `/package-manager/config`, and
+the `/package-manager/config/hoisted` adapter. Custom managers provide the same paths directly. Do
+not infer a manager from the base image or add a manager registry.
 
 Local package dependencies arrive from sibling `ci:pack` targets as tarballs. Install rendering may replace their manifest ranges with `file:` references. Pack and publish rendering restores the public ranges.
 

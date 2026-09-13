@@ -56,17 +56,26 @@ and `with(feature)`, which returns another builder with the feature merged in.
 
 ## Semantic paths
 
-Paths carry both identity and hierarchy. The main open namespaces are:
+Paths carry identity and hierarchy. Features own their canonical values:
 
-- `/file/**`
-- `/command/**`
-- `/target/**`
-- `/requirement/**`
+- `/typescript/package-json` and `/typescript/tsconfig`
+- `/vitest/config`, `/vitest/tooling`, and `/vitest/tester`
+- `/eslint/config`, `/eslint/tooling`, and `/eslint/linter`
+- `/target/<facet>/<name>`
 
-Tool requirements occupy `/requirement/*`. Intent-scoped facts that adapters interpret occupy nested
-namespaces such as `/requirement/build-scripts/**`, keeping them out of the universal requirement
-shape. A file opts into host materialization structurally by using a binding path matching
-`/**/hoisted` or `/**/hoisted/*`.
+Additional bindings integrate those canonical values with another feature's protocol. `adapter(path)`
+projects one exact canonical binding. `hoister()` discovers `/**/hoisted`; package.json discovers
+`/**/package-json/dependencies` and `/**/package-json/script`; tsconfig discovers
+`/**/tsconfig/types`; package managers discover `/**/package-manager/builds`. A capability names the
+canonical files it needs, using `one()` when required or `many()` with exact paths for an optional
+set, and carries that set to its target.
+
+Singular capabilities stay inside the semantic domain that owns them. TypeScript uses exact paths
+such as `/typescript/compiler`, `/typescript/typechecker`, `/typescript/tester`,
+`/typescript/linter`, `/typescript/documenter`, and `/typescript/bundler`. Implementations such as
+`/vitest/tester` or `/eslint/linter` can project into those paths. Another language can own
+`/python/compiler`, `/python/tester`, and so on in the same graph without competing for a global
+capability name. Consumers use `rdk.one()` and never select an implementation from a collection.
 
 Ordinary values use paths such as `/package/name`, `/source/directory`, `/output/layout`, and
 `/package-manager/install`. There is no separate contribution registry.
@@ -75,7 +84,7 @@ Ordinary values use paths such as `/package/name`, `/source/directory`, `/output
 const health = () => rdk.graph({
   '/health/message': rdk.value('healthy'),
 
-  '/file/health': file({
+  '/health/report': file({
     message: rdk.one('/health/message'),
   }, {
     for: ['test'],
@@ -83,22 +92,25 @@ const health = () => rdk.graph({
       return writeText('/repo/health.txt', message)
     },
   }),
-
-  '/command/test/health': command({}, {
+  '/health/tester': command({}, {
     for: ['test'],
+    files: rdk.many('/health/report'),
     run: () => ({ shell: 'test -s health.txt' }),
   }),
+  '/typescript/tester': adapter('/health/tester'),
+  '/typescript/tester/package-json/script': adapter('/typescript/tester'),
 
   '/target/quality/health': target({
     exec: rdk.one('/package-manager/exec'),
+    tester: rdk.one('/typescript/tester'),
   }, {
     intent: 'test',
-    render(context, { exec }) {
+    render(context, { exec, tester }) {
       return {
         deps: [],
         run: ({ host }) => ({
           FROM: 'alpine:3.22',
-          steps: [...context.files({ host }), ...runSteps(context.invocations(), exec)],
+          steps: [...context.files(tester.files, { host }), ...runSteps(tester.invocations, exec)],
           IGNORE: [],
         }),
       }
@@ -110,11 +122,11 @@ const health = () => rdk.graph({
 The target path supplies its Dagr facet and target name. A binding at `/target/quality/health`
 becomes `quality:health`.
 
-## Files, commands, and facts
+## Files, commands, and tooling
 
-Files are context-aware; commands are not. `fact`, `file`, `command`, and `target` all take a named
-dependency object. Use `rdk.one('/path')` for one required binding and
-`rdk.many('/first/**', '/second/**')` for the union of one or more glob patterns.
+Files are context-aware; commands are not. `file`, `command`, and `target` take a named input object.
+Use `rdk.one('/path')` for one required binding and `rdk.many('/first/**', '/second/**')` only for an
+open union.
 
 A file renderer receives `{ intent, facet, host }` plus one named dependency object and returns one
 Dagr step or nested arrays of steps. An empty array means "nothing to do". Any non-step value,
@@ -132,29 +144,28 @@ invocation:
 `runSteps(invocations, exec)` performs container materialization. Installation is not a
 contribution; a target calls `/package-manager/install` when it creates a fresh image.
 
-`for` is the intent gate. A target receives `/file/**` and `/command/**` internally, then asks for the
-values matching its context:
+`for` is the intent gate. A command's `files` option is a `many()` input containing exact canonical
+paths. This puts the dependency on the capability that needs it: a compiler names tsconfig, and a
+linter names its configuration. A target passes the capability's resolved `files` record to
+`context.files(files, overrides)` and materializes its invocations with `runSteps`.
 
-- `context.files(overrides)` renders applicable file bindings;
-- `context.invocations(overrides)` returns applicable invocations.
+Package-script projections depend on the language capability rather than directly on the current
+implementation. Replacing `/typescript/compiler` therefore updates both the build target and the
+`build` script with one graph replacement.
 
 Files and commands default to `order: 0`. Equal orders retain graph key order. Use another numeric
 order only where sequence is behavior.
 
-Facts carry an intent list and an opaque value without rendering it. Consumers select their semantic
-namespace with `rdk.many()` and use `factsFor` to select the current intent, flatten the values, and
-remove duplicates. For example, build-script allowances live under `/requirement/build-scripts/**`;
-each package-manager feature renders that portable fact in its own dialect.
+Canonical tooling bindings contain intent-scoped package names, ambient types, and packages whose
+build scripts must be enabled. A feature projects each field only into the aggregate that consumes
+it: `/feature/package-json/dependencies`, `/feature/tsconfig/types`, or
+`/feature/package-manager/builds`. Package.json, tsconfig, pnpm, and yarn collect those protocols
+independently.
 
-## Requirements and versions
+## Tooling and versions
 
-Tool requirements use `/requirement/*`. Independent features can own paths such as
-`/requirement/typescript`, `/requirement/vitest`, and `/requirement/eslint`. Generated manifests,
-compiler configuration, and commands consume that collection. Build-script facts use
-`/requirement/build-scripts/**` and are consumed directly by package-manager features.
-
-`packages` contains names only. Versions come from `/version/catalog`, built from
-`dagr.versions.yaml` plus the `versions` option passed to `typescript`. A required package with no
+Tooling `packages` contains names only. Versions come from `/version/catalog`, built from
+`dagr.versions.yaml` plus the `versions` option passed to `typescript`. A tooling package with no
 catalog entry is an error.
 
 ## Targets and index
@@ -188,8 +199,8 @@ Choose one product graph:
 - `viteReact()`
 
 Capabilities such as `prettier()`, `biome()`, `vitest()`, `eslint()`, `typedoc()`, `rollup()`, and
-`hoister()` add their own file, command, requirement, and target paths. They do not register
-themselves with the core recipe.
+`hoister()` own their canonical file, command, tooling, and target paths. Their adapters implement
+only the integration and language-capability protocols they need.
 
 ## Working on a host
 
@@ -197,22 +208,24 @@ themselves with the core recipe.
 `rdk.many('/**/hoisted', '/**/hoisted/*')` and materializes only those contributions with the `dev`
 intent and the actual host context.
 
-A producer opts in by choosing the path. There is no registration call and no dependency on
-`hoister()`:
+A producer keeps its canonical file separate and opts in through an adapter. There is no
+registration call and no dependency on `hoister()`:
 
 ```js
 const editorConfig = () => rdk.graph({
-  '/file/editor/hoisted': file({}, {
+  '/editor/config': file({}, {
     for: ['dev'],
     render: () => writeJson('/repo/.editor.json', { formatOnSave: true }),
   }),
+  '/editor/config/hoisted': adapter('/editor/config'),
 })
 
 const ideFiles = () => rdk.graph({
-  '/file/ide/hoisted/settings': file({}, {
+  '/ide/settings': file({}, {
     for: ['dev'],
     render: () => writeJson('/repo/.vscode/settings.json', {}),
   }),
+  '/ide/hoisted/settings': adapter('/ide/settings'),
 })
 ```
 
@@ -230,9 +243,11 @@ The target copies local sibling tarballs but no source, renders the marked files
 `/repo/` to the package directory. It does not install. Dependencies resolved inside a Linux image
 are the wrong ones for a host, so run the package manager on the host afterwards.
 
-`sourceTarget({ intent, assets, export })` implements targets that copy local tarballs and source,
-render files, install dependencies, run commands, and optionally export results. The target's graph
-path supplies its name and facet.
+`sourceTarget({ intent, command, files, assets, export })` implements targets that copy local tarballs
+and source, render an exact optional file set, install dependencies, run one exact command capability,
+and optionally export results. Its own file set names package.json and package-manager config; it
+also renders the exact files owned by the selected command. Additional target-owned paths may be
+passed through `files`. No file dependency uses a wildcard selector.
 
 `rollup({ bundleDirectory, strict })` adds `/target/ci/bundle` and supporting bindings. It consumes
 `/output/layout` and `/package/slug`; a product that emits no JavaScript entry is rejected.
@@ -246,8 +261,8 @@ path supplies its name and facet.
 - `/package-manager/script`
 - `/package-manager/install`
 - `/package-manager/pack`
-- `/command/pack/package`
-- `/file/package-manager/hoisted`
+- `/package-manager/config`
+- `/package-manager/config/hoisted`
 
 Because the paths are shared, normal right-biased graph merging makes the last manager complete. The
 base image does not imply a manager.
@@ -263,18 +278,11 @@ const bun = () => rdk.graph({
   '/package-manager/pack': rdk.value(slug =>
     `bun pm pack --destination /out --filename ${slug}.tgz`),
 
-  '/command/pack/package': command({
-    pack: rdk.one('/package-manager/pack'),
-    slug: rdk.one('/package/slug'),
-  }, {
-    for: ['pack', 'publish'],
-    run: ({ pack, slug }) => ({ shell: pack(slug) }),
-  }),
-
-  '/file/package-manager/hoisted': file({}, {
+  '/package-manager/config': file({}, {
     for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
     render: () => writeText('/repo/bunfig.toml', '[install]\nexact = true\n'),
   }),
+  '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })
 ```
 

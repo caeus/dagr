@@ -13,7 +13,7 @@
 
 - [Authoring dagr.index.js](https://caeus.github.io/dagr/03-authoring-dagr-index-js/): Target shape, recipes, steps, COPY, IGNORE, generated contents, host information, and package location.
 - [Filesystem composition](https://caeus.github.io/dagr/03-filesystem-composition/): dagr.mount.yaml, root volume identity and implementation, mount boundaries, lazy resolution, and mounted package trees.
-- [Build-file environment and imports](https://caeus.github.io/dagr/04-sandbox-and-imports/): Restricted JavaScript environment, supported imports, built-ins, shared helpers, and determinism.
+- [Build-file environment and imports](https://caeus.github.io/dagr/04-sandbox-and-imports/): Restricted JavaScript environment, supported imports, indexed RDK graphs, built-ins, shared helpers, and determinism.
 - [Dependencies and EXPORT](https://caeus.github.io/dagr/05-deps-and-exports/): Address shorthands, ctx.images keys, cycles, host exports, replacement and merge semantics, and non-transitive exports.
 - [Conventions and layout](https://caeus.github.io/dagr/07-conventions-and-layout/): Recommended repository organization and reusable helper patterns.
 - [Adopting Dagr in a new monorepo](https://caeus.github.io/dagr/10-adopting-in-a-new-monorepo/): Practical adoption workflow for an existing repository.

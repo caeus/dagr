@@ -296,9 +296,51 @@ class Graph {
       }
       return matches
     }
+    let pathIndex
+    const indexedPaths = () => {
+      if (pathIndex !== undefined) return pathIndex
+      const keys = Object.freeze([...this.#bindings.keys()])
+      const positions = new Map(keys.map((key, position) => [key, position]))
+      const bySegment = new Map()
+      for (const key of keys) {
+        for (const segment of new Set(key.slice(1).split('/'))) {
+          const indexed = bySegment.get(segment) ?? []
+          indexed.push(key)
+          bySegment.set(segment, indexed)
+        }
+      }
+      pathIndex = {
+        keys,
+        positions,
+        bySegment: new Map(
+          [...bySegment].map(([segment, indexed]) => [segment, Object.freeze(indexed)]),
+        ),
+      }
+      return pathIndex
+    }
     /** @param {readonly string[]} selectorGroup */
-    const matchingNames = selectorGroup => [...this.#bindings.keys()]
-      .filter(name => selectorGroup.some(selector => matcher(selector)(name)))
+    const matchingNames = selectorGroup => {
+      const { keys, positions, bySegment } = indexedPaths()
+      const found = new Set()
+      for (const selector of selectorGroup) {
+        if (!selector.includes('*')) {
+          if (this.#bindings.has(selector)) found.add(selector)
+          continue
+        }
+        let candidates = keys
+        for (const segment of selector.slice(1).split('/')) {
+          if (segment === '*' || segment === '**') continue
+          const indexed = bySegment.get(segment) ?? []
+          if (indexed.length < candidates.length) candidates = indexed
+        }
+        for (const candidate of candidates) {
+          if (matcher(selector)(candidate)) found.add(candidate)
+        }
+      }
+      return [...found].sort((left, right) => (
+        positions.get(left) - positions.get(right)
+      ))
+    }
 
     /** @type {string[]} */
     const normalizedRoots = roots === undefined

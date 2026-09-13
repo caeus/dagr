@@ -1,11 +1,22 @@
 import rdk from 'dagr:rdk'
 import { index } from '//dagr.contributions.js'
 
-export { command, fact, factsFor, file, target } from '//dagr.contributions.js'
+export { command, file, target } from '//dagr.contributions.js'
 export * from '//dagr.features.js'
 export * from '//dagr.file-utils.js'
 export * from '//dagr.package-managers.js'
-export { requirement, runSteps, scriptsFor } from '//dagr.model.js'
+export {
+  adapter,
+  buildsFor,
+  packageJsonDependencies,
+  packageManagerBuilds,
+  packagesFor,
+  runSteps,
+  scriptsFor,
+  tooling,
+  tsconfigTypes,
+  typesFor,
+} from '//dagr.model.js'
 export { rdk }
 
 const declarationOf = ({ location, version = '0.1.0', deps = [], metadata = {} } = {}) => {

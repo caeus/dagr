@@ -39,32 +39,68 @@ Use names that describe the input's role in the factory rather than repeating it
 ```js
 rdk.derive({
   source: rdk.one('/source/directory'),
-  files: rdk.many('/file/**'),
-  contributions: rdk.many('/command/**', '/generated/**'),
-}, ({ source, files, contributions }) => ...)
+  compiler: rdk.one('/typescript/compiler'),
+  config: rdk.one('/vitest/config'),
+}, ({ source, compiler, config }) => ...)
 ```
 
-`one()` only accepts an exact absolute semantic path and rejects wildcards. `many()` accepts one or more selectors and always produces a frozen record keyed by complete binding paths. Collection semantics come from `many()`, not wildcard presence, so `many('/file/package-json')` still returns a record.
+`one()` only accepts an exact absolute semantic path and rejects wildcards. Use it for every singular
+dependency. Keep replaceable capabilities in the semantic domain that owns them, such as
+`/typescript/compiler`, `/typescript/tester`, `/typescript/linter`, `/typescript/documenter`, and
+`/typescript/bundler`. Graph merging supplies the concrete binding. A Python feature can independently
+own `/python/compiler` or `/python/tester` in the same graph. Do not discover a collection and then
+rank, filter, or choose one member.
+
+`many()` accepts one or more selectors and always produces a frozen record keyed by complete binding
+paths. Collection semantics come from `many()`, not wildcard presence, so
+`many('/typescript/package-json')` is an optional exact injection: it returns an empty record or one
+entry. Multiple exact paths collect a known optional set. Use wildcard selectors only when any number
+of independent producers may participate in an actual aggregate.
+
+Wildcard aggregates should name what their consumer collects, such as package.json dependencies or
+scripts, tsconfig types, ESLint rules, Makefile entries, or Turborepo tasks. They are not generic
+categories for every value of the same implementation type.
 
 Multiple selectors in one `many()` are unioned in graph key order. Overlapping selectors do not duplicate bindings. No matches produce a frozen empty record. Glob selectors use `*` and `**` and delegate matching to `dagr:glob`.
 
-## Recipe paths
+## Recipe paths and adapters
 
-Use semantic path namespaces consistently:
+Canonical bindings live with the feature that owns their meaning:
 
-- `/file/**` for generated file or step contributions;
-- `/command/**` for context-free command contributions;
-- `/target/<facet>/<name>` for Dagr targets;
-- `/requirement/*` for package and ambient-type requirements;
-- `/requirement/build-scripts/**` for package-manager-neutral build-script facts;
-- paths such as `/package/name`, `/source/directory`, and `/output/layout` for ordinary facts and calculations.
+- `/typescript/package-json` and `/typescript/tsconfig` are canonical rendered files;
+- `/vitest/tester` and `/eslint/linter` are implementation-owned executable commands;
+- `/typescript/tester` and `/typescript/linter` are replaceable TypeScript capabilities;
+- `/vitest/tooling` and `/eslint/tooling` are canonical installation facts;
+- `/target/<facet>/<name>` is the executable, user-addressable Dagr surface;
+- `/package/name`, `/source/directory`, and `/output/layout` are ordinary shared facts and calculations.
 
-The `file`, `command`, `fact`, `target`, and `requirement` helpers validate or render their values. They do not group them. Consumers discover open collections through `many()` selectors.
+Integration uses an additional binding that depends exactly on the canonical value. `adapter(path)`
+creates that identity projection. Current open protocols are:
 
-Files render before commands. Contributions of one kind are ordered by their numeric `order`, which defaults to zero. Equal orders retain graph key order. Use explicit ordering only when step sequence is behavior.
+- `/**/hoisted` and `/**/hoisted/*` for files exported to the host;
+- `/**/package-json/dependencies` for package dependencies;
+- `/**/package-json/script` for the open set of package scripts;
+- `/**/tsconfig/types` for ambient TypeScript types;
+- `/**/package-manager/builds` for dependency build allowances.
+
+Language-scoped capability paths are exact bindings resolved with `one()`, not globbing. Right-biased
+merge replacement selects the implementation. Package-script projections depend on the capability
+path itself, so replacing `/typescript/compiler` also changes the `build` script without a second
+override.
+
+Put each dependency at its semantic cause-site. `/typescript/compiler` names
+`/typescript/tsconfig`; `/eslint/linter` names `/eslint/config`. Command capabilities carry those
+exact optional file sets to targets. File rendering does not use a wildcard collection protocol.
+
+The `file`, `command`, `target`, and `tooling` helpers validate or render values; paths carry identity
+and protocol participation. Files and invocations have numeric `order`, defaulting to zero. Equal
+orders retain graph-key order. Use ordering only inside a genuinely plural value or protocol.
 
 ## Determinism
 
 Factories stay synchronous and deterministic. Do not build bindings around network access, ambient environment state, mutable registries, or asynchronous resolution. Promises are ordinary values and are not awaited by `compile()`.
 
-`many()` matches follow graph key order. A merge replacement keeps the existing key position, while a new binding appends in merge order.
+`many()` matches follow graph key order. A merge replacement keeps the existing key position, while
+a new binding appends in merge order. Compilation lazily derives a segment index when it first
+resolves a selector; literal segments narrow candidates before the unchanged `dagr:glob` matcher
+runs. Patterns with no literal segments may still scan every key.

@@ -36,11 +36,13 @@ assigned extra glob semantics.
 
 RDK is the native Recipe Development Kit used to compose synchronous calculations as immutable
 semantic-path graphs. Its default export exposes `graph`, `merge`, `value`, `one`, `many`, `derive`,
-and `construct`; each is also available as a named export. `one('/path')` declares one exact input,
-while `many('/path/**')` declares a collection input containing a frozen record of matching
-bindings using `dagr:glob` semantics. Derived bindings expose those declarations as `binding.inputs`
+and `construct`; each is also available as a named export. `one('/path')` declares one required exact
+input. `many('/path')` declares optional exact injection, while wildcard selectors declare an open
+collection. Both forms of `many()` produce a frozen record of matches. Derived bindings expose those declarations as `binding.inputs`
 and factories receive the corresponding frozen input object. `graph(...).compile(roots)` resolves
-the requested roots and their transitive inputs, or every binding when roots are omitted.
+the requested roots and their transitive inputs, or every binding when roots are omitted. Compilation
+lazily derives a segment index when it first resolves a selector. Selectors with literal segments use
+the smallest indexed candidate set before applying the unchanged glob matcher; selector unions and results still follow graph-key order.
 
 Build files cannot access the host environment, filesystem, network, processes, timers, CommonJS
 globals, or arbitrary Node modules. In particular, `process`, `require`, `fetch`, and `fs` are not

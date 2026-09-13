@@ -124,15 +124,17 @@ describe('mountable TypeScript recipe', () => {
   it('hoists structurally marked files and passes host context only to that materialization', async () => {
     const ts = await loadTypeScript()
     const extra = ts.rdk.graph({
-      '/file/example/hoisted': ts.file({}, {
+      '/example/file': ts.file({}, {
         for: ['dev'],
         render: () => ({ RUN: 'write directly hoisted' }),
       }),
-      '/file/example-group/hoisted/editor': ts.file({}, {
+      '/example/file/hoisted': ts.adapter('/example/file'),
+      '/example/editor': ts.file({}, {
         for: ['dev'],
         render: () => ({ RUN: 'write grouped hoisted' }),
       }),
-      '/file/example-unhoisted': ts.file({}, {
+      '/example/group/hoisted/editor': ts.adapter('/example/editor'),
+      '/example/unhoisted': ts.file({}, {
         for: ['dev'],
         render: () => ({ RUN: 'write unhoisted' }),
       }),
@@ -173,17 +175,11 @@ describe('mountable TypeScript recipe', () => {
       '/package-manager/script': ts.rdk.value(invocation => invocation),
       '/package-manager/install': ts.rdk.value(() => 'bun install'),
       '/package-manager/pack': ts.rdk.value(slug => `bun pm pack --destination /out --filename ${slug}.tgz`),
-      '/command/pack/package': ts.command({
-        pack: ts.rdk.one('/package-manager/pack'),
-        slug: ts.rdk.one('/package/slug'),
-      }, {
-        for: ['pack', 'publish'],
-        run: ({ pack, slug }) => ({ shell: pack(slug) }),
-      }),
-      '/file/package-manager': ts.file({}, {
+      '/package-manager/config': ts.file({}, {
         for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
         render: () => ({ RUN: 'write bunfig.toml' }),
       }),
+      '/package-manager/config/hoisted': ts.adapter('/package-manager/config'),
     })
     const index = ts.default([
       ts.typescript({ base: '//base:ci:image', versions }),
@@ -212,7 +208,7 @@ describe('mountable TypeScript recipe', () => {
     assert.equal(manifest.description, 'Example')
   })
 
-  it('requires only facts and execution contributions reached by targets', async () => {
+  it('requires only canonical state and exact capabilities reached by targets', async () => {
     const ts = await loadTypeScript()
     assert.throws(() => ts.typescript({}), /requires a base target/)
     // A library needs a package manager to resolve its tools and install them.
@@ -230,7 +226,7 @@ describe('mountable TypeScript recipe', () => {
         }),
         ts.library(),
       ])({ location: '//x' }),
-      /Missing binding "\/package-manager\/install-manifest" required by "\/file\/package-json\/hoisted"/,
+      /Missing binding "\/package-manager\/install-manifest" required by "\/typescript\/package-json"/,
     )
     assert.deepEqual(
       ts.default([ts.typescript({ base: '//base:ci:image', versions }), ts.npm()])({ location: '//x' }),

@@ -16,6 +16,8 @@ Important areas:
 - `engine/src/pkg/mount-request.ts`: mount request parsing and validation.
 - `engine/src/pkg/volume-registry.ts`: root-owned volume identity and implementation policy.
 - `engine/src/pkg/sandbox.ts`: restricted JavaScript VM context.
+- `engine/src/pkg/rdk.ts`: immutable semantic-path graph construction and compilation.
+- `engine/src/pkg/rdk-index.ts`: structural selector candidate indexing over graph keys.
 - `engine/src/runner/index.ts`: addresses, graph walk, cycle detection, and per-run memoization.
 - `engine/src/runner/target-runner.ts`: recipe evaluation and mounted COPY resolution.
 - `engine/src/runner/dockerfile-renderer.ts`: recipe-to-Dockerfile rendering.

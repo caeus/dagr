@@ -79,7 +79,7 @@ describe('recipe architecture', () => {
     assert.equal(calculation(3), 6)
   })
 
-  it('discovers files, commands, targets, requirements, facts, and hoisted nodes by semantic path', () => {
+  it('keeps canonical feature state separate from structural adapters and exact capabilities', () => {
     const built = nodeLibrary(ts.vitest(), ts.eslint(), ts.typedoc(), ts.hoister())
     const graph = built.graph
 
@@ -88,74 +88,141 @@ describe('recipe architecture', () => {
       'product', 'directory', 'entry',
     ])
     assert.equal(graph.bindingOf('/output/layout').inputs.product.path, '/product/kind')
-    assert.deepEqual(graph.bindingOf('/file/package-json/hoisted').inputs.requirements.selectors, ['/requirement/*'])
-    assert.deepEqual(graph.bindingOf('/requirement/build-scripts/vitest').inputs, {})
-    // A tool command names what to run, so it needs no package manager to say it.
-    assert.equal(graph.bindingOf('/command/test/vitest').inputs.requirement.path, '/requirement/vitest')
-    assert.deepEqual(graph.bindingOf('/target/ci/test').inputs.$files.selectors, ['/file/**'])
-    assert.deepEqual(graph.bindingOf('/target/ci/test').inputs.$commands.selectors, ['/command/**'])
+    assert.deepEqual(graph.bindingOf('/typescript/package-json').inputs.dependencies.selectors, [
+      '/**/package-json/dependencies',
+    ])
+    assert.equal(
+      graph.bindingOf('/typescript/package-json/hoisted').inputs.value.path,
+      '/typescript/package-json',
+    )
+    assert.deepEqual(graph.bindingOf('/vitest/tooling').inputs, {})
+    assert.equal(
+      graph.bindingOf('/vitest/package-json/dependencies').inputs.tooling.path,
+      '/vitest/tooling',
+    )
+    assert.deepEqual(graph.bindingOf('/vitest/tester').inputs.$files.selectors, [
+      '/typescript/tsconfig', '/vitest/config',
+    ])
+    assert.deepEqual(graph.bindingOf('/typescript/compiler').inputs.$files.selectors, [
+      '/typescript/tsconfig',
+    ])
+    assert.equal(graph.bindingOf('/typescript/tester').inputs.value.path, '/vitest/tester')
+    assert.equal(graph.bindingOf('/target/ci/test').inputs.command.path, '/typescript/tester')
+    assert.deepEqual(graph.bindingOf('/target/ci/test').inputs.files.selectors, [
+      '/typescript/package-json',
+      '/package-manager/config',
+    ])
+    assert.equal(
+      graph.bindingOf('/target/ci/test').inputs.files.selectors.some(path => path.includes('*')),
+      false,
+    )
+    assert.equal(graph.bindingOf('/typescript/package-json/materialized'), undefined)
     assert.deepEqual(graph.bindingOf('/target/dev/hoist').inputs.hoisted.selectors, [
       '/**/hoisted', '/**/hoisted/*',
     ])
+    for (const path of ['/compiler', '/typechecker', '/tester', '/linter', '/bundler', '/documenter']) {
+      assert.equal(graph.bindingOf(path), undefined)
+    }
     assert.equal(graph.bindingOf('/workspace'), undefined)
     assert.equal(graph.bindingOf('/package/json'), undefined)
     assert.equal(graph.bindingOf('/facet/ci'), undefined)
+    assert.deepEqual([...graph.keys()].filter(path => (
+      path.startsWith('/file/')
+      || path.startsWith('/requirement/')
+      || path.startsWith('/command/')
+    )), [])
   })
 
-  it('filters, flattens, and deduplicates intent facts', () => {
+  it('projects feature-owned tooling into open consumer protocols', () => {
     const graph = ts.rdk.graph({
-      '/requirement/build-scripts/first': ts.fact({}, {
+      '/first/tooling': ts.tooling({
         for: ['test'],
-        value: ['shared', 'first'],
+        packages: ['shared', 'first'],
+        types: ['first'],
+        builds: ['shared', 'first'],
       }),
-      '/requirement/build-scripts/second': ts.fact({}, {
+      '/first/package-json/dependencies': ts.packageJsonDependencies('/first/tooling'),
+      '/first/tsconfig/types': ts.tsconfigTypes('/first/tooling'),
+      '/first/package-manager/builds': ts.packageManagerBuilds('/first/tooling'),
+      '/second/tooling': ts.tooling({
         for: ['build', 'test'],
-        value: ['shared', 'second'],
+        packages: ['shared', 'second'],
+        types: ['second'],
+        builds: ['shared', 'second'],
       }),
+      '/second/package-json/dependencies': ts.packageJsonDependencies('/second/tooling'),
+      '/second/tsconfig/types': ts.tsconfigTypes('/second/tooling'),
+      '/second/package-manager/builds': ts.packageManagerBuilds('/second/tooling'),
     })
-    const builds = graph.compile(['/requirement/build-scripts/**'])
+    const selected = (compiled, suffix) => Object.fromEntries(
+      Object.entries(compiled).filter(([path]) => path.endsWith(suffix)),
+    )
+    const dependencies = selected(
+      graph.compile(['/**/package-json/dependencies']),
+      '/package-json/dependencies',
+    )
+    const types = selected(graph.compile(['/**/tsconfig/types']), '/tsconfig/types')
+    const builds = selected(
+      graph.compile(['/**/package-manager/builds']),
+      '/package-manager/builds',
+    )
 
-    assert.deepEqual(ts.factsFor(builds, 'test'), ['shared', 'first', 'second'])
-    assert.deepEqual(ts.factsFor(builds, 'build'), ['shared', 'second'])
-    assert.deepEqual(ts.factsFor(builds, 'lint'), [])
+    assert.deepEqual(ts.packagesFor(dependencies, { intent: 'test' }, {
+      shared: '1', first: '2', second: '3',
+    }), { shared: '1', first: '2', second: '3' })
+    assert.deepEqual(ts.typesFor(types, { intent: 'test' }), ['first', 'second'])
+    assert.deepEqual(ts.buildsFor(builds, 'test'), ['shared', 'first', 'second'])
+    assert.deepEqual(ts.buildsFor(builds, 'build'), ['shared', 'second'])
+    assert.deepEqual(ts.buildsFor(builds, 'lint'), [])
   })
 
-  it('renders context-aware files and materializes context-free invocations', () => {
+  it('lets a required capability own its exact optional file set', () => {
     const seen = []
     const feature = ts.rdk.graph({
       '/test/message': ts.rdk.value('hello'),
       '/package-manager/exec': ts.rdk.value(invocation => `resolve ${invocation}`),
-      '/file/test-generated': ts.file({ message: ts.rdk.one('/test/message') }, {
+      '/test/generated': ts.file({ message: ts.rdk.one('/test/message') }, {
         for: ['test'],
         render(context, { message }) {
           seen.push({ intent: context.intent, facet: context.facet, host: context.host })
           return { RUN: `write ${message}` }
         },
       }),
-      '/file/test-host-aware': ts.file({}, {
+      '/test/host-aware': ts.file({}, {
         for: ['test'],
         render: context => ({ CMD: ['done', context.host.arch] }),
       }),
-      '/file/test-skipped': ts.file({}, {
+      '/test/skipped': ts.file({}, {
         for: ['build'],
         render: () => ({ RUN: 'wrong intent' }),
       }),
-      '/command/test/example': ts.command({ message: ts.rdk.one('/test/message') }, {
+      '/test/runner': ts.command({ message: ts.rdk.one('/test/message') }, {
         for: ['test'],
-        run: ({ message }) => ({ tool: `${message} suite` }),
+        files: ts.rdk.many(
+          '/test/generated',
+          '/test/host-aware',
+          '/test/skipped',
+          '/test/absent',
+        ),
+        run: ({ message }) => [
+          { tool: `${message} suite` },
+          { shell: 'echo done > /tmp/log' },
+        ],
       }),
-      '/command/test/raw': ts.command({}, {
-        for: ['test'],
-        order: 10,
-        run: () => ({ shell: 'echo done > /tmp/log' }),
-      }),
-      '/target/quality/inspect': ts.target({ exec: ts.rdk.one('/package-manager/exec') }, {
+      '/runner': ts.adapter('/test/runner'),
+      '/target/quality/inspect': ts.target({
+        exec: ts.rdk.one('/package-manager/exec'),
+        runner: ts.rdk.one('/runner'),
+      }, {
         intent: 'test',
-        render: (context, { exec }) => ({
+        render: (context, { exec, runner }) => ({
           deps: [],
           run: ({ host }) => ({
             FROM: 'scratch',
-            steps: [...context.files({ host }), ...ts.runSteps(context.invocations(), exec)],
+            steps: [
+              ...context.files(runner.files, { host }),
+              ...ts.runSteps(runner.invocations, exec),
+            ],
             IGNORE: [],
           }),
         }),
@@ -173,6 +240,18 @@ describe('recipe architecture', () => {
       { RUN: 'echo done > /tmp/log' },
     ])
     assert.deepEqual(seen, [{ intent: 'test', facet: 'quality', host: { os: 'linux', arch: 'arm64' } }])
+    assert.throws(
+      () => ts.sourceTarget({ files: ['/test/**'] }),
+      /sourceTarget files must be exact semantic paths: \/test\/\*\*/,
+    )
+    assert.throws(
+      () => ts.command({}, {
+        for: ['test'],
+        files: ts.rdk.many('/test/**'),
+        run: () => ({ tool: 'test' }),
+      }),
+      /command contribution files must use many\(\) with exact semantic paths/,
+    )
   })
 
   it('derives target identity from paths and resolves ownership collisions by normal replacement', () => {
@@ -227,13 +306,15 @@ describe('recipe architecture', () => {
       assert.equal('scripts' in decodeWritten(runTarget(index, 'publish', 'pack').steps, 'package.json'), false)
     }
 
-    // Ordered invocations for one intent join in a script and stay separate steps in an image.
+    // Replacing the exact capability also replaces the package.json script that projects it.
     const extended = ts.default([
       ts.typescript({ base: '//base:ci:image', versions }), ts.pnpm(), ts.library({ runtime: 'node' }),
       ts.rdk.graph({
-        '/command/build/verify': ts.command({}, {
-          for: ['build'], order: 10, run: () => ({ shell: 'verify' }),
+        '/verified/compiler': ts.command({}, {
+          for: ['build'],
+          run: () => [{ tool: 'tsc' }, { shell: 'verify' }],
         }),
+        '/typescript/compiler': ts.adapter('/verified/compiler'),
       }),
     ])({ location: '//packages/example' })
     const build = runTarget(extended, 'ci', 'build')
@@ -341,45 +422,45 @@ describe('recipe architecture', () => {
 
   it('rejects rendered steps that are not steps, and packages with no catalog version', () => {
     const build = contribution => ts.default([contribution, ts.rdk.graph({
-      '/target/ci/build': ts.target({}, {
+      '/target/ci/build': ts.target({ files: ts.rdk.many('/invalid/file') }, {
         intent: 'build',
-        render: context => ({
+        render: (context, { files }) => ({
           deps: [],
-          run: () => ({ FROM: 'scratch', steps: context.files(), IGNORE: [] }),
+          run: () => ({ FROM: 'scratch', steps: context.files(files), IGNORE: [] }),
         }),
       }),
     })])({ location: '//example' }).ci.build.run({ images: {} })
 
     assert.throws(
       () => build(ts.rdk.graph({
-        '/file/nothing': ts.file({}, { for: ['build'], render: () => undefined }),
+        '/invalid/file': ts.file({}, { for: ['build'], render: () => undefined }),
       })),
       /file contribution render must return a Dagr step or an array of steps/,
     )
     assert.throws(
       () => build(ts.rdk.graph({
-        '/file/falsy': ts.file({}, { for: ['build'], render: () => [false] }),
+        '/invalid/file': ts.file({}, { for: ['build'], render: () => [false] }),
       })),
       /file contribution render must return a Dagr step or an array of steps/,
     )
     assert.throws(
-      () => build(ts.rdk.graph({
-        '/command/build/step': ts.command({}, { for: ['build'], run: () => ({ RUN: 'a step' }) }),
-      })),
+      () => ts.rdk.graph({
+        '/invalid/command': ts.command({}, { for: ['build'], run: () => ({ RUN: 'a step' }) }),
+      }).compile(['/invalid/command']),
       /an invocation needs exactly one of tool or shell, naming what to run/,
     )
     assert.throws(
-      () => build(ts.rdk.graph({
-        '/command/build/both': ts.command({}, {
+      () => ts.rdk.graph({
+        '/invalid/command': ts.command({}, {
           for: ['build'], run: () => ({ tool: 'a', shell: 'b' }),
         }),
-      })),
+      }).compile(['/invalid/command']),
       /an invocation needs exactly one of tool or shell, naming what to run/,
     )
     assert.throws(
-      () => build(ts.rdk.graph({
-        '/command/build/anytime': ts.command({}, { run: () => ({ tool: 'a' }) }),
-      })),
+      () => ts.rdk.graph({
+        '/invalid/command': ts.command({}, { run: () => ({ tool: 'a' }) }),
+      }),
       /command contribution needs for, the intents whose run it is/,
     )
     assert.throws(
@@ -440,24 +521,19 @@ describe('recipe architecture', () => {
     assert.deepEqual(decodeWritten(docs.steps, 'typedoc.json').entryPoints, ['source/index.ts'])
   })
 
-  it('extends a built-in target with contextual files and commands independently', () => {
+  it('selects one replaceable TypeScript compiler through an exact binding', () => {
     const extension = ts.rdk.graph({
-      '/file/build-notice': ts.file({}, {
-        for: ['build'],
-        render: () => ({ RUN: 'write build notice' }),
+      '/verified/compiler': ts.command({}, {
+        for: ['build'], run: () => [{ tool: 'tsc' }, { shell: 'verify build' }],
       }),
-      '/command/build/verify': ts.command({}, {
-        for: ['build'],
-        order: 10,
-        run: () => ({ shell: 'verify build' }),
-      }),
+      '/typescript/compiler': ts.adapter('/verified/compiler'),
     })
     const index = nodeLibrary().with(extension)({ location: '//packages/example' })
     const build = runTarget(index, 'ci', 'build')
 
-    assert.ok(build.steps.some(step => step.RUN === 'write build notice'))
     assert.equal(build.steps.at(-2).RUN, 'pnpm exec tsc')
     assert.equal(build.steps.at(-1).RUN, 'verify build')
+    assert.equal(decodeWritten(build.steps, 'package.json').scripts.build, 'tsc && verify build')
   })
 
   it('derives worker and Vite outputs from their product facts', () => {
