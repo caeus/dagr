@@ -229,10 +229,29 @@ class Graph {
 
   /** @type {Map<string, Binding<unknown>>} */
   #bindings
+  /** @type {readonly string[]} */
+  #keys
+  /** @type {Map<string, number>} */
+  #positions
+  /** @type {Map<string, readonly string[]>} */
+  #bySegment
 
   /** @param {Map<string, Binding<unknown>>} bindings */
   constructor(bindings) {
     this.#bindings = bindings
+    this.#keys = Object.freeze([...bindings.keys()])
+    this.#positions = new Map(this.#keys.map((key, position) => [key, position]))
+    const bySegment = new Map()
+    for (const key of this.#keys) {
+      for (const segment of new Set(key.slice(1).split('/'))) {
+        const indexed = bySegment.get(segment) ?? []
+        indexed.push(key)
+        bySegment.set(segment, indexed)
+      }
+    }
+    this.#bySegment = new Map(
+      [...bySegment].map(([segment, indexed]) => [segment, Object.freeze(indexed)]),
+    )
     Object.freeze(this)
   }
 
@@ -297,8 +316,27 @@ class Graph {
       return matches
     }
     /** @param {readonly string[]} selectorGroup */
-    const matchingNames = selectorGroup => [...this.#bindings.keys()]
-      .filter(name => selectorGroup.some(selector => matcher(selector)(name)))
+    const matchingNames = selectorGroup => {
+      const found = new Set()
+      for (const selector of selectorGroup) {
+        if (!selector.includes('*')) {
+          if (this.#bindings.has(selector)) found.add(selector)
+          continue
+        }
+        let candidates = this.#keys
+        for (const segment of selector.slice(1).split('/')) {
+          if (segment === '*' || segment === '**') continue
+          const indexed = this.#bySegment.get(segment) ?? []
+          if (indexed.length < candidates.length) candidates = indexed
+        }
+        for (const candidate of candidates) {
+          if (matcher(selector)(candidate)) found.add(candidate)
+        }
+      }
+      return [...found].sort((left, right) => (
+        this.#positions.get(left) - this.#positions.get(right)
+      ))
+    }
 
     /** @type {string[]} */
     const normalizedRoots = roots === undefined

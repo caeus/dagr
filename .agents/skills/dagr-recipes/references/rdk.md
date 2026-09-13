@@ -39,32 +39,53 @@ Use names that describe the input's role in the factory rather than repeating it
 ```js
 rdk.derive({
   source: rdk.one('/source/directory'),
-  files: rdk.many('/file/**'),
-  contributions: rdk.many('/command/**', '/generated/**'),
-}, ({ source, files, contributions }) => ...)
+  compiler: rdk.one('/compiler'),
+  files: rdk.many('/**/materialized', '/**/materialized/*'),
+}, ({ source, compiler, files }) => ...)
 ```
 
-`one()` only accepts an exact absolute semantic path and rejects wildcards. `many()` accepts one or more selectors and always produces a frozen record keyed by complete binding paths. Collection semantics come from `many()`, not wildcard presence, so `many('/file/package-json')` still returns a record.
+`one()` only accepts an exact absolute semantic path and rejects wildcards. Use it for every singular
+dependency, including replaceable capabilities such as `/compiler`, `/tester`, `/linter`,
+`/documenter`, and `/bundler`. Graph merging supplies the concrete binding. Do not discover a
+collection and then rank, filter, or choose one member.
+
+`many()` accepts one or more selectors and always produces a frozen record keyed by complete binding
+paths. Collection semantics come from `many()`, not wildcard presence, so
+`many('/typescript/package-json')` still returns a record. Use it only when any number of independent
+features may participate.
 
 Multiple selectors in one `many()` are unioned in graph key order. Overlapping selectors do not duplicate bindings. No matches produce a frozen empty record. Glob selectors use `*` and `**` and delegate matching to `dagr:glob`.
 
-## Recipe paths
+## Recipe paths and adapters
 
-Use semantic path namespaces consistently:
+Canonical bindings live with the feature that owns their meaning:
 
-- `/file/**` for generated file or step contributions;
-- `/command/**` for context-free command contributions;
-- `/target/<facet>/<name>` for Dagr targets;
-- `/requirement/*` for package and ambient-type requirements;
-- `/requirement/build-scripts/**` for package-manager-neutral build-script facts;
-- paths such as `/package/name`, `/source/directory`, and `/output/layout` for ordinary facts and calculations.
+- `/typescript/package-json` and `/typescript/tsconfig` are canonical rendered files;
+- `/vitest/tester` and `/eslint/linter` are canonical executable capabilities;
+- `/vitest/tooling` and `/eslint/tooling` are canonical installation facts;
+- `/target/<facet>/<name>` is the executable, user-addressable Dagr surface;
+- `/package/name`, `/source/directory`, and `/output/layout` are ordinary shared facts and calculations.
 
-The `file`, `command`, `fact`, `target`, and `requirement` helpers validate or render their values. They do not group them. Consumers discover open collections through `many()` selectors.
+Integration uses an additional binding that depends exactly on the canonical value. `adapter(path)`
+creates that identity projection. Current open protocols are:
 
-Files render before commands. Contributions of one kind are ordered by their numeric `order`, which defaults to zero. Equal orders retain graph key order. Use explicit ordering only when step sequence is behavior.
+- `/**/materialized` and `/**/materialized/*` for files rendered into normal targets;
+- `/**/hoisted` and `/**/hoisted/*` for files exported to the host;
+- `/**/package-json/script` for the open set of package scripts;
+- `/**/tooling/for/typescript` and `/**/tooling/for/package-manager` for explicit tooling consumers.
+
+Exact shared capability paths such as `/compiler` are adapters too, but they are resolved with
+`one()`, not globbing. Right-biased merge replacement selects the concrete implementation.
+
+The `file`, `command`, `target`, and `tooling` helpers validate or render values; paths carry identity
+and protocol participation. Files and invocations have numeric `order`, defaulting to zero. Equal
+orders retain graph-key order. Use ordering only inside a genuinely plural value or protocol.
 
 ## Determinism
 
 Factories stay synchronous and deterministic. Do not build bindings around network access, ambient environment state, mutable registries, or asynchronous resolution. Promises are ordinary values and are not awaited by `compile()`.
 
-`many()` matches follow graph key order. A merge replacement keeps the existing key position, while a new binding appends in merge order.
+`many()` matches follow graph key order. A merge replacement keeps the existing key position, while
+a new binding appends in merge order. Each graph derives a segment index from its keys; selectors use
+literal segments to narrow candidates before the unchanged `dagr:glob` matcher runs. Patterns with no
+literal segments may still scan every key.

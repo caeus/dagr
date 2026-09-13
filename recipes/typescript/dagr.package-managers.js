@@ -1,6 +1,6 @@
 import rdk from 'dagr:rdk'
-import { command, factsFor, file } from '//dagr.contributions.js'
-import { DEVELOPMENT_INTENTS } from '//dagr.model.js'
+import { file } from '//dagr.contributions.js'
+import { DEVELOPMENT_INTENTS, adapter, buildsFor } from '//dagr.model.js'
 import { writeYaml } from '//dagr.file-utils.js'
 
 export const fileTarballs = (manifest, localPackages, _context) => localPackages.reduce(
@@ -20,17 +20,12 @@ export const npm = () => rdk.graph({
   '/package-manager/script': rdk.value(invocation => invocation),
   '/package-manager/install': rdk.value(host => `npm install --include=dev${host ? ` --os=${host.os} --cpu=${host.arch}` : ''}`),
   '/package-manager/pack': rdk.value(packDestination('npm pack')),
-  '/command/pack/package': command({
-    pack: rdk.one('/package-manager/pack'),
-    slug: rdk.one('/package/slug'),
-  }, {
-    for: ['pack', 'publish'],
-    run: ({ pack, slug }) => ({ shell: pack(slug) }),
-  }),
-  '/file/package-manager/hoisted': file({}, {
+  '/package-manager/config': file({}, {
     for: DEVELOPMENT_INTENTS,
     render: () => [],
   }),
+  '/package-manager/config/materialized': adapter('/package-manager/config'),
+  '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })
 
 export const pnpm = () => rdk.graph({
@@ -39,19 +34,12 @@ export const pnpm = () => rdk.graph({
   '/package-manager/script': rdk.value(invocation => invocation),
   '/package-manager/install': rdk.value(host => `pnpm install --prod=false${host ? ` --os ${host.os} --cpu ${host.arch}` : ''}`),
   '/package-manager/pack': rdk.value(packDestination('pnpm pack')),
-  '/command/pack/package': command({
-    pack: rdk.one('/package-manager/pack'),
-    slug: rdk.one('/package/slug'),
-  }, {
-    for: ['pack', 'publish'],
-    run: ({ pack, slug }) => ({ shell: pack(slug) }),
-  }),
-  '/file/package-manager/hoisted': file({
-    builds: rdk.many('/requirement/build-scripts/**'),
+  '/package-manager/config': file({
+    tooling: rdk.many('/**/tooling/for/package-manager'),
   }, {
     for: DEVELOPMENT_INTENTS,
-    render(context, { builds }) {
-      const allowBuilds = factsFor(builds, context.intent)
+    render(context, { tooling }) {
+      const allowBuilds = buildsFor(tooling, context.intent)
       return allowBuilds.length === 0
         ? []
         : writeYaml('/repo/pnpm-workspace.yaml', {
@@ -59,13 +47,15 @@ export const pnpm = () => rdk.graph({
           })
     },
   }),
+  '/package-manager/config/materialized': adapter('/package-manager/config'),
+  '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })
 
 export const yarn = () => rdk.graph({
   '/package-manager/install-manifest': rdk.derive(
-    { builds: rdk.many('/requirement/build-scripts/**') },
-    ({ builds }) => (manifest, localPackages, context) => {
-      const allowBuilds = factsFor(builds, context.intent)
+    { tooling: rdk.many('/**/tooling/for/package-manager') },
+    ({ tooling }) => (manifest, localPackages, context) => {
+      const allowBuilds = buildsFor(tooling, context.intent)
       return {
         ...fileTarballs(manifest, localPackages),
         ...(allowBuilds.length === 0
@@ -83,14 +73,7 @@ export const yarn = () => rdk.graph({
   '/package-manager/script': rdk.value(invocation => invocation),
   '/package-manager/install': rdk.value(() => 'yarn install --no-immutable'),
   '/package-manager/pack': rdk.value(slug => `mkdir -p /out && yarn pack --out /out/${slug}.tgz`),
-  '/command/pack/package': command({
-    pack: rdk.one('/package-manager/pack'),
-    slug: rdk.one('/package/slug'),
-  }, {
-    for: ['pack', 'publish'],
-    run: ({ pack, slug }) => ({ shell: pack(slug) }),
-  }),
-  '/file/package-manager/hoisted': file({}, {
+  '/package-manager/config': file({}, {
     for: DEVELOPMENT_INTENTS,
     render: context => writeYaml('/repo/.yarnrc.yml', {
       enableScripts: false,
@@ -100,4 +83,6 @@ export const yarn = () => rdk.graph({
         : {}),
     }),
   }),
+  '/package-manager/config/materialized': adapter('/package-manager/config'),
+  '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })

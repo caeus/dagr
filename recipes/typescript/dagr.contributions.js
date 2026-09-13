@@ -37,29 +37,6 @@ const deriveContribution = (kind, deps, factory) => {
   return rdk.derive(deps, factory)
 }
 
-/** A graph binding carrying an intent-scoped fact for consumers to interpret. */
-export const fact = (deps, options = {}) => {
-  const intents = normalizeFor('fact', options.for)
-  if (intents === undefined) {
-    throw new TypeError('fact contribution needs for, the intents whose fact it is')
-  }
-  return deriveContribution(
-    'fact',
-    deps,
-    () => Object.freeze({
-      for: intents,
-      value: options.value,
-    }),
-  )
-}
-
-/** Every fact applying to an intent, flattened and deduplicated in contribution order. */
-export const factsFor = (contributions, intent) => [...new Set(
-  contributionValues(contributions)
-    .filter(contribution => contribution.for.includes(intent))
-    .flatMap(contribution => contribution.value),
-)]
-
 /**
  * A graph binding whose value renders one or more steps that materialize files. Files are the
  * context-aware kind: what a tsconfig or a manifest contains genuinely differs per intent.
@@ -131,7 +108,7 @@ export const invocationsFor = (contributions, intent) => contributionValues(cont
   .sort((left, right) => left.order - right.order)
   .flatMap(contribution => contribution.invocations)
 
-export const contextFor = (context, files, commands) => {
+export const contextFor = (context, files) => {
   const base = Object.freeze({
     intent: context.intent,
     facet: context.facet,
@@ -146,17 +123,15 @@ export const contextFor = (context, files, commands) => {
   return Object.freeze({
     ...base,
     files: overrides => filesFor(files, withContext(overrides)),
-    invocations: overrides => invocationsFor(commands, withContext(overrides).intent),
   })
 }
 
 const TARGET_FILES = '$files'
-const TARGET_COMMANDS = '$commands'
 
 /**
- * A target binding. File and command collections are selected automatically; ordinary graph
- * dependencies are injected by name beside the context. Its `/target/<facet>/<name>` path supplies
- * the Dagr facet and target name when the index materializes it.
+ * A target binding. Structurally materialized files are selected automatically; singular
+ * capabilities and other ordinary graph dependencies are injected exactly by name beside the
+ * context. Its `/target/<facet>/<name>` path supplies the Dagr facet and target name.
  */
 export function target(deps, {
   intent,
@@ -165,8 +140,8 @@ export function target(deps, {
   if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
     throw new TypeError('target contribution dependencies must be an object')
   }
-  if (TARGET_FILES in deps || TARGET_COMMANDS in deps) {
-    throw new TypeError(`target contribution dependency names ${TARGET_FILES} and ${TARGET_COMMANDS} are reserved`)
+  if (TARGET_FILES in deps) {
+    throw new TypeError(`target contribution dependency name ${TARGET_FILES} is reserved`)
   }
   if (intent !== undefined && (typeof intent !== 'string' || intent === '')) {
     throw new Error('target contribution intent must be a non-empty string')
@@ -176,15 +151,14 @@ export function target(deps, {
   return rdk.derive(
     {
       ...deps,
-      [TARGET_FILES]: rdk.many('/file/**'),
-      [TARGET_COMMANDS]: rdk.many('/command/**'),
+      [TARGET_FILES]: rdk.many('/**/materialized', '/**/materialized/*'),
     },
     dependencies => {
-      const { [TARGET_FILES]: files, [TARGET_COMMANDS]: commands, ...values } = dependencies
+      const { [TARGET_FILES]: files, ...values } = dependencies
       const named = Object.freeze(values)
       return Object.freeze({
         materialize(name, facet) {
-          const context = contextFor({ intent: intent ?? name, facet, host: undefined }, files, commands)
+          const context = contextFor({ intent: intent ?? name, facet, host: undefined }, files)
           const rendered = render(context, named)
           if (rendered === null || typeof rendered !== 'object' || Array.isArray(rendered)) {
             throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} render must return a Dagr target`)
@@ -257,4 +231,4 @@ export const index = () => rdk.graph({
   }),
 })
 
-export default Object.freeze({ fact, file, filesFor, command, target })
+export default Object.freeze({ file, filesFor, command, target })

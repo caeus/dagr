@@ -8,10 +8,11 @@
 | --- | --- |
 | [`typescript`](typescript/) | Composable TypeScript recipe that calculates generated configuration and Dagr targets |
 
-The TypeScript recipe uses the engine-native `dagr:rdk` library. It addresses facts, calculations,
-files, commands, requirements, and targets by absolute semantic binding paths. Derived bindings
-inject one named input object: `rdk.one('/path')` resolves one exact binding and
-`rdk.many('/path/**')` resolves an open collection of matches.
+The TypeScript recipe uses the engine-native `dagr:rdk` library. Features own canonical facts,
+calculations, rendered outputs, and executable capabilities at absolute semantic paths. Additional
+bindings project those values into structural integration protocols. Derived bindings inject one
+named input object: `rdk.one('/path')` resolves an exact capability and `rdk.many('/path/**')`
+resolves a genuinely open collection of matches.
 
 ## Boundaries
 

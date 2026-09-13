@@ -3,7 +3,7 @@
 The Dagr monorepo contains two product areas:
 
 - [`engine/`](engine/) contains the Dagr execution engine, CLI, documentation, and examples.
-- [`recipes/`](recipes/) contains independently consumable recipes, including the TypeScript build stack and the RDK calculation primitive.
+- [`recipes/`](recipes/) contains independently consumable recipes, including the TypeScript build stack authored with the engine-native RDK.
 
 The repository builds and tests both areas with Dagr itself. A pinned published Dagr image bootstraps the checkout; that image builds the next engine and reusable recipe images.
 

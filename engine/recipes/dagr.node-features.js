@@ -1,10 +1,10 @@
 import {
+  adapter,
   command,
-  fact,
   rdk,
-  requirement,
   runSteps,
   target,
+  tooling,
 } from '//engine/recipes/typescript//dagr.recipe.js'
 
 /**
@@ -61,26 +61,28 @@ export function nodeTest({
   return rdk.graph({
     // Every development intent, not just `test`: the target below runs in the image `build` produced,
     // so tsx has to be in the manifest that image installed. esbuild is tsx's own build step.
-    '/requirement/node-test': requirement({
+    '/node-test/tooling': tooling({
       packages: ['tsx'],
+      builds: ['esbuild'],
     }),
-    '/requirement/build-scripts/node-test': fact({}, {
-      for: ['dev', 'typecheck', 'test', 'lint', 'docs', 'build'],
-      value: ['esbuild'],
-    }),
-    '/command/test/node': command({ requirement: rdk.one('/requirement/node-test') }, {
+    '/node-test/tooling/for/typescript': adapter('/node-test/tooling'),
+    '/node-test/tooling/for/package-manager': adapter('/node-test/tooling'),
+    '/node-test/tester': command({}, {
       for: ['test'],
       run: () => ({ shell: invocation }),
     }),
+    '/tester': adapter('/node-test/tester'),
+    '/tester/package-json/script': adapter('/node-test/tester'),
     '/target/ci/test': target({
       ignore: rdk.one('/source/ignore'),
       exec: rdk.one('/package-manager/exec'),
+      tester: rdk.one('/tester'),
     }, {
-      render: (context, { ignore, exec }) => ({
+      render: (_context, { ignore, exec, tester }) => ({
         deps: ['build'],
         run: ({ images }) => ({
           FROM: images.build,
-          steps: runSteps(context.invocations(), exec),
+          steps: runSteps(tester.invocations, exec),
           IGNORE: ignore,
         }),
       }),

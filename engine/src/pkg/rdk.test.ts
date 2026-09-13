@@ -19,7 +19,7 @@ async function sandboxRdk() {
   assert.ok(module)
   await module.link(() => { throw new Error('dagr:rdk has no VM imports') })
   await module.evaluate()
-  return module.namespace
+  return module.namespace as Record<string, unknown>
 }
 
 describe('native RDK', () => {
@@ -100,8 +100,8 @@ describe('native RDK', () => {
     for (const input of ['relative', '/', '/trailing/', '/double//slash', '/dot/./x']) {
       assert.throws(() => one(input))
     }
-    assert.throws(() => one('/file/**'), /reserved wildcards/)
-    assert.throws(() => one('/file/*'), /reserved wildcards/)
+    assert.throws(() => one('/items/**'), /reserved wildcards/)
+    assert.throws(() => one('/items/*'), /reserved wildcards/)
     assert.throws(() => Reflect.apply(one, undefined, ['/a', '/b']), /exactly one argument/)
   })
 
@@ -109,64 +109,64 @@ describe('native RDK', () => {
     assert.throws(() => many(), /at least one selector/)
     assert.throws(() => many('relative'), /must start with/)
     assert.throws(
-      () => Reflect.apply(many, undefined, ['/file/**', { selector: '/command/**' }]),
+      () => Reflect.apply(many, undefined, ['/items/**', { selector: '/tasks/**' }]),
       /absolute semantic path/,
     )
   })
 
   it('resolves * as exactly one path segment', () => {
     const files = graph({
-      '/file/package-json': value(1),
-      '/file/tsconfig': value(2),
-      '/file/generated/types': value(3),
-      '/files': value(4),
-      '/selection': derive({ files: many<number>('/file/*') }, ({ files }) => files),
+      '/artifact/package-json': value(1),
+      '/artifact/tsconfig': value(2),
+      '/artifact/generated/types': value(3),
+      '/artifacts': value(4),
+      '/selection': derive({ files: many<number>('/artifact/*') }, ({ files }) => files),
     }).compile(['/selection'])['/selection']!
 
     assert.deepEqual(files, {
-      '/file/package-json': 1,
-      '/file/tsconfig': 2,
+      '/artifact/package-json': 1,
+      '/artifact/tsconfig': 2,
     })
   })
 
   it('resolves ** across nested path segments', () => {
     const files = graph({
-      '/file/package-json': value(1),
-      '/file/generated/types': value(2),
-      '/selection': derive({ files: many<number>('/file/**') }, ({ files }) => files),
+      '/artifact/package-json': value(1),
+      '/artifact/generated/types': value(2),
+      '/selection': derive({ files: many<number>('/artifact/**') }, ({ files }) => files),
     }).compile(['/selection'])['/selection']!
 
     assert.deepEqual(files, {
-      '/file/package-json': 1,
-      '/file/generated/types': 2,
+      '/artifact/package-json': 1,
+      '/artifact/generated/types': 2,
     })
   })
 
   it('treats many() as a collection input even without wildcards', () => {
     const selection = graph({
-      '/file/package-json': value(1),
-      '/selection': derive({ files: many<number>('/file/package-json') }, ({ files }) => files),
+      '/artifact/package-json': value(1),
+      '/selection': derive({ files: many<number>('/artifact/package-json') }, ({ files }) => files),
     }).compile(['/selection'])['/selection']!
 
-    assert.deepEqual(selection, { '/file/package-json': 1 })
+    assert.deepEqual(selection, { '/artifact/package-json': 1 })
   })
 
   it('unions multiple selectors without duplicates', () => {
     const selection = graph({
-      '/file/package-json': value(1),
-      '/file/generated/types': value(2),
-      '/command/test': value(3),
+      '/artifact/package-json': value(1),
+      '/artifact/generated/types': value(2),
+      '/task/test': value(3),
       '/ignored': value(4),
       '/selection': derive(
-        { bindings: many<number>('/file/*', '/file/**', '/command/**') },
+        { bindings: many<number>('/artifact/*', '/artifact/**', '/task/**') },
         ({ bindings }) => bindings,
       ),
     }).compile(['/selection'])['/selection']!
 
     assert.deepEqual(selection, {
-      '/file/package-json': 1,
-      '/file/generated/types': 2,
-      '/command/test': 3,
+      '/artifact/package-json': 1,
+      '/artifact/generated/types': 2,
+      '/task/test': 3,
     })
   })
 
@@ -181,22 +181,22 @@ describe('native RDK', () => {
 
   it('returns frozen many() records keyed by complete binding paths', () => {
     const selection = graph({
-      '/command/test/vitest': value('vitest'),
-      '/command/test/node': value('node --test'),
+      '/vitest/tester': value('vitest'),
+      '/node/tester': value('node --test'),
       '/selection': derive(
-        { commands: many<string>('/command/test/**') },
+        { commands: many<string>('/**/tester') },
         ({ commands }) => commands,
       ),
     }).compile(['/selection'])['/selection']!
 
     assert.deepEqual(Object.keys(selection), [
-      '/command/test/vitest',
-      '/command/test/node',
+      '/vitest/tester',
+      '/node/tester',
     ])
-    assert.equal(selection['/command/test/vitest'], 'vitest')
+    assert.equal(selection['/vitest/tester'], 'vitest')
     assert.ok(Object.isFrozen(selection))
     assert.throws(() => {
-      ;(selection as Record<string, string>)['/command/test/vitest'] = 'changed'
+      ;(selection as Record<string, string>)['/vitest/tester'] = 'changed'
     }, TypeError)
   })
 
@@ -219,22 +219,22 @@ describe('native RDK', () => {
     let initialized = false
     const container = graph({
       '/shared/prefix': value('item:'),
-      '/file/first': derive(
+      '/artifact/first': derive(
         { prefix: one<string>('/shared/prefix') },
         ({ prefix }) => `${prefix}first`,
       ),
-      '/file/second': value('second'),
+      '/artifact/second': value('second'),
       '/ignored': derive({ missing: one('/missing') }, () => { initialized = true }),
-      '/files': derive({ files: many<string>('/file/**') }, ({ files }) => files),
+      '/files': derive({ files: many<string>('/artifact/**') }, ({ files }) => files),
     }).compile(['/files'])
 
     assert.deepEqual(Object.keys(container), [
       '/shared/prefix',
-      '/file/first',
-      '/file/second',
+      '/artifact/first',
+      '/artifact/second',
       '/files',
     ])
-    assert.equal(container['/files']!['/file/first'], 'item:first')
+    assert.equal(container['/files']!['/artifact/first'], 'item:first')
     assert.equal(initialized, false)
   })
 
@@ -292,22 +292,22 @@ describe('native RDK', () => {
 
   it('keeps insertion and replacement order deterministic', () => {
     const dagr = graph({
-      '/file/first': value(1),
-      '/file/second': value(2),
+      '/artifact/first': value(1),
+      '/artifact/second': value(2),
       '/selection': derive(
-        { files: many<number>('/file/**') },
+        { files: many<number>('/artifact/**') },
         ({ files }) => Object.keys(files),
       ),
     }).merge(graph({
-      '/file/first': value(10),
-      '/file/third': value(3),
+      '/artifact/first': value(10),
+      '/artifact/third': value(3),
     }))
 
     assert.deepEqual([...dagr.keys()], [
-      '/file/first', '/file/second', '/selection', '/file/third',
+      '/artifact/first', '/artifact/second', '/selection', '/artifact/third',
     ])
     assert.deepEqual(dagr.compile(['/selection'])['/selection'], [
-      '/file/first', '/file/second', '/file/third',
+      '/artifact/first', '/artifact/second', '/artifact/third',
     ])
   })
 
@@ -323,7 +323,7 @@ describe('native RDK', () => {
     assert.deepEqual(Object.keys(binding.inputs), ['answer'])
     assert.ok(Object.isFrozen(binding))
     assert.ok(Object.isFrozen(binding.inputs))
-    assert.ok(Object.isFrozen(binding.inputs.answer))
+    assert.ok(Object.isFrozen(binding.inputs['answer']))
     assert.equal(dagr.bindingOf('/missing'), undefined)
   })
 
@@ -375,7 +375,7 @@ describe('dagr:rdk bridge', () => {
       ['construct', 'default', 'derive', 'graph', 'many', 'merge', 'one', 'value'],
     )
 
-    const rdk = namespace.default as {
+    const rdk = namespace['default'] as {
       graph: (bindings: Record<string, unknown>) => {
         compile: () => Record<string, unknown>
       }
@@ -386,7 +386,7 @@ describe('dagr:rdk bridge', () => {
   })
 
   it('preserves native argument validation through the bridge', async () => {
-    const rdk = (await sandboxRdk()).default as {
+    const rdk = (await sandboxRdk())['default'] as {
       one: (...args: unknown[]) => unknown
       value: (...args: unknown[]) => unknown
       derive: (...args: unknown[]) => unknown
@@ -406,11 +406,11 @@ describe('dagr:rdk bridge', () => {
       import rdk from 'dagr:rdk'
 
       const dagr = rdk.graph({
-        '/file/example': rdk.value('example'),
-        '/result': rdk.derive({ files: rdk.many('/file/**') }, inputs => (
+        '/example/file': rdk.value('example'),
+        '/result': rdk.derive({ files: rdk.many('/**/file') }, inputs => (
           Object.getPrototypeOf(inputs) === Object.prototype
           && Object.getPrototypeOf(inputs.files) === Object.prototype
-          && inputs.files['/file/example'] === 'example'
+          && inputs.files['/example/file'] === 'example'
         )),
       })
 
@@ -423,6 +423,6 @@ describe('dagr:rdk bridge', () => {
       return builtin
     })
     await consumer.evaluate()
-    assert.equal(consumer.namespace.default, true)
+    assert.equal((consumer.namespace as Record<string, unknown>)['default'], true)
   })
 })

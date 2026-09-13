@@ -43,26 +43,39 @@ export function versionOf(versions, name) {
   return version
 }
 
-export function requirement({
+/** Projects one canonical binding into an integration or capability path. */
+export const adapter = path => rdk.derive(
+  { value: rdk.one(path) },
+  ({ value }) => value,
+)
+
+export function tooling({
   for: intents = DEVELOPMENT_INTENTS,
   packages = [],
   types = [],
+  builds = [],
 } = {}) {
   if (!Array.isArray(intents) || intents.some(intent => typeof intent !== 'string' || intent === '')) {
-    throw new TypeError('requirement for must be an array of intent names')
+    throw new TypeError('tooling for must be an array of intent names')
   }
   if (!Array.isArray(packages) || packages.some(name => typeof name !== 'string' || name === '')) {
-    throw new TypeError('requirement packages must be an array of package names')
+    throw new TypeError('tooling packages must be an array of package names')
   }
-  if (!Array.isArray(types)) throw new TypeError('requirement types must be an array')
+  if (!Array.isArray(types) || types.some(name => typeof name !== 'string' || name === '')) {
+    throw new TypeError('tooling types must be an array of type names')
+  }
+  if (!Array.isArray(builds) || builds.some(name => typeof name !== 'string' || name === '')) {
+    throw new TypeError('tooling builds must be an array of package names')
+  }
   return rdk.value(Object.freeze({
     for: Object.freeze([...intents]),
     packages: Object.freeze([...packages]),
     types: Object.freeze([...types]),
+    builds: Object.freeze([...builds]),
   }))
 }
 
-export function requirementsOf(contributions, context, versions) {
+export function toolingFor(contributions, context, versions) {
   const packages = []
   const types = []
 
@@ -79,6 +92,13 @@ export function requirementsOf(contributions, context, versions) {
     types: Object.freeze(unique(types)),
   })
 }
+
+export const buildsFor = (contributions, intent) => unique(
+  Reflect.ownKeys(contributions)
+    .map(name => contributions[name])
+    .filter(contribution => contribution.for.includes(intent))
+    .flatMap(contribution => contribution.builds),
+)
 
 /**
  * Materializes invocations as container steps. `exec` resolves an installed binary, which a

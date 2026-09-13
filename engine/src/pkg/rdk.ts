@@ -1,4 +1,5 @@
 import { of as globOf } from '#pkg/glob.js'
+import { SemanticPathIndex } from '#pkg/rdk-index.js'
 
 declare const INPUT_VALUE: unique symbol
 declare const BINDING_VALUE: unique symbol
@@ -35,6 +36,10 @@ export type Bindings = Readonly<Record<string, Binding>>
 export type BindingValue<B> = B extends Binding<infer T> ? T : never
 export type GraphValues<B extends Bindings> = Readonly<{
   [K in keyof B]: BindingValue<B[K]>
+}>
+
+type Graphs<B extends readonly Bindings[]> = Readonly<{
+  [K in keyof B]: Graph<B[K]>
 }>
 
 type SemanticPath = string & { readonly [SEMANTIC_PATH_VALUE]: true }
@@ -234,9 +239,11 @@ function normalizeBindings(bindings: unknown): Map<SemanticPath, NormalizedBindi
 /** Immutable RDK graph. */
 export class Graph<B extends Bindings = Bindings> {
   readonly #bindings: ReadonlyMap<SemanticPath, NormalizedBinding>
+  readonly #index: SemanticPathIndex<SemanticPath>
 
   constructor(bindings: ReadonlyMap<SemanticPath, NormalizedBinding>) {
     this.#bindings = bindings
+    this.#index = new SemanticPathIndex(bindings.keys())
     Object.freeze(this)
   }
 
@@ -250,7 +257,7 @@ export class Graph<B extends Bindings = Bindings> {
     return this.#bindings.keys() as IterableIterator<keyof B & string>
   }
 
-  merge(...others: readonly Graph[]): Graph {
+  merge<const O extends readonly Bindings[]>(...others: Graphs<O>): Graph {
     const merged = new Map(this.#bindings)
     others.forEach((other, position) => {
       if (!(other instanceof Graph)) {
@@ -278,8 +285,10 @@ export class Graph<B extends Bindings = Bindings> {
       }
       return matches
     }
-    const matchingNames = (patterns: readonly Selector[]): SemanticPath[] => [...this.#bindings.keys()]
-      .filter(name => patterns.some(pattern => matcher(pattern)(name)))
+    const matchingNames = (patterns: readonly Selector[]): SemanticPath[] => {
+      const predicates = new Map(patterns.map(pattern => [pattern, matcher(pattern)]))
+      return this.#index.matching(patterns, (pattern, name) => predicates.get(pattern as Selector)!(name))
+    }
 
     const normalizedRoots: readonly CompileRoot[] = roots === undefined
       ? [...this.#bindings.keys()].map(path => Object.freeze({ kind: 'exact' as const, path }))
@@ -373,6 +382,6 @@ export function graph<const B extends Bindings>(bindings: B): Graph<B> {
   return new Graph<B>(normalizeBindings(bindings))
 }
 
-export function merge(...graphs: readonly Graph[]): Graph {
+export function merge<const B extends readonly Bindings[]>(...graphs: Graphs<B>): Graph {
   return graph({}).merge(...graphs)
 }
