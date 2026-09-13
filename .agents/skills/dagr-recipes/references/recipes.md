@@ -36,6 +36,12 @@ Recipe graphs use absolute semantic paths. A feature owns canonical facts, calcu
 files, tooling, and executable commands under its own namespace. Examples include
 `/typescript/package-json`, `/vitest/config`, `/vitest/tooling`, and `/vitest/tester`.
 
+Singular capabilities stay in the semantic domain that owns the abstraction. TypeScript uses exact
+paths such as `/typescript/compiler`, `/typescript/typechecker`, `/typescript/tester`, and
+`/typescript/linter`; another language can own its corresponding paths independently in the same
+graph. An implementation-owned command such as `/vitest/tester` may project into
+`/typescript/tester`.
+
 Cross-feature open integration is a separate adapter binding. `hoister()` consumes adapters ending in
 `/hoisted`; package.json collects `/package-json/dependencies` and `/package-json/script`; tsconfig
 collects `/tsconfig/types`; package managers collect `/package-manager/builds`. Producers opt into
@@ -59,9 +65,10 @@ rdk.graph({
     files: rdk.many('/health/report'),
     run,
   }),
-  '/tester': adapter('/health/tester'),
+  '/typescript/tester': adapter('/health/tester'),
+  '/typescript/tester/package-json/script': adapter('/typescript/tester'),
   '/target/ci/test': target({
-    tester: rdk.one('/tester'),
+    tester: rdk.one('/typescript/tester'),
   }, { render: renderTarget }),
 })
 ```
@@ -87,7 +94,9 @@ the facet and name. Required singular capabilities use `one()`. Each capability 
 of the canonical files it requires and exposes the resulting optional record as `files`; the target
 materializes that record. Host-sensitive output stays inside the native target's `run` function.
 
-An exact command capability may return multiple ordered invocations.
+An exact command capability may return multiple ordered invocations. Package-script projections
+should depend on the capability path, not directly on its current implementation, so one merge
+replacement changes every consumer of that capability.
 
 The `/dagr/index` calculation selects `/target/**`, groups targets by the facet and name in their
 paths, validates local target dependencies, and returns the Dagr index. A target creates a facet by
