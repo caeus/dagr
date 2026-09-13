@@ -6,7 +6,20 @@ declare const BINDING_VALUE: unique symbol
 declare const SEMANTIC_PATH_VALUE: unique symbol
 declare const SELECTOR_VALUE: unique symbol
 
+export interface InputResolution {
+  readonly keys: Readonly<Record<string, unknown>>
+  readonly patterns: Readonly<Record<string, unknown>>
+}
+
+export interface InputDependencies {
+  readonly keys?: readonly string[]
+  readonly patterns?: readonly string[]
+}
+
 export interface Input<T = unknown> {
+  readonly keys: readonly string[]
+  readonly patterns: readonly string[]
+  readonly project: (resolved: InputResolution) => T
   readonly [INPUT_VALUE]?: T
 }
 
@@ -20,7 +33,7 @@ export interface ManyInput<T = unknown> extends Input<Readonly<Record<string, T>
   readonly path?: never
 }
 
-export type AnyInput = OneInput | ManyInput
+export type AnyInput = Input
 export type Inputs = Readonly<Record<string, AnyInput>>
 export type ResolvedInputs<I extends Inputs> = Readonly<{
   [K in keyof I]: I[K] extends Input<infer T> ? T : never
@@ -47,17 +60,15 @@ type Selector = string & { readonly [SELECTOR_VALUE]: true }
 
 const INPUT = Symbol.for('caeus/dagr/rdk#Input')
 
-type ExactInput = Readonly<OneInput & {
-  readonly [INPUT]: 'one'
-  readonly path: SemanticPath
+type Project<T = unknown> = (resolved: InputResolution) => T
+type NormalizedInput<T = unknown> = Readonly<{
+  readonly [INPUT]: 'input'
+  readonly keys: readonly SemanticPath[]
+  readonly patterns: readonly Selector[]
+  readonly project: Project<T>
+  readonly path?: SemanticPath
+  readonly selectors?: readonly Selector[]
 }>
-
-type CollectionInput = Readonly<ManyInput & {
-  readonly [INPUT]: 'many'
-  readonly selectors: readonly Selector[]
-}>
-
-type NormalizedInput = ExactInput | CollectionInput
 type NormalizedInputs = Readonly<Record<string, NormalizedInput>>
 type Factory<T = unknown> = (inputs: Readonly<Record<string, unknown>>) => T
 type NormalizedBinding<T = unknown> = Readonly<{
@@ -116,41 +127,69 @@ function compileRoot(path: unknown): CompileRoot {
   return Object.freeze({ kind: 'selector', selector: normalized as Selector })
 }
 
-function exactInput(path: unknown): ExactInput {
+function inputDeclaration<T>(
+  dependencies: unknown,
+  project: unknown,
+): NormalizedInput<T> {
+  if (dependencies === null || typeof dependencies !== 'object' || Array.isArray(dependencies)) {
+    throw new TypeError('input dependencies must be an object')
+  }
+  if (typeof project !== 'function') throw new TypeError('input projection must be a function')
+
+  const values = dependencies as Record<PropertyKey, unknown>
+  const keys = values['keys'] ?? []
+  const patterns = values['patterns'] ?? []
+  if (!Array.isArray(keys)) throw new TypeError('input keys must be an array')
+  if (!Array.isArray(patterns)) throw new TypeError('input patterns must be an array')
+
   return Object.freeze({
-    [INPUT]: 'one' as const,
-    path: semanticPath(path, 'one input'),
+    [INPUT]: 'input' as const,
+    keys: Object.freeze(keys.map(value => semanticPath(value, 'input key'))),
+    patterns: Object.freeze(patterns.map(value => selector(value, 'input pattern'))),
+    project: project as Project<T>,
   })
 }
 
-function collectionInput(selectors: readonly unknown[]): CollectionInput {
-  if (selectors.length === 0) throw new TypeError('many requires at least one selector')
-  return Object.freeze({
-    [INPUT]: 'many' as const,
-    selectors: Object.freeze(selectors.map(value => selector(value, 'many selector'))),
-  })
+function inputKind(candidate: object): unknown {
+  return (candidate as Record<PropertyKey, unknown>)[INPUT]
 }
 
-function inputKind(input: object): unknown {
-  return (input as Record<PropertyKey, unknown>)[INPUT]
-}
-
-function normalizeInput(input: unknown): NormalizedInput {
-  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
-    throw new TypeError('Binding input must be declared with one() or many()')
+function normalizeInput(candidate: unknown): NormalizedInput {
+  if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    throw new TypeError('Binding input must be declared with input(), one() or many()')
   }
 
-  const value = input as Record<PropertyKey, unknown>
-  const kind = inputKind(input)
-  if (kind === 'one') return exactInput(value['path'])
-  if (kind === 'many') {
-    const selectors = value['selectors']
+  const value = candidate as Record<PropertyKey, unknown>
+  if (inputKind(candidate) !== 'input') {
+    throw new TypeError('Binding input must be declared with input(), one() or many()')
+  }
+
+  const normalized = inputDeclaration(
+    { keys: value['keys'], patterns: value['patterns'] },
+    value['project'],
+  )
+
+  const path = value['path']
+  const selectors = value['selectors']
+  if (path !== undefined && selectors !== undefined) {
+    throw new TypeError('Binding input cannot be both one() and many()')
+  }
+  if (path !== undefined) {
+    return Object.freeze({
+      ...normalized,
+      path: semanticPath(path, 'one input'),
+    })
+  }
+  if (selectors !== undefined) {
     if (!Array.isArray(selectors)) {
-      throw new TypeError('Binding input must be declared with one() or many()')
+      throw new TypeError('Binding input must be declared with input(), one() or many()')
     }
-    return collectionInput(selectors)
+    return Object.freeze({
+      ...normalized,
+      selectors: Object.freeze(selectors.map(value => selector(value, 'many selector'))),
+    })
   }
-  throw new TypeError('Binding input must be declared with one() or many()')
+  return normalized
 }
 
 function normalizeInputs(inputs: unknown): NormalizedInputs {
@@ -182,13 +221,35 @@ function normalizeBinding<T>(inputs: unknown, factory: unknown): NormalizedBindi
   })
 }
 
+export function input<T>(
+  dependencies: InputDependencies,
+  project: (resolved: InputResolution) => T,
+): Input<T> {
+  if (arguments.length !== 2) throw new TypeError('input accepts exactly two arguments')
+  return inputDeclaration<T>(dependencies, project) as Input<T>
+}
+
 export function one<T = unknown>(path: string): OneInput<T> {
   if (arguments.length !== 1) throw new TypeError('one accepts exactly one argument')
-  return exactInput(path) as OneInput<T>
+  const normalized = semanticPath(path, 'one input')
+  const declaration = input<T>(
+    { keys: [normalized] },
+    ({ keys }) => keys[normalized] as T,
+  )
+  return Object.freeze({ ...declaration, path: normalized }) as OneInput<T>
 }
 
 export function many<T = unknown>(...selectors: string[]): ManyInput<T> {
-  return collectionInput(selectors) as ManyInput<T>
+  if (selectors.length === 0) throw new TypeError('many requires at least one selector')
+  const normalized = selectors.map(value => selector(value, 'many selector'))
+  const declaration = input<Readonly<Record<string, T>>>(
+    { patterns: normalized },
+    ({ patterns }) => patterns as Readonly<Record<string, T>>,
+  )
+  return Object.freeze({
+    ...declaration,
+    selectors: Object.freeze(normalized),
+  }) as ManyInput<T>
 }
 
 export function value<T>(input: T): Binding<T> {
@@ -234,6 +295,21 @@ function normalizeBindings(bindings: unknown): Map<SemanticPath, NormalizedBindi
     const binding = candidate as Record<PropertyKey, unknown>
     return [name, normalizeBinding(binding['inputs'], binding['factory'])]
   }))
+}
+
+function immutableRecord(
+  entries: Iterable<readonly [string, unknown]>,
+): Readonly<Record<string, unknown>> {
+  const record: Record<string, unknown> = {}
+  for (const [key, value] of entries) {
+    Object.defineProperty(record, key, {
+      value,
+      enumerable: true,
+      writable: false,
+      configurable: false,
+    })
+  }
+  return Object.freeze(record)
 }
 
 /** Immutable RDK graph. */
@@ -301,22 +377,13 @@ export class Graph<B extends Bindings = Bindings> {
       input: NormalizedInput,
       requiredBy: SemanticPath,
     ): unknown => {
-      switch (input[INPUT]) {
-        case 'one':
-          return resolve(input.path, requiredBy)
-        case 'many': {
-          const record: Record<string, unknown> = {}
-          for (const matched of matchingNames(input.selectors)) {
-            Object.defineProperty(record, matched, {
-              value: resolve(matched, requiredBy),
-              enumerable: true,
-              writable: false,
-              configurable: false,
-            })
-          }
-          return Object.freeze(record)
-        }
-      }
+      const keys = immutableRecord(
+        input.keys.map(path => [path, resolve(path, requiredBy)] as const),
+      )
+      const patterns = immutableRecord(
+        matchingNames(input.patterns).map(path => [path, resolve(path, requiredBy)] as const),
+      )
+      return input.project(Object.freeze({ keys, patterns }))
     }
 
     const resolve = (name: SemanticPath, requiredBy?: SemanticPath): unknown => {
