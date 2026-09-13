@@ -8,12 +8,65 @@ const OPTIONS: vm.CreateContextOptions = {
   codeGeneration: { strings: false, wasm: false },
 }
 
+type SandboxIntrinsics = Readonly<{
+  Array: ArrayConstructor
+  Function: FunctionConstructor
+  JSON: JSON
+  Math: Math
+  Object: ObjectConstructor
+}>
+
+const intrinsics = new WeakMap<vm.Context, SandboxIntrinsics>()
+
+function intrinsicsOf(context: vm.Context): SandboxIntrinsics {
+  let found = intrinsics.get(context)
+  if (found !== undefined) return found
+
+  const global = vm.runInContext('globalThis', context) as SandboxIntrinsics
+  found = Object.freeze({
+    Array: global.Array,
+    Function: global.Function,
+    JSON: global.JSON,
+    Math: global.Math,
+    Object: global.Object,
+  })
+  intrinsics.set(context, found)
+  return found
+}
+
+export function freezeInSandbox<T extends object>(context: vm.Context, value: T): T {
+  const realm = intrinsicsOf(context)
+  const prototype = Object.getPrototypeOf(value) === null
+    ? null
+    : typeof value === 'function'
+      ? realm.Function.prototype
+      : Array.isArray(value)
+        ? realm.Array.prototype
+        : realm.Object.prototype
+  Object.setPrototypeOf(value, prototype)
+  return Object.freeze(value)
+}
+
+export function createSandboxFunction<Args extends unknown[], Result>(
+  context: vm.Context,
+  implementation: (...args: Args) => Result,
+): (...args: Args) => Result {
+  return freezeInSandbox(context, (...args: Args): Result => Reflect.apply(
+    implementation,
+    undefined,
+    args,
+  ) as Result)
+}
+
 export function createSandboxContext(): vm.Context {
   return vm.createContext(Object.assign(Object.create(null), { Buffer }), OPTIONS)
 }
 
 export function createConfigSandboxContext(): vm.Context {
-  const context = vm.createContext(Object.assign(Object.create(null), {
+  const context = vm.createContext(Object.create(null), { ...OPTIONS, name: 'dagr-config' })
+  const realm = intrinsicsOf(context)
+
+  Object.assign(context, {
     Atomics: undefined,
     Buffer: undefined,
     Date: undefined,
@@ -25,38 +78,30 @@ export function createConfigSandboxContext(): vm.Context {
     WebAssembly: undefined,
     console: undefined,
     eval: undefined,
-  }), { ...OPTIONS, name: 'dagr-config' })
-
-  vm.runInContext(`
-    Object.defineProperty(Math, 'random', { value: undefined })
-    Object.freeze(Math)
-  `, context)
+  })
+  Object.defineProperty(realm.Math, 'random', { value: undefined })
+  Object.freeze(realm.Math)
   return context
 }
 
+function deepFreeze(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value
+  Object.freeze(value)
+  for (const child of Object.values(value)) deepFreeze(child)
+  return value
+}
+
 export function createSandboxJsonParser(context: vm.Context): SandboxJsonParser {
-  return vm.compileFunction(`
-    const freeze = value => {
-      if (value === null || typeof value !== 'object') return value
-      Object.freeze(value)
-      for (const child of Object.values(value)) freeze(child)
-      return value
-    }
-    return freeze(JSON.parse(source))
-  `, ['source'], { parsingContext: context }) as SandboxJsonParser
+  const parse = intrinsicsOf(context).JSON.parse
+  return createSandboxFunction(
+    context,
+    (source: string) => deepFreeze(Reflect.apply(parse, undefined, [source])),
+  )
 }
 
 export function createSandboxStringifier(
   context: vm.Context,
   implementation: SandboxStringifier,
 ): SandboxStringifier {
-  const stringify = vm.compileFunction(
-    'return implementation(value)',
-    ['value'],
-    {
-      parsingContext: context,
-      contextExtensions: [{ implementation }],
-    },
-  ) as SandboxStringifier
-  return Object.freeze(stringify)
+  return createSandboxFunction(context, implementation)
 }

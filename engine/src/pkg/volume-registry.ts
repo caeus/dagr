@@ -24,10 +24,6 @@ export interface IdentifiedVolume {
 }
 
 type RuntimeIdentifyVolume = (request: MountRequest) => unknown
-type RuntimeIdentifyVolumeInvoker = (
-  identifyVolume: RuntimeIdentifyVolume,
-  request: MountRequest,
-) => unknown
 
 export class RootVolumeRegistry {
   private readonly canonicalRoot: Promise<string>
@@ -91,11 +87,11 @@ export class RootVolumeRegistry {
     }
 
     const context = createConfigSandboxContext()
-    const rejectImport = vm.compileFunction(
-      `throw new Error(${JSON.stringify(`Root ${CONFIG_FILE} cannot import `)} + specifier)`,
-      ['specifier'],
-      { parsingContext: context },
-    ) as (specifier: string) => never
+    const SandboxError = vm.runInContext('Error', context) as ErrorConstructor
+    const rejectImport = (specifier: string): never => {
+      throw new SandboxError(`Root ${CONFIG_FILE} cannot import ${specifier}`)
+    }
+
     let mod: vm.SourceTextModule
     try {
       mod = new vm.SourceTextModule(code, {
@@ -117,23 +113,17 @@ export class RootVolumeRegistry {
     const identifyVolume = (mod.namespace as Record<string, unknown>)['identifyVolume']
     if (typeof identifyVolume !== 'function')
       throw new Error(`Root ${CONFIG_FILE} must export an identifyVolume function`)
+
     const parseRequest = createSandboxJsonParser(context)
-    const invoke = vm.compileFunction(`
-      const result = identifyVolume(request)
+    return request => {
+      const result = (identifyVolume as RuntimeIdentifyVolume)(
+        parseRequest(JSON.stringify(request)) as MountRequest,
+      )
       if (result !== null && typeof result === 'object') {
         try { Promise.prototype.then.call(result, undefined, () => undefined) }
         catch {}
       }
       return result
-    `, ['identifyVolume', 'request'], {
-      parsingContext: context,
-    }) as RuntimeIdentifyVolumeInvoker
-    return request => {
-      const source = JSON.stringify(request)
-      return invoke(
-        identifyVolume as RuntimeIdentifyVolume,
-        parseRequest(source) as MountRequest,
-      )
     }
   }
 
@@ -181,11 +171,5 @@ function valueKind(value: unknown): string {
 }
 
 function errorMessage(error: unknown): string {
-  if (
-    error !== null &&
-    typeof error === 'object' &&
-    'message' in error &&
-    typeof error.message === 'string'
-  ) return error.message
-  return String(error)
+  return error instanceof Error ? error.message : String(error)
 }

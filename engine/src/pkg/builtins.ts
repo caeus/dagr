@@ -3,34 +3,65 @@ import { stringify as stringifyToml } from 'smol-toml'
 import { stringify as stringifyYaml } from 'yaml'
 import { of as nativeGlobOf } from '#pkg/glob.js'
 import * as nativeRdk from '#pkg/rdk.js'
-import { createSandboxStringifier } from '#pkg/sandbox.js'
+import {
+  createSandboxFunction,
+  createSandboxStringifier,
+  freezeInSandbox,
+} from '#pkg/sandbox.js'
 
 export const BUILTIN_PREFIX = 'dagr:'
 
+const INPUT = Symbol.for('caeus/dagr/rdk#Input')
+
 type GlobPredicate = (path: string) => boolean
 type GlobFactory = (pattern: string) => GlobPredicate
-
 type UnknownRecord = Readonly<Record<string, unknown>>
 type UnknownFunction = (...args: never[]) => unknown
+type DetailedInput = nativeRdk.Input & Readonly<{
+  path?: string
+  selectors?: readonly string[]
+}>
 
 function createGlobFactory(context: vm.Context): GlobFactory {
-  const of = vm.compileFunction(`
-    const native = compile(pattern)
-    return Object.freeze(path => native(path))
-  `, ['pattern'], {
-    parsingContext: context,
-    contextExtensions: [{ compile: nativeGlobOf }],
-  }) as GlobFactory
-
-  return Object.freeze(of)
+  return createSandboxFunction(context, (pattern: string) => {
+    const native = nativeGlobOf(pattern)
+    return createSandboxFunction(context, (path: string) => native(path))
+  })
 }
 
-/**
- * Exposes the native RDK through sandbox-realm functions and containers. The implementation stays
- * in rdk.ts; this code only prevents host-realm constructors from leaking through the VM boundary.
- */
+/** Exposes native RDK behavior through small sandbox-realm facades. */
 function createRdkModule(context: vm.Context): vm.Module {
   const graphFacades = new WeakMap<object, nativeRdk.Graph>()
+  const freeze = <T extends object>(value: T): T => freezeInSandbox(context, value)
+
+  const inputFacade = (input: nativeRdk.Input): nativeRdk.Input => {
+    const detailed = input as DetailedInput
+    return freeze({
+      [INPUT]: 'input',
+      keys: freeze([...input.keys]),
+      patterns: freeze([...input.patterns]),
+      project: createSandboxFunction(context, (resolved: nativeRdk.InputResolution) => input.project(
+        freeze({
+          keys: freeze({ ...resolved.keys }),
+          patterns: freeze({ ...resolved.patterns }),
+        }),
+      )),
+      ...(detailed.path === undefined ? {} : { path: detailed.path }),
+      ...(detailed.selectors === undefined
+        ? {}
+        : { selectors: freeze([...detailed.selectors]) }),
+    }) as unknown as nativeRdk.Input
+  }
+
+  const bindingFacade = (binding: nativeRdk.Binding): nativeRdk.Binding => freeze({
+    inputs: freeze(Object.fromEntries(
+      Object.entries(binding.inputs).map(([name, input]) => [name, inputFacade(input)]),
+    )),
+    factory: createSandboxFunction(
+      context,
+      (resolved: UnknownRecord) => binding.factory(freeze({ ...resolved })),
+    ),
+  }) as unknown as nativeRdk.Binding
 
   const graphOf = (facade: unknown, position: number): nativeRdk.Graph => {
     if (facade !== null && typeof facade === 'object') {
@@ -40,126 +71,61 @@ function createRdkModule(context: vm.Context): vm.Module {
     throw new TypeError(`Can only merge another graph, got ${typeof facade} at ${position}`)
   }
 
-  const host = Object.freeze({
-    one: (args: readonly unknown[]) => Reflect.apply(
-      nativeRdk.one,
-      undefined,
-      args,
-    ) as nativeRdk.OneInput,
-    many: (args: readonly unknown[]) => Reflect.apply(
-      nativeRdk.many,
-      undefined,
-      args,
-    ) as nativeRdk.ManyInput,
-    value: (args: readonly unknown[]) => Reflect.apply(
-      nativeRdk.value,
-      undefined,
-      args,
-    ) as nativeRdk.Binding,
-    derive: (args: readonly unknown[]) => Reflect.apply(
-      nativeRdk.derive,
-      undefined,
-      args,
-    ) as nativeRdk.Binding,
-    construct: (args: readonly unknown[]) => Reflect.apply(
-      nativeRdk.construct,
-      undefined,
-      args,
-    ) as nativeRdk.Binding,
-    graph: (bindings: unknown) => nativeRdk.graph(bindings as nativeRdk.Bindings),
-    merge: (graph: nativeRdk.Graph, others: readonly unknown[]) => graph.merge(
-      ...others.map((other, position) => graphOf(other, position)),
-    ),
-    mergeAll: (graphs: readonly unknown[]) => nativeRdk.merge(
-      ...graphs.map((graph, position) => graphOf(graph, position)),
-    ),
-    bindingOf: (graph: nativeRdk.Graph, name: string) => graph.bindingOf(name),
-    keys: (graph: nativeRdk.Graph) => [...graph.keys()],
-    compile: (graph: nativeRdk.Graph, roots?: readonly string[]) => Object.entries(
-      roots === undefined ? graph.compile() : graph.compile(roots),
-    ),
-    invoke: (binding: nativeRdk.Binding, inputs: UnknownRecord) => binding.factory(inputs),
-    register: (facade: object, graph: nativeRdk.Graph) => graphFacades.set(facade, graph),
-  })
+  const wrap = (native: nativeRdk.Graph): object => {
+    const facade = freeze({
+      bindingOf: createSandboxFunction(context, (name: string) => {
+        const found = native.bindingOf(name)
+        return found === undefined ? undefined : bindingFacade(found)
+      }),
+      keys: createSandboxFunction(
+        context,
+        () => freeze([...native.keys()])[Symbol.iterator](),
+      ),
+      merge: createSandboxFunction(context, (...others: unknown[]) => wrap(native.merge(
+        ...others.map((other, position) => graphOf(other, position)),
+      ))),
+      compile: createSandboxFunction(context, (roots?: readonly string[]) => Object.freeze(
+        Object.assign(
+          Object.create(null),
+          roots === undefined ? native.compile() : native.compile(roots),
+        ),
+      )),
+    })
+    graphFacades.set(facade, native)
+    return facade
+  }
 
-  const namespace = vm.compileFunction(`
-    const INPUT = Symbol.for('caeus/dagr/rdk#Input')
+  const graph = createSandboxFunction(
+    context,
+    (bindings: unknown) => wrap(nativeRdk.graph(bindings as nativeRdk.Bindings)),
+  )
+  const merge = createSandboxFunction(context, (...graphs: unknown[]) => wrap(nativeRdk.merge(
+    ...graphs.map((candidate, position) => graphOf(candidate, position)),
+  )))
+  const value = createSandboxFunction(context, (...args: unknown[]) => bindingFacade(
+    Reflect.apply(nativeRdk.value, undefined, args) as nativeRdk.Binding,
+  ))
+  const input = createSandboxFunction(context, (...args: unknown[]) => inputFacade(
+    Reflect.apply(nativeRdk.input, undefined, args) as nativeRdk.Input,
+  ))
+  const one = createSandboxFunction(context, (...args: unknown[]) => inputFacade(
+    Reflect.apply(nativeRdk.one, undefined, args) as nativeRdk.Input,
+  ))
+  const many = createSandboxFunction(context, (...args: unknown[]) => inputFacade(
+    Reflect.apply(nativeRdk.many, undefined, args) as nativeRdk.Input,
+  ))
+  const derive = createSandboxFunction(context, (...args: unknown[]) => bindingFacade(
+    Reflect.apply(nativeRdk.derive, undefined, args) as nativeRdk.Binding,
+  ))
+  const construct = createSandboxFunction(context, (...args: unknown[]) => bindingFacade(
+    Reflect.apply(nativeRdk.construct, undefined, args) as nativeRdk.Binding,
+  ))
 
-    const input = native => Object.freeze(native.path === undefined
-      ? { [INPUT]: 'many', selectors: Object.freeze([...native.selectors]) }
-      : { [INPUT]: 'one', path: native.path })
-
-    const copy = (entries, target) => {
-      for (const [name, value] of entries) {
-        Object.defineProperty(target, name, {
-          value, enumerable: true, writable: false, configurable: false,
-        })
-      }
-      return Object.freeze(target)
-    }
-    const record = entries => copy(entries, {})
-    const container = entries => copy(entries, Object.create(null))
-
-    const binding = native => {
-      const inputs = {}
-      for (const [name, value] of Object.entries(native.inputs)) {
-        Object.defineProperty(inputs, name, {
-          value: input(value), enumerable: true, writable: false, configurable: false,
-        })
-      }
-
-      const argumentsOf = resolved => {
-        const result = {}
-        for (const [name, value] of Object.entries(resolved)) {
-          const declaration = native.inputs[name]
-          Object.defineProperty(result, name, {
-            value: declaration.path === undefined
-              ? record(Object.entries(value))
-              : value,
-            enumerable: true,
-            writable: false,
-            configurable: false,
-          })
-        }
-        return Object.freeze(result)
-      }
-
-      return Object.freeze({
-        inputs: Object.freeze(inputs),
-        factory: resolved => host.invoke(native, argumentsOf(resolved)),
-      })
-    }
-
-    const wrap = native => {
-      let facade
-      facade = Object.freeze({
-        bindingOf: name => {
-          const found = host.bindingOf(native, name)
-          return found === undefined ? undefined : binding(found)
-        },
-        keys: () => Object.freeze([...host.keys(native)])[Symbol.iterator](),
-        merge: (...others) => wrap(host.merge(native, others)),
-        compile: roots => container(host.compile(native, roots)),
-      })
-      host.register(facade, native)
-      return facade
-    }
-
-    const graph = bindings => wrap(host.graph(bindings))
-    const merge = (...graphs) => wrap(host.mergeAll(graphs))
-    const value = (...args) => binding(host.value(args))
-    const one = (...args) => input(host.one(args))
-    const many = (...args) => input(host.many(args))
-    const derive = (...args) => binding(host.derive(args))
-    const construct = (...args) => binding(host.construct(args))
-
-    return Object.freeze({ graph, merge, value, one, many, derive, construct })
-  `, [], {
-    parsingContext: context,
-    contextExtensions: [{ host }],
-  })() as Readonly<Record<string, UnknownFunction>>
-
+  const namespace = freeze({ graph, merge, value, input, one, many, derive, construct }) as Readonly<
+    Record<string, UnknownFunction>
+  >
   const names = Object.keys(namespace)
+
   return new vm.SyntheticModule(
     ['default', ...names],
     function () {
@@ -171,6 +137,7 @@ function createRdkModule(context: vm.Context): vm.Module {
 }
 
 export function createBuiltinModules(context: vm.Context): ReadonlyMap<string, vm.Module> {
+  const freeze = <T extends object>(value: T): T => freezeInSandbox(context, value)
   const globOf = createGlobFactory(context)
   return new Map([
     builtin(
@@ -195,19 +162,12 @@ export function createBuiltinModules(context: vm.Context): ReadonlyMap<string, v
     ['dagr:rdk', createRdkModule(context)],
   ])
 
-  function builtin<T extends (...args: never[]) => unknown>(
+  function builtin<Args extends unknown[], Result>(
     specifier: string,
     exportName: string,
-    fn: T,
+    fn: (...args: Args) => Result,
   ): readonly [string, vm.Module] {
-    const namespace = vm.compileFunction(
-      `return Object.freeze({ ${exportName}: fn })`,
-      [],
-      {
-        parsingContext: context,
-        contextExtensions: [{ fn }],
-      },
-    )()
+    const namespace = freeze({ [exportName]: fn })
     return [
       specifier,
       new vm.SyntheticModule(

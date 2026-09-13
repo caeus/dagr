@@ -35,14 +35,38 @@ partial wildcard segments such as `foo*` or `***` are rejected by `Glob.of(...)`
 assigned extra glob semantics.
 
 RDK is the native Recipe Development Kit used to compose synchronous calculations as immutable
-semantic-path graphs. Its default export exposes `graph`, `merge`, `value`, `one`, `many`, `derive`,
-and `construct`; each is also available as a named export. `one('/path')` declares one required exact
-input. `many('/path')` declares optional exact injection, while wildcard selectors declare an open
-collection. Both forms of `many()` produce a frozen record of matches. Derived bindings expose those declarations as `binding.inputs`
-and factories receive the corresponding frozen input object. `graph(...).compile(roots)` resolves
-the requested roots and their transitive inputs, or every binding when roots are omitted. Compilation
-lazily derives a segment index when it first resolves a selector. Selectors with literal segments use
-the smallest indexed candidate set before applying the unchanged glob matcher; selector unions and results still follow graph-key order.
+semantic-path graphs. Its default export exposes `graph`, `merge`, `value`, `input`, `one`, `many`,
+`derive`, and `construct`; each is also available as a named export.
+
+`input({ keys, patterns }, project)` is the fundamental graph-input declaration. Every entry in
+`keys` is an exact required dependency. Every entry in `patterns` is optional and may match zero,
+one, or many bindings. The projector receives a frozen object containing frozen path-keyed `keys`
+and `patterns` records, and its return value becomes the named input value passed to `derive()` or
+`construct()`:
+
+```js
+RDK.derive({
+  compiler: RDK.input({
+    keys: ['/typescript/compiler', '/typescript/tsconfig'],
+    patterns: ['/**/tsconfig/types'],
+  }, ({ keys, patterns }) => ({
+    command: keys['/typescript/compiler'],
+    config: keys['/typescript/tsconfig'],
+    types: Object.values(patterns),
+  })),
+}, ({ compiler }) => ...)
+```
+
+`one('/path')` is the convenience form for one required exact key. `many(...patterns)` is the
+convenience form whose projector returns the frozen path-keyed pattern record unchanged. A literal
+pattern such as `many('/path')` therefore remains optional exact injection. Pattern unions are
+deduplicated and preserve deterministic graph-key ordering.
+
+Derived bindings expose their declarations as `binding.inputs`, and factories receive one frozen
+named input object. `graph(...).compile(roots)` resolves the requested roots and every transitive key
+and pattern match, or every binding when roots are omitted. Compilation lazily derives a segment
+index when it first resolves a non-empty pattern set. Patterns with literal segments use the
+smallest indexed candidate set before applying the unchanged glob matcher.
 
 Build files cannot access the host environment, filesystem, network, processes, timers, CommonJS
 globals, or arbitrary Node modules. In particular, `process`, `require`, `fetch`, and `fs` are not

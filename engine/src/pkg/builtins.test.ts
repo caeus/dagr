@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { describe, it } from 'node:test'
 import { createBuiltinModules } from '#pkg/builtins.js'
 import { createSandboxContext } from '#pkg/sandbox.js'
@@ -17,6 +18,16 @@ async function globModule() {
     readonly of: (pattern: string) => (path: string) => boolean
   }
 }
+
+describe('VM boundaries', () => {
+  it('keeps implementation logic in TypeScript instead of executable source strings', async () => {
+    for (const file of ['builtins.ts', 'loader.ts', 'sandbox.ts', 'volume-registry.ts']) {
+      const source = await readFile(new URL(`./${file}`, import.meta.url), 'utf8')
+      assert.doesNotMatch(source, /vm\.compileFunction/, file)
+      assert.doesNotMatch(source, /vm\.runInContext\(\s*`/, file)
+    }
+  })
+})
 
 describe('dagr:glob', () => {
   it('registers and exposes of like the other built-ins', async () => {
@@ -54,7 +65,7 @@ describe('dagr:glob', () => {
     assert.equal(of('file/*')('file/'), false)
   })
 
-  it('matches ** as zero or more segments', async () => {
+  it('matches ** across nested path segments', async () => {
     const { of } = await globModule()
     assert.equal(of('file/**')('file/foo/bar'), true)
     assert.equal(of('**/vitest')('command/test/vitest'), true)

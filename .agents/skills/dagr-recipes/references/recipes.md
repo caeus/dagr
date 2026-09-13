@@ -49,9 +49,11 @@ these protocols without importing or registering with the consumer.
 
 `/target/<facet>/<name>` remains the target ownership and Dagr index namespace.
 
-Contribution helpers use the same named input model as RDK. Use `rdk.one('/path')` for one required
-binding, `rdk.many('/path')` for optional exact injection, and wildcard selectors only for an open
-aggregate.
+Contribution helpers use the same named input model as RDK. `rdk.input({ keys, patterns }, project)`
+is the fundamental form: exact keys are required, patterns are optional plural dependencies, and the
+projector defines the value injected under that input name. `rdk.one('/path')` is the singular exact
+convenience form. `rdk.many('/path')` keeps optional exact collection semantics, while wildcard
+patterns are for open aggregates.
 
 ```js
 rdk.graph({
@@ -73,8 +75,10 @@ rdk.graph({
 })
 ```
 
-The helpers validate and, where appropriate, render binding values. `rdk.one()` requires one exact
-binding. `rdk.many()` collects exact optional bindings or discovers an explicitly open aggregate.
+Use `input()` when a single role needs multiple required exact dependencies together with plural
+pattern matches or needs to reshape them before the binding factory. Its projector receives frozen,
+path-keyed `keys` and `patterns` records. Patterns may match zero bindings and preserve graph-key
+ordering. Every resolved key and match remains part of graph traversal and cycle detection.
 
 ## Output bindings
 
@@ -91,7 +95,7 @@ wrong `for` value.
 
 A target binding receives its inputs as one named object beside the context. Its target path supplies
 the facet and name. Required singular capabilities use `one()`. Each capability owns the exact paths
-of the canonical files it requires and exposes the resulting optional record as `files`; the target
+of the canonical files it optionally carries and exposes the resulting record as `files`; the target
 materializes that record. Host-sensitive output stays inside the native target's `run` function.
 
 An exact command capability may return multiple ordered invocations. Package-script projections

@@ -1,7 +1,7 @@
 # Composable TypeScript recipe
 
 This recipe builds a Dagr index from one immutable RDK graph. Every binding has an absolute semantic
-path. Dependencies are declared by name with `rdk.one()` and `rdk.many()`.
+path. Named dependencies use `rdk.input()`, with `rdk.one()` and `rdk.many()` as convenience forms.
 
 ```js
 import recipe, {
@@ -53,6 +53,31 @@ builder(init, run, graph)
 
 The returned function performs `run(graph.merge(init(...args)))`. It exposes its immutable `graph`
 and `with(feature)`, which returns another builder with the feature merged in.
+
+## RDK inputs
+
+`rdk.input({ keys, patterns }, project)` is the fundamental input abstraction. Every `keys` entry is
+an exact required binding. Every `patterns` entry is an optional zero-to-many selector. The projector
+receives frozen path-keyed `keys` and `patterns` records and may return any value; that result is what
+the named input exposes to its binding factory.
+
+```js
+rdk.derive({
+  compiler: rdk.input({
+    keys: ['/typescript/compiler', '/typescript/tsconfig'],
+    patterns: ['/**/tsconfig/types'],
+  }, ({ keys, patterns }) => ({
+    command: keys['/typescript/compiler'],
+    config: keys['/typescript/tsconfig'],
+    types: Object.values(patterns),
+  })),
+}, ({ compiler }) => ...)
+```
+
+`rdk.one('/path')` is the singular required-key convenience form. `rdk.many(...patterns)` returns the
+current frozen path-keyed pattern collection unchanged. Its exact-path use remains optional, so
+`rdk.many('/feature/config')` yields zero or one entry rather than requiring the binding. Pattern
+unions are deduplicated in deterministic graph-key order.
 
 ## Semantic paths
 
@@ -125,8 +150,8 @@ becomes `quality:health`.
 ## Files, commands, and tooling
 
 Files are context-aware; commands are not. `file`, `command`, and `target` take a named input object.
-Use `rdk.one('/path')` for one required binding and `rdk.many('/first/**', '/second/**')` only for an
-open union.
+Use `rdk.one('/path')` for one required binding, `rdk.many('/first/**', '/second/**')` for an open
+union, and `rdk.input()` when one named role needs multiple required keys, patterns, or reshaping.
 
 A file renderer receives `{ intent, facet, host }` plus one named dependency object and returns one
 Dagr step or nested arrays of steps. An empty array means "nothing to do". Any non-step value,

@@ -1,12 +1,12 @@
 # Dagr reusable recipes
 
-> Independently consumable recipes for Dagr. Features own canonical RDK bindings, use `one()` for exact capabilities, and expose additional adapter bindings for open protocols consumed with `many()`.
+> Independently consumable recipes for Dagr. Features own canonical RDK bindings. `input()` combines required exact keys, optional plural patterns, and projection; `one()` and `many()` are its singular and collection conveniences.
 
 ## Start here
 
 - [Recipes overview](https://github.com/caeus/dagr/blob/main/recipes/README.md): recipe boundaries, publication, mounting, and validation.
-- [TypeScript recipe](https://github.com/caeus/dagr/blob/main/recipes/typescript/README.md): feature-owned bindings, exact capabilities, structural integration protocols, products, and package-manager graphs.
-- [Native libraries](https://github.com/caeus/dagr/blob/main/engine/docs/04-sandbox-and-imports.md): indexed `dagr:rdk` graphs, `dagr:glob`, YAML, and TOML.
+- [TypeScript recipe](https://github.com/caeus/dagr/blob/main/recipes/typescript/README.md): RDK inputs, feature-owned bindings, exact capabilities, structural integration protocols, products, and package-manager graphs.
+- [Native libraries](https://github.com/caeus/dagr/blob/main/engine/docs/04-sandbox-and-imports.md): `dagr:rdk`, `dagr:glob`, YAML, and TOML.
 
 ## Agent guidance
 

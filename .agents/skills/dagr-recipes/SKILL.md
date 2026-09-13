@@ -18,7 +18,7 @@ Use this skill for reusable recipes under `recipes/`, especially the TypeScript 
 
 ## Core model
 
-A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed by absolute semantic paths. Derived bindings declare a named input object: `rdk.one('/path')` requires one exact value, `rdk.many('/path')` injects an exact value optionally, and wildcard `many()` selectors collect open aggregates. Every `many()` returns a frozen record, and multiple selectors are unioned into it.
+A TypeScript recipe contains one immutable RDK graph. It is a flat collection of bindings addressed by absolute semantic paths. Each named input is fundamentally `rdk.input({ keys, patterns }, project)`: exact `keys` are required one-to-one dependencies, `patterns` are optional zero-to-many selectors, and the projector returns the value injected under that input name. Pattern matches are frozen, path-keyed, and ordered by graph key. `rdk.one('/path')` is the singular convenience form; `rdk.many('/path')` preserves the optional frozen path-keyed collection behavior, while wildcard `many()` selectors collect open aggregates.
 
 Features own canonical values such as `/typescript/package-json`, `/vitest/tester`, and
 `/eslint/tooling`. Singular language capabilities stay in their semantic namespace, for example
@@ -51,6 +51,7 @@ The index derives facet and name from every `/target/<facet>/<name>` binding and
 - Project canonical tooling into the aggregate that consumes each field: package names into
   `/**/package-json/dependencies`, ambient types into `/**/tsconfig/types`, and build allowances into
   `/**/package-manager/builds`.
+- Use `input()` when one named dependency needs several required exact keys, one or more optional plural patterns, or a projection that should happen before the binding factory.
 - Use wildcard `many()` selectors only for genuinely plural, open aggregates. Exact-path `many()` is
   optional injection. Do not rank, filter, or pick one member to satisfy a singular dependency.
 - Pass `intent`, `facet`, and `host` through render context; never make all graph values contextual.
