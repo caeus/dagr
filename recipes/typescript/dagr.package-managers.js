@@ -34,11 +34,11 @@ export const pnpm = () => rdk.graph({
   '/package-manager/install': rdk.value(host => `pnpm install --prod=false${host ? ` --os ${host.os} --cpu ${host.arch}` : ''}`),
   '/package-manager/pack': rdk.value(packDestination('pnpm pack')),
   '/package-manager/config': file({
-    tooling: rdk.many('/**/tooling/for/package-manager'),
+    builds: rdk.many('/**/package-manager/builds'),
   }, {
     for: DEVELOPMENT_INTENTS,
-    render(context, { tooling }) {
-      const allowBuilds = buildsFor(tooling, context.intent)
+    render(context, { builds }) {
+      const allowBuilds = buildsFor(builds, context.intent)
       return allowBuilds.length === 0
         ? []
         : writeYaml('/repo/pnpm-workspace.yaml', {
@@ -51,9 +51,9 @@ export const pnpm = () => rdk.graph({
 
 export const yarn = () => rdk.graph({
   '/package-manager/install-manifest': rdk.derive(
-    { tooling: rdk.many('/**/tooling/for/package-manager') },
-    ({ tooling }) => (manifest, localPackages, context) => {
-      const allowBuilds = buildsFor(tooling, context.intent)
+    { builds: rdk.many('/**/package-manager/builds') },
+    ({ builds }) => (manifest, localPackages, context) => {
+      const allowBuilds = buildsFor(builds, context.intent)
       return {
         ...fileTarballs(manifest, localPackages),
         ...(allowBuilds.length === 0

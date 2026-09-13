@@ -1,6 +1,8 @@
 import {
   adapter,
   command,
+  packageJsonDependencies,
+  packageManagerBuilds,
   rdk,
   runSteps,
   target,
@@ -65,8 +67,8 @@ export function nodeTest({
       packages: ['tsx'],
       builds: ['esbuild'],
     }),
-    '/node-test/tooling/for/typescript': adapter('/node-test/tooling'),
-    '/node-test/tooling/for/package-manager': adapter('/node-test/tooling'),
+    '/node-test/package-json/dependencies': packageJsonDependencies('/node-test/tooling'),
+    '/node-test/package-manager/builds': packageManagerBuilds('/node-test/tooling'),
     '/node-test/tester': command({}, {
       for: ['test'],
       run: () => ({ shell: invocation }),

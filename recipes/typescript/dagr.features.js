@@ -11,12 +11,16 @@ import {
   copyLocalPackages,
   copySource,
   localPackagesOf,
+  packageJsonDependencies,
+  packageManagerBuilds,
+  packagesFor,
   present,
   projectName,
   runSteps,
   scriptsFor,
   tooling,
-  toolingFor,
+  tsconfigTypes,
+  typesFor,
   versionOf,
 } from '//dagr.model.js'
 
@@ -109,7 +113,7 @@ const packageFacts = rdk.derive(
 const packageJson = file(
   {
     facts: rdk.one('/package/facts'),
-    tooling: rdk.many('/**/tooling/for/typescript'),
+    dependencies: rdk.many('/**/package-json/dependencies'),
     configuredVersions: rdk.one('/version/catalog'),
     installManifest: rdk.one('/package-manager/install-manifest'),
     localPackages: rdk.one('/package/local-dependencies'),
@@ -117,9 +121,9 @@ const packageJson = file(
   },
   {
     for: [...DEVELOPMENT_INTENTS, ...DISTRIBUTION_INTENTS],
-    render(context, { facts, tooling: contributions, configuredVersions, installManifest, localPackages, scripts }) {
-      const resolvedTooling = toolingFor(contributions, context, configuredVersions)
-      const manifest = packageManifest(context, facts, resolvedTooling, configuredVersions, scripts)
+    render(context, { facts, dependencies, configuredVersions, installManifest, localPackages, scripts }) {
+      const packages = packagesFor(dependencies, context, configuredVersions)
+      const manifest = packageManifest(context, facts, { packages }, configuredVersions, scripts)
       return writeJson(
         '/repo/package.json',
         context.install ? installManifest(manifest, localPackages, context) : manifest,
@@ -140,8 +144,7 @@ const tsconfig = file(
     moduleResolution: rdk.one('/typescript/module-resolution'),
     libraries: rdk.one('/typescript/libraries'),
     alias: rdk.one('/source/import-alias'),
-    tooling: rdk.many('/**/tooling/for/typescript'),
-    versions: rdk.one('/version/catalog'),
+    types: rdk.many('/**/tsconfig/types'),
   },
   {
     for: DEVELOPMENT_INTENTS,
@@ -156,12 +159,11 @@ const tsconfig = file(
       moduleResolution,
       libraries,
       alias,
-      tooling: contributions,
-      versions,
+      types: contributions,
     }) {
       const emitting = product === 'library' && ['build', 'pack', 'publish'].includes(context.intent)
       const includeTests = product !== 'library' || ['dev', 'test', 'lint'].includes(context.intent)
-      const types = toolingFor(contributions, context, versions).types
+      const types = typesFor(contributions, context)
       return writeJson('/repo/tsconfig.json', {
         extends: '@tsconfig/strictest/tsconfig.json',
         include: [`${source}/**/${product === 'web' ? '*' : '*.ts'}`],
@@ -195,32 +197,16 @@ const tsconfig = file(
 export const sourceTarget = ({
   intent,
   command: commandInput,
-  files = {},
+  files = [],
   assets = false,
   export: exported,
 } = {}) => {
-  if (files === null || typeof files !== 'object' || Array.isArray(files)) {
-    throw new TypeError('sourceTarget files must be a named object of exact inputs')
+  if (!Array.isArray(files)) {
+    throw new TypeError('sourceTarget files must be an array of exact semantic paths')
   }
-  const nonExact = Object.entries(files)
-    .filter(([, input]) => input === null || typeof input !== 'object' || typeof input.path !== 'string')
-    .map(([name]) => name)
+  const nonExact = files.filter(path => typeof path !== 'string' || path.includes('*'))
   if (nonExact.length > 0) {
-    throw new TypeError(`sourceTarget files must use one(): ${nonExact.join(', ')}`)
-  }
-  const fileInputs = {
-    packageJson: rdk.one('/typescript/package-json'),
-    tsconfig: rdk.one('/typescript/tsconfig'),
-    packageManagerConfig: rdk.one('/package-manager/config'),
-    ...files,
-  }
-  const reserved = new Set([
-    'base', 'ignore', 'source', 'localPackages', 'exec', 'install', 'command', 'buildAssets',
-    'packageJson', 'tsconfig', 'packageManagerConfig',
-  ])
-  const collisions = Object.keys(files).filter(name => reserved.has(name))
-  if (collisions.length > 0) {
-    throw new Error(`sourceTarget file names collide with reserved inputs: ${collisions.join(', ')}`)
+    throw new TypeError(`sourceTarget files must be exact semantic paths: ${nonExact.join(', ')}`)
   }
 
   return target(
@@ -231,7 +217,11 @@ export const sourceTarget = ({
       localPackages: rdk.one('/package/local-dependencies'),
       exec: rdk.one('/package-manager/exec'),
       install: rdk.one('/package-manager/install'),
-      ...fileInputs,
+      files: rdk.many(
+        '/typescript/package-json',
+        '/package-manager/config',
+        ...files,
+      ),
       ...(commandInput === undefined ? {} : { command: commandInput }),
       ...(assets ? { buildAssets: rdk.one('/source/assets') } : {}),
     },
@@ -239,11 +229,9 @@ export const sourceTarget = ({
       intent,
       render(context, values) {
         const {
-          base, ignore, source, localPackages, exec, install, command: selected, buildAssets = [],
+          base, ignore, source, localPackages, exec, install, files: targetFiles,
+          command: selected, buildAssets = [],
         } = values
-        const selectedFiles = Object.fromEntries(
-          Object.keys(fileInputs).map(name => [name, values[name]]),
-        )
         return {
           deps: [base, ...localPackages.map(pkg => pkg.target)],
           run: ({ images }) => ({
@@ -253,7 +241,7 @@ export const sourceTarget = ({
               copySource(source),
               ...copyAssets(buildAssets),
               { WORKDIR: '/repo' },
-              ...context.files(selectedFiles, { install: true }),
+              ...context.files({ ...targetFiles, ...(selected?.files ?? {}) }, { install: true }),
               { RUN: install() },
               ...(selected === undefined ? [] : runSteps(selected.invocations, exec)),
             ],
@@ -398,15 +386,18 @@ export function library({
       packages,
       types,
     }),
-    '/library/tooling/for/typescript': adapter('/library/tooling'),
+    '/library/package-json/dependencies': packageJsonDependencies('/library/tooling'),
+    '/library/tsconfig/types': tsconfigTypes('/library/tooling'),
     '/typescript/typechecker': command({}, {
       for: ['typecheck'],
+      files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typechecker': adapter('/typescript/typechecker'),
     '/typechecker/package-json/script': adapter('/typescript/typechecker'),
     '/typescript/compiler': command({}, {
       for: ['build'],
+      files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc' }),
     }),
     '/compiler': adapter('/typescript/compiler'),
@@ -419,10 +410,10 @@ export function library({
         localPackages: rdk.one('/package/local-dependencies'),
         pack: rdk.one('/package-manager/pack'),
         slug: rdk.one('/package/slug'),
-        packageJson: rdk.one('/typescript/package-json'),
+        files: rdk.many('/typescript/package-json'),
       },
       {
-        render(context, { ignore, localPackages, pack, slug, packageJson }) {
+        render(context, { ignore, localPackages, pack, slug, files }) {
           return {
             deps: ['build', ...localPackages.map(pkg => pkg.target)],
             run: ({ images }) => ({
@@ -430,7 +421,7 @@ export function library({
               steps: [
                 ...copyLocalPackages(localPackages, images, '/out'),
                 { WORKDIR: '/repo' },
-                ...context.files({ packageJson }, { install: false }),
+                ...context.files(files, { install: false }),
                 { RUN: pack(slug) },
               ],
               IGNORE: ignore,
@@ -445,11 +436,11 @@ export function library({
         localPackages: rdk.one('/package/local-dependencies'),
         pack: rdk.one('/package-manager/pack'),
         slug: rdk.one('/package/slug'),
-        packageJson: rdk.one('/typescript/package-json'),
+        files: rdk.many('/typescript/package-json'),
       },
       {
         intent: 'publish',
-        render(context, { ignore, localPackages, pack, slug, packageJson }) {
+        render(context, { ignore, localPackages, pack, slug, files }) {
           return {
             deps: ['ci:build', ...localPackages.map(pkg => pkg.target)],
             run: ({ images }) => ({
@@ -457,7 +448,7 @@ export function library({
               steps: [
                 ...copyLocalPackages(localPackages, images, '/out'),
                 { WORKDIR: '/repo' },
-                ...context.files({ packageJson }, { install: false }),
+                ...context.files(files, { install: false }),
                 { RUN: pack(slug) },
               ],
               IGNORE: ignore,
@@ -492,10 +483,12 @@ export function cloudflareWorker({ language = 'ES2022' } = {}) {
       types: ['@cloudflare/workers-types'],
       builds: ['sharp', 'workerd'],
     }),
-    '/cloudflare-worker/tooling/for/typescript': adapter('/cloudflare-worker/tooling'),
-    '/cloudflare-worker/tooling/for/package-manager': adapter('/cloudflare-worker/tooling'),
+    '/cloudflare-worker/package-json/dependencies': packageJsonDependencies('/cloudflare-worker/tooling'),
+    '/cloudflare-worker/tsconfig/types': tsconfigTypes('/cloudflare-worker/tooling'),
+    '/cloudflare-worker/package-manager/builds': packageManagerBuilds('/cloudflare-worker/tooling'),
     '/typescript/typechecker': command({}, {
       for: ['typecheck'],
+      files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typechecker': adapter('/typescript/typechecker'),
@@ -539,8 +532,9 @@ export function viteReact({ language = 'ES2020' } = {}) {
       types: ['node'],
       builds: ['esbuild'],
     }),
-    '/vite/tooling/for/typescript': adapter('/vite/tooling'),
-    '/vite/tooling/for/package-manager': adapter('/vite/tooling'),
+    '/vite/package-json/dependencies': packageJsonDependencies('/vite/tooling'),
+    '/vite/tsconfig/types': tsconfigTypes('/vite/tooling'),
+    '/vite/package-manager/builds': packageManagerBuilds('/vite/tooling'),
     '/vite/config': file({ source: rdk.one('/source/directory') }, {
       for: ['dev', 'test', 'build'],
       render(_context, { source }) {
@@ -559,22 +553,20 @@ export default defineConfig({
     '/vite/config/hoisted': adapter('/vite/config'),
     '/typescript/typechecker': command({}, {
       for: ['typecheck'],
+      files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typechecker': adapter('/typescript/typechecker'),
     '/typechecker/package-json/script': adapter('/typescript/typechecker'),
     '/vite/compiler': command({}, {
       for: ['build'],
+      files: rdk.many('/typescript/tsconfig', '/vite/config'),
       run: () => ({ tool: 'vite build' }),
     }),
     '/compiler': adapter('/vite/compiler'),
     '/compiler/package-json/script': adapter('/vite/compiler'),
     '/target/ci/typecheck': sourceTarget({ command: rdk.one('/typechecker') }),
-    '/target/ci/build': sourceTarget({
-      command: rdk.one('/compiler'),
-      files: { viteConfig: rdk.one('/vite/config') },
-      assets: true,
-    }),
+    '/target/ci/build': sourceTarget({ command: rdk.one('/compiler'), assets: true }),
   })
 }
 
@@ -590,7 +582,7 @@ export function prettier({
       for: ['dev'],
       packages: ['prettier'],
     }),
-    '/prettier/tooling/for/typescript': adapter('/prettier/tooling'),
+    '/prettier/package-json/dependencies': packageJsonDependencies('/prettier/tooling'),
     '/prettier/config': file({}, {
       for: ['dev', 'lint'],
       render: () => writeJson('/repo/.prettierrc.json', {
@@ -620,18 +612,16 @@ export function biome({ formatter = true, linter = true } = {}) {
       for: ['dev', 'lint'],
       packages: ['@biomejs/biome'],
     }),
-    '/biome/tooling/for/typescript': adapter('/biome/tooling'),
+    '/biome/package-json/dependencies': packageJsonDependencies('/biome/tooling'),
     ...(linter ? {
       '/biome/linter': command({}, {
         for: ['lint'],
+        files: rdk.many('/biome/config'),
         run: () => ({ tool: 'biome check .' }),
       }),
       '/linter': adapter('/biome/linter'),
       '/linter/package-json/script': adapter('/biome/linter'),
-      '/target/ci/lint': sourceTarget({
-        command: rdk.one('/linter'),
-        files: { biomeConfig: rdk.one('/biome/config') },
-      }),
+      '/target/ci/lint': sourceTarget({ command: rdk.one('/linter') }),
     } : {}),
   })
 }
@@ -673,21 +663,21 @@ export default defineConfig({ test: {
       types: globals ? ['vitest/globals'] : [],
       builds: ['esbuild'],
     }),
-    '/vitest/tooling/for/typescript': adapter('/vitest/tooling'),
-    '/vitest/tooling/for/package-manager': adapter('/vitest/tooling'),
+    '/vitest/package-json/dependencies': packageJsonDependencies('/vitest/tooling'),
+    '/vitest/tsconfig/types': tsconfigTypes('/vitest/tooling'),
+    '/vitest/package-manager/builds': packageManagerBuilds('/vitest/tooling'),
     '/vitest/tester': command({}, {
       for: ['test'],
+      files: rdk.many(
+        '/typescript/tsconfig',
+        '/vitest/config',
+        ...(environment === 'jsdom' ? ['/vite/config'] : []),
+      ),
       run: () => ({ tool: 'vitest run' }),
     }),
     '/tester': adapter('/vitest/tester'),
     '/tester/package-json/script': adapter('/vitest/tester'),
-    '/target/ci/test': sourceTarget({
-      command: rdk.one('/tester'),
-      files: {
-        vitestConfig: rdk.one('/vitest/config'),
-        ...(environment === 'jsdom' ? { viteConfig: rdk.one('/vite/config') } : {}),
-      },
-    }),
+    '/target/ci/test': sourceTarget({ command: rdk.one('/tester') }),
   })
 }
 
@@ -739,20 +729,19 @@ ${enforceFormatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}exp
     }),
     '/eslint/config/hoisted': adapter('/eslint/config'),
     '/eslint/tooling': tooling({ for: ['dev', 'lint'], packages }),
-    '/eslint/tooling/for/typescript': adapter('/eslint/tooling'),
+    '/eslint/package-json/dependencies': packageJsonDependencies('/eslint/tooling'),
     '/eslint/linter': command({}, {
       for: ['lint'],
+      files: rdk.many(
+        '/typescript/tsconfig',
+        '/eslint/config',
+        ...(enforceFormatting ? ['/prettier/config'] : []),
+      ),
       run: () => ({ tool: 'eslint .' }),
     }),
     '/linter': adapter('/eslint/linter'),
     '/linter/package-json/script': adapter('/eslint/linter'),
-    '/target/ci/lint': sourceTarget({
-      command: rdk.one('/linter'),
-      files: {
-        eslintConfig: rdk.one('/eslint/config'),
-        ...(enforceFormatting ? { prettierConfig: rdk.one('/prettier/config') } : {}),
-      },
-    }),
+    '/target/ci/lint': sourceTarget({ command: rdk.one('/linter') }),
   })
 }
 
@@ -795,7 +784,7 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
     '/rollup/tooling': tooling({
       packages: ['@rollup/plugin-commonjs', '@rollup/plugin-node-resolve', 'rollup'],
     }),
-    '/rollup/tooling/for/typescript': adapter('/rollup/tooling'),
+    '/rollup/package-json/dependencies': packageJsonDependencies('/rollup/tooling'),
     '/rollup/config': file({
       output: rdk.one('/output/layout'),
       bundleFile: rdk.one('/output/bundle-file'),
@@ -810,6 +799,7 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
     }),
     '/rollup/bundler': command({}, {
       for: ['bundle'],
+      files: rdk.many('/rollup/config'),
       run: () => ({ tool: 'rollup --config rollup.config.js' }),
     }),
     '/bundler': adapter('/rollup/bundler'),
@@ -818,13 +808,12 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
       exec: rdk.one('/package-manager/exec'),
       bundleFile: rdk.one('/output/bundle-file'),
       bundler: rdk.one('/bundler'),
-      config: rdk.one('/rollup/config'),
     }, {
-      render: (context, { ignore, exec, bundleFile, bundler, config }) => ({
+      render: (context, { ignore, exec, bundleFile, bundler }) => ({
         deps: ['build'],
         run: ({ images }) => ({
           FROM: images.build,
-          steps: [...context.files({ config }), ...runSteps(bundler.invocations, exec)],
+          steps: [...context.files(bundler.files), ...runSteps(bundler.invocations, exec)],
           IGNORE: ignore,
           EXPORT: { [`/repo/${bundleFile}`]: bundleFile },
         }),
@@ -860,16 +849,16 @@ export function typedoc({ title } = {}) {
       for: ['dev', 'docs'],
       packages: ['typedoc'],
     }),
-    '/typedoc/tooling/for/typescript': adapter('/typedoc/tooling'),
+    '/typedoc/package-json/dependencies': packageJsonDependencies('/typedoc/tooling'),
     '/typedoc/documenter': command({}, {
       for: ['docs'],
+      files: rdk.many('/typescript/tsconfig', '/typedoc/config'),
       run: () => ({ tool: 'typedoc' }),
     }),
     '/documenter': adapter('/typedoc/documenter'),
     '/documenter/package-json/script': adapter('/typedoc/documenter'),
     '/target/ci/docs': sourceTarget({
       command: rdk.one('/documenter'),
-      files: { typedocConfig: rdk.one('/typedoc/config') },
       export: { '/repo/docs/': 'docs/' },
     }),
   })

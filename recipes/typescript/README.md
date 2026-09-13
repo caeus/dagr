@@ -65,8 +65,10 @@ Paths carry identity and hierarchy. Features own their canonical values:
 
 Additional bindings integrate those canonical values with another feature's protocol. `adapter(path)`
 projects one exact canonical binding. `hoister()` discovers `/**/hoisted`; package.json discovers
-`/**/package-json/script`; TypeScript and package managers discover only the tooling explicitly
-projected to them. Normal targets name every canonical file they require with `rdk.one()`.
+`/**/package-json/dependencies` and `/**/package-json/script`; tsconfig discovers
+`/**/tsconfig/types`; package managers discover `/**/package-manager/builds`. A capability names the
+canonical files it needs, using `one()` when required or `many()` with exact paths for an optional
+set, and carries that set to its target.
 
 Singular capabilities use exact paths such as `/compiler`, `/typechecker`, `/tester`, `/linter`,
 `/documenter`, and `/bundler`. Their producer adapters are right-biased like every other binding.
@@ -89,6 +91,7 @@ const health = () => rdk.graph({
   }),
   '/health/tester': command({}, {
     for: ['test'],
+    files: rdk.many('/health/report'),
     run: () => ({ shell: 'test -s health.txt' }),
   }),
   '/tester': adapter('/health/tester'),
@@ -96,16 +99,15 @@ const health = () => rdk.graph({
 
   '/target/quality/health': target({
     exec: rdk.one('/package-manager/exec'),
-    report: rdk.one('/health/report'),
     tester: rdk.one('/tester'),
   }, {
     intent: 'test',
-    render(context, { exec, report, tester }) {
+    render(context, { exec, tester }) {
       return {
         deps: [],
         run: ({ host }) => ({
           FROM: 'alpine:3.22',
-          steps: [...context.files({ report }, { host }), ...runSteps(tester.invocations, exec)],
+          steps: [...context.files(tester.files, { host }), ...runSteps(tester.invocations, exec)],
           IGNORE: [],
         }),
       }
@@ -139,18 +141,19 @@ invocation:
 `runSteps(invocations, exec)` performs container materialization. Installation is not a
 contribution; a target calls `/package-manager/install` when it creates a fresh image.
 
-`for` is the intent gate. A target declares each canonical file with `rdk.one()` and passes those
-resolved values to `context.files(files, overrides)`. Executable dependencies remain ordinary named
-inputs. A source target receives one exact command capability and materializes its invocations with
-`runSteps`.
+`for` is the intent gate. A command's `files` option is a `many()` input containing exact canonical
+paths. This puts the dependency on the capability that needs it: a compiler names tsconfig, and a
+linter names its configuration. A target passes the capability's resolved `files` record to
+`context.files(files, overrides)` and materializes its invocations with `runSteps`.
 
 Files and commands default to `order: 0`. Equal orders retain graph key order. Use another numeric
 order only where sequence is behavior.
 
 Canonical tooling bindings contain intent-scoped package names, ambient types, and packages whose
-build scripts must be enabled. A feature adds `/feature/tooling/for/typescript` or
-`/feature/tooling/for/package-manager` adapters only for consumers that need those facts. The
-TypeScript manifest and config use the first open protocol; pnpm and yarn use the second.
+build scripts must be enabled. A feature projects each field only into the aggregate that consumes
+it: `/feature/package-json/dependencies`, `/feature/tsconfig/types`, or
+`/feature/package-manager/builds`. Package.json, tsconfig, pnpm, and yarn collect those protocols
+independently.
 
 ## Tooling and versions
 
@@ -234,9 +237,10 @@ The target copies local sibling tarballs but no source, renders the marked files
 are the wrong ones for a host, so run the package manager on the host afterwards.
 
 `sourceTarget({ intent, command, files, assets, export })` implements targets that copy local tarballs
-and source, render its exact canonical file dependencies, install dependencies, run one exact
-command capability, and optionally export results. It always depends on package.json, tsconfig, and
-the package-manager config; `files` is a named object of additional exact RDK inputs.
+and source, render an exact optional file set, install dependencies, run one exact command capability,
+and optionally export results. Its own file set names package.json and package-manager config; it
+also renders the exact files owned by the selected command. Additional target-owned paths may be
+passed through `files`. No file dependency uses a wildcard selector.
 
 `rollup({ bundleDirectory, strict })` adds `/target/ci/bundle` and supporting bindings. It consumes
 `/output/layout` and `/package/slug`; a product that emits no JavaScript entry is rejected.

@@ -170,9 +170,9 @@ describe('native RDK', () => {
     })
   })
 
-  it('returns a frozen empty record when many() has no matches', () => {
+  it('uses an exact many() path as optional injection', () => {
     const selection = graph({
-      '/selection': derive({ bindings: many('/missing/**') }, ({ bindings }) => bindings),
+      '/selection': derive({ bindings: many('/missing/exact') }, ({ bindings }) => bindings),
     }).compile(['/selection'])['/selection']!
 
     assert.deepEqual(selection, {})

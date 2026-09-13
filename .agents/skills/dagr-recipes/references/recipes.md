@@ -37,14 +37,15 @@ files, tooling, and executable commands under its own namespace. Examples includ
 `/typescript/package-json`, `/vitest/config`, `/vitest/tooling`, and `/vitest/tester`.
 
 Cross-feature open integration is a separate adapter binding. `hoister()` consumes adapters ending in
-`/hoisted`; package.json consumes command adapters ending in `/package-json/script`; TypeScript and package-manager tooling consumers use
-`/tooling/for/typescript` and `/tooling/for/package-manager` respectively. Producers opt into these
-protocols without importing or registering with the consumer.
+`/hoisted`; package.json collects `/package-json/dependencies` and `/package-json/script`; tsconfig
+collects `/tsconfig/types`; package managers collect `/package-manager/builds`. Producers opt into
+these protocols without importing or registering with the consumer.
 
 `/target/<facet>/<name>` remains the target ownership and Dagr index namespace.
 
 Contribution helpers use the same named input model as RDK. Use `rdk.one('/path')` for one required
-binding and `rdk.many('/a/**', '/b/**')` for the union of one or more glob patterns.
+binding, `rdk.many('/path')` for optional exact injection, and wildcard selectors only for an open
+aggregate.
 
 ```js
 rdk.graph({
@@ -53,17 +54,20 @@ rdk.graph({
     for: ['test'],
     render: (_context, { source }) => render(source),
   }),
-  '/health/tester': command({}, { for: ['test'], run }),
+  '/health/tester': command({}, {
+    for: ['test'],
+    files: rdk.many('/health/report'),
+    run,
+  }),
   '/tester': adapter('/health/tester'),
   '/target/ci/test': target({
-    report: rdk.one('/health/report'),
     tester: rdk.one('/tester'),
   }, { render: renderTarget }),
 })
 ```
 
-The helpers validate and, where appropriate, render binding values. `rdk.one()` resolves singular
-capabilities. `rdk.many()` discovers open protocols without a feature or target registry.
+The helpers validate and, where appropriate, render binding values. `rdk.one()` requires one exact
+binding. `rdk.many()` collects exact optional bindings or discovers an explicitly open aggregate.
 
 ## Output bindings
 
@@ -78,10 +82,10 @@ One command binding can become a container step, package.json script, or task in
 `for` is the intent gate. A renderer that reads `context.intent` merely to suppress itself has the
 wrong `for` value.
 
-A target binding receives its exact inputs as one named object beside the context. Its target path
-supplies the facet and name. Files and singular capabilities such as a compiler, tester, linter,
-documenter, or bundler are ordinary `one()` dependencies. Host-sensitive output stays inside the
-native target's `run` function.
+A target binding receives its inputs as one named object beside the context. Its target path supplies
+the facet and name. Required singular capabilities use `one()`. Each capability owns the exact paths
+of the canonical files it requires and exposes the resulting optional record as `files`; the target
+materializes that record. Host-sensitive output stays inside the native target's `run` function.
 
 An exact command capability may return multiple ordered invocations.
 

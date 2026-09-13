@@ -88,8 +88,8 @@ describe('recipe architecture', () => {
       'product', 'directory', 'entry',
     ])
     assert.equal(graph.bindingOf('/output/layout').inputs.product.path, '/product/kind')
-    assert.deepEqual(graph.bindingOf('/typescript/package-json').inputs.tooling.selectors, [
-      '/**/tooling/for/typescript',
+    assert.deepEqual(graph.bindingOf('/typescript/package-json').inputs.dependencies.selectors, [
+      '/**/package-json/dependencies',
     ])
     assert.equal(
       graph.bindingOf('/typescript/package-json/hoisted').inputs.value.path,
@@ -97,18 +97,25 @@ describe('recipe architecture', () => {
     )
     assert.deepEqual(graph.bindingOf('/vitest/tooling').inputs, {})
     assert.equal(
-      graph.bindingOf('/vitest/tooling/for/typescript').inputs.value.path,
+      graph.bindingOf('/vitest/package-json/dependencies').inputs.tooling.path,
       '/vitest/tooling',
     )
-    assert.deepEqual(graph.bindingOf('/vitest/tester').inputs, {})
+    assert.deepEqual(graph.bindingOf('/vitest/tester').inputs.$files.selectors, [
+      '/typescript/tsconfig', '/vitest/config',
+    ])
+    assert.deepEqual(graph.bindingOf('/typescript/compiler').inputs.$files.selectors, [
+      '/typescript/tsconfig',
+    ])
     assert.equal(graph.bindingOf('/tester').inputs.value.path, '/vitest/tester')
     assert.equal(graph.bindingOf('/target/ci/test').inputs.command.path, '/tester')
-    assert.equal(
-      graph.bindingOf('/target/ci/test').inputs.packageJson.path,
+    assert.deepEqual(graph.bindingOf('/target/ci/test').inputs.files.selectors, [
       '/typescript/package-json',
+      '/package-manager/config',
+    ])
+    assert.equal(
+      graph.bindingOf('/target/ci/test').inputs.files.selectors.some(path => path.includes('*')),
+      false,
     )
-    assert.equal(graph.bindingOf('/target/ci/test').inputs.tsconfig.path, '/typescript/tsconfig')
-    assert.equal(graph.bindingOf('/target/ci/test').inputs.vitestConfig.path, '/vitest/config')
     assert.equal(graph.bindingOf('/typescript/package-json/materialized'), undefined)
     assert.deepEqual(graph.bindingOf('/target/dev/hoist').inputs.hoisted.selectors, [
       '/**/hoisted', '/**/hoisted/*',
@@ -131,38 +138,42 @@ describe('recipe architecture', () => {
         types: ['first'],
         builds: ['shared', 'first'],
       }),
-      '/first/tooling/for/typescript': ts.adapter('/first/tooling'),
-      '/first/tooling/for/package-manager': ts.adapter('/first/tooling'),
+      '/first/package-json/dependencies': ts.packageJsonDependencies('/first/tooling'),
+      '/first/tsconfig/types': ts.tsconfigTypes('/first/tooling'),
+      '/first/package-manager/builds': ts.packageManagerBuilds('/first/tooling'),
       '/second/tooling': ts.tooling({
         for: ['build', 'test'],
         packages: ['shared', 'second'],
         types: ['second'],
         builds: ['shared', 'second'],
       }),
-      '/second/tooling/for/typescript': ts.adapter('/second/tooling'),
-      '/second/tooling/for/package-manager': ts.adapter('/second/tooling'),
+      '/second/package-json/dependencies': ts.packageJsonDependencies('/second/tooling'),
+      '/second/tsconfig/types': ts.tsconfigTypes('/second/tooling'),
+      '/second/package-manager/builds': ts.packageManagerBuilds('/second/tooling'),
     })
-    const compiled = graph.compile([
-      '/**/tooling/for/typescript',
-      '/**/tooling/for/package-manager',
-    ])
-    const typescript = Object.fromEntries(Object.entries(compiled)
-      .filter(([path]) => path.endsWith('/for/typescript')))
-    const packageManager = Object.fromEntries(Object.entries(compiled)
-      .filter(([path]) => path.endsWith('/for/package-manager')))
+    const selected = (compiled, suffix) => Object.fromEntries(
+      Object.entries(compiled).filter(([path]) => path.endsWith(suffix)),
+    )
+    const dependencies = selected(
+      graph.compile(['/**/package-json/dependencies']),
+      '/package-json/dependencies',
+    )
+    const types = selected(graph.compile(['/**/tsconfig/types']), '/tsconfig/types')
+    const builds = selected(
+      graph.compile(['/**/package-manager/builds']),
+      '/package-manager/builds',
+    )
 
-    assert.deepEqual(ts.toolingFor(typescript, { intent: 'test' }, {
+    assert.deepEqual(ts.packagesFor(dependencies, { intent: 'test' }, {
       shared: '1', first: '2', second: '3',
-    }), {
-      packages: { shared: '1', first: '2', second: '3' },
-      types: ['first', 'second'],
-    })
-    assert.deepEqual(ts.buildsFor(packageManager, 'test'), ['shared', 'first', 'second'])
-    assert.deepEqual(ts.buildsFor(packageManager, 'build'), ['shared', 'second'])
-    assert.deepEqual(ts.buildsFor(packageManager, 'lint'), [])
+    }), { shared: '1', first: '2', second: '3' })
+    assert.deepEqual(ts.typesFor(types, { intent: 'test' }), ['first', 'second'])
+    assert.deepEqual(ts.buildsFor(builds, 'test'), ['shared', 'first', 'second'])
+    assert.deepEqual(ts.buildsFor(builds, 'build'), ['shared', 'second'])
+    assert.deepEqual(ts.buildsFor(builds, 'lint'), [])
   })
 
-  it('renders exact file dependencies and one exact execution capability', () => {
+  it('lets a required capability own its exact optional file set', () => {
     const seen = []
     const feature = ts.rdk.graph({
       '/test/message': ts.rdk.value('hello'),
@@ -184,6 +195,12 @@ describe('recipe architecture', () => {
       }),
       '/test/runner': ts.command({ message: ts.rdk.one('/test/message') }, {
         for: ['test'],
+        files: ts.rdk.many(
+          '/test/generated',
+          '/test/host-aware',
+          '/test/skipped',
+          '/test/absent',
+        ),
         run: ({ message }) => [
           { tool: `${message} suite` },
           { shell: 'echo done > /tmp/log' },
@@ -193,17 +210,14 @@ describe('recipe architecture', () => {
       '/target/quality/inspect': ts.target({
         exec: ts.rdk.one('/package-manager/exec'),
         runner: ts.rdk.one('/runner'),
-        generated: ts.rdk.one('/test/generated'),
-        hostAware: ts.rdk.one('/test/host-aware'),
-        skipped: ts.rdk.one('/test/skipped'),
       }, {
         intent: 'test',
-        render: (context, { exec, runner, generated, hostAware, skipped }) => ({
+        render: (context, { exec, runner }) => ({
           deps: [],
           run: ({ host }) => ({
             FROM: 'scratch',
             steps: [
-              ...context.files({ generated, hostAware, skipped }, { host }),
+              ...context.files(runner.files, { host }),
               ...ts.runSteps(runner.invocations, exec),
             ],
             IGNORE: [],
@@ -224,8 +238,16 @@ describe('recipe architecture', () => {
     ])
     assert.deepEqual(seen, [{ intent: 'test', facet: 'quality', host: { os: 'linux', arch: 'arm64' } }])
     assert.throws(
-      () => ts.sourceTarget({ files: { generated: ts.rdk.many('/test/**') } }),
-      /sourceTarget files must use one\(\): generated/,
+      () => ts.sourceTarget({ files: ['/test/**'] }),
+      /sourceTarget files must be exact semantic paths: \/test\/\*\*/,
+    )
+    assert.throws(
+      () => ts.command({}, {
+        for: ['test'],
+        files: ts.rdk.many('/test/**'),
+        run: () => ({ tool: 'test' }),
+      }),
+      /command contribution files must use many\(\) with exact semantic paths/,
     )
   })
 
@@ -398,11 +420,11 @@ describe('recipe architecture', () => {
 
   it('rejects rendered steps that are not steps, and packages with no catalog version', () => {
     const build = contribution => ts.default([contribution, ts.rdk.graph({
-      '/target/ci/build': ts.target({ invalid: ts.rdk.one('/invalid/file') }, {
+      '/target/ci/build': ts.target({ files: ts.rdk.many('/invalid/file') }, {
         intent: 'build',
-        render: (context, { invalid }) => ({
+        render: (context, { files }) => ({
           deps: [],
-          run: () => ({ FROM: 'scratch', steps: context.files({ invalid }), IGNORE: [] }),
+          run: () => ({ FROM: 'scratch', steps: context.files(files), IGNORE: [] }),
         }),
       }),
     })])({ location: '//example' }).ci.build.run({ images: {} })

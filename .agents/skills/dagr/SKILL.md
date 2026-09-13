@@ -23,8 +23,9 @@ Dagr is a programmable monorepo build system. A package is a directory containin
 The graph is repository-owned JavaScript, not a fixed Dagr schema beyond the small target and recipe formats. Do not impose meanings on facet names such as `ci`.
 
 Build files can import Dagr-native libraries such as `dagr:yaml`, `dagr:toml`, `dagr:glob`, and `dagr:rdk`. RDK provides immutable semantic-path graphs for reusable synchronous calculations and recipe composition. RDK bindings declare named `inputs`; reserve `deps` for Dagr target dependencies.
-Use `one()` for exact singular inputs and `many()` for open structural protocols. RDK indexes literal
-semantic-path segments before applying the native glob matcher, while preserving graph-key order.
+Use `one()` for required exact inputs, `many()` with exact paths for optional injection, and wildcard
+`many()` selectors for open structural protocols. RDK indexes literal semantic-path segments before
+applying the native glob matcher, while preserving graph-key order.
 
 ## Rules agents commonly get wrong
 

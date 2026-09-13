@@ -51,8 +51,13 @@ collection and then rank, filter, or choose one member.
 
 `many()` accepts one or more selectors and always produces a frozen record keyed by complete binding
 paths. Collection semantics come from `many()`, not wildcard presence, so
-`many('/typescript/package-json')` still returns a record. Use it only when any number of independent
-features may participate.
+`many('/typescript/package-json')` is an optional exact injection: it returns an empty record or one
+entry. Multiple exact paths collect a known optional set. Use wildcard selectors only when any number
+of independent producers may participate in an actual aggregate.
+
+Wildcard aggregates should name what their consumer collects, such as package.json dependencies or
+scripts, tsconfig types, ESLint rules, Makefile entries, or Turborepo tasks. They are not generic
+categories for every value of the same implementation type.
 
 Multiple selectors in one `many()` are unioned in graph key order. Overlapping selectors do not duplicate bindings. No matches produce a frozen empty record. Glob selectors use `*` and `**` and delegate matching to `dagr:glob`.
 
@@ -70,13 +75,16 @@ Integration uses an additional binding that depends exactly on the canonical val
 creates that identity projection. Current open protocols are:
 
 - `/**/hoisted` and `/**/hoisted/*` for files exported to the host;
+- `/**/package-json/dependencies` for package dependencies;
 - `/**/package-json/script` for the open set of package scripts;
-- `/**/tooling/for/typescript` and `/**/tooling/for/package-manager` for explicit tooling consumers.
+- `/**/tsconfig/types` for ambient TypeScript types;
+- `/**/package-manager/builds` for dependency build allowances.
 
 Exact shared capability paths such as `/compiler` are adapters too, but they are resolved with
 `one()`, not globbing. Right-biased merge replacement selects the concrete implementation.
-Targets likewise depend exactly on the canonical files they render. File rendering does not use an
-open collection protocol.
+Put each dependency at its semantic cause-site. `/typescript/compiler` names
+`/typescript/tsconfig`; `/eslint/linter` names `/eslint/config`. Command capabilities carry those
+exact optional file sets to targets. File rendering does not use a wildcard collection protocol.
 
 The `file`, `command`, `target`, and `tooling` helpers validate or render values; paths carry identity
 and protocol participation. Files and invocations have numeric `order`, defaulting to zero. Equal

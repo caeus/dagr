@@ -75,30 +75,34 @@ export function tooling({
   }))
 }
 
-export function toolingFor(contributions, context, versions) {
-  const packages = []
-  const types = []
+const toolingProjection = (path, field) => rdk.derive(
+  { tooling: rdk.one(path) },
+  ({ tooling: contribution }) => Object.freeze({
+    for: contribution.for,
+    values: contribution[field],
+  }),
+)
 
-  for (const contribution of Reflect.ownKeys(contributions).map(name => contributions[name])) {
-    if (!contribution.for.includes(context.intent)) continue
-    packages.push(...contribution.packages)
-    types.push(...contribution.types)
-  }
+export const packageJsonDependencies = path => toolingProjection(path, 'packages')
+export const tsconfigTypes = path => toolingProjection(path, 'types')
+export const packageManagerBuilds = path => toolingProjection(path, 'builds')
 
-  return Object.freeze({
-    packages: Object.freeze(Object.fromEntries(
-      unique(packages).map(name => [name, versionOf(versions, name)]),
-    )),
-    types: Object.freeze(unique(types)),
-  })
-}
-
-export const buildsFor = (contributions, intent) => unique(
+const valuesFor = (contributions, intent) => unique(
   Reflect.ownKeys(contributions)
     .map(name => contributions[name])
     .filter(contribution => contribution.for.includes(intent))
-    .flatMap(contribution => contribution.builds),
+    .flatMap(contribution => contribution.values),
 )
+
+export const packagesFor = (contributions, context, versions) => Object.freeze(Object.fromEntries(
+  valuesFor(contributions, context.intent).map(name => [name, versionOf(versions, name)]),
+))
+
+export const typesFor = (contributions, context) => Object.freeze(
+  valuesFor(contributions, context.intent),
+)
+
+export const buildsFor = (contributions, intent) => valuesFor(contributions, intent)
 
 /**
  * Materializes invocations as container steps. `exec` resolves an installed binary, which a
