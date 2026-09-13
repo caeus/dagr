@@ -372,7 +372,7 @@ describe('dagr:rdk bridge', () => {
     const namespace = await sandboxRdk()
     assert.deepEqual(
       Object.keys(namespace).sort(),
-      ['construct', 'default', 'derive', 'graph', 'many', 'merge', 'one', 'value'],
+      ['construct', 'default', 'derive', 'graph', 'input', 'many', 'merge', 'one', 'value'],
     )
 
     const rdk = namespace['default'] as {
