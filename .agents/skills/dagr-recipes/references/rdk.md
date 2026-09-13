@@ -39,15 +39,17 @@ Use names that describe the input's role in the factory rather than repeating it
 ```js
 rdk.derive({
   source: rdk.one('/source/directory'),
-  compiler: rdk.one('/compiler'),
+  compiler: rdk.one('/typescript/compiler'),
   config: rdk.one('/vitest/config'),
 }, ({ source, compiler, config }) => ...)
 ```
 
 `one()` only accepts an exact absolute semantic path and rejects wildcards. Use it for every singular
-dependency, including replaceable capabilities such as `/compiler`, `/tester`, `/linter`,
-`/documenter`, and `/bundler`. Graph merging supplies the concrete binding. Do not discover a
-collection and then rank, filter, or choose one member.
+dependency. Keep replaceable capabilities in the semantic domain that owns them, such as
+`/typescript/compiler`, `/typescript/tester`, `/typescript/linter`, `/typescript/documenter`, and
+`/typescript/bundler`. Graph merging supplies the concrete binding. A Python feature can independently
+own `/python/compiler` or `/python/tester` in the same graph. Do not discover a collection and then
+rank, filter, or choose one member.
 
 `many()` accepts one or more selectors and always produces a frozen record keyed by complete binding
 paths. Collection semantics come from `many()`, not wildcard presence, so
@@ -66,7 +68,8 @@ Multiple selectors in one `many()` are unioned in graph key order. Overlapping s
 Canonical bindings live with the feature that owns their meaning:
 
 - `/typescript/package-json` and `/typescript/tsconfig` are canonical rendered files;
-- `/vitest/tester` and `/eslint/linter` are canonical executable capabilities;
+- `/vitest/tester` and `/eslint/linter` are implementation-owned executable commands;
+- `/typescript/tester` and `/typescript/linter` are replaceable TypeScript capabilities;
 - `/vitest/tooling` and `/eslint/tooling` are canonical installation facts;
 - `/target/<facet>/<name>` is the executable, user-addressable Dagr surface;
 - `/package/name`, `/source/directory`, and `/output/layout` are ordinary shared facts and calculations.
@@ -80,8 +83,11 @@ creates that identity projection. Current open protocols are:
 - `/**/tsconfig/types` for ambient TypeScript types;
 - `/**/package-manager/builds` for dependency build allowances.
 
-Exact shared capability paths such as `/compiler` are adapters too, but they are resolved with
-`one()`, not globbing. Right-biased merge replacement selects the concrete implementation.
+Language-scoped capability paths are exact bindings resolved with `one()`, not globbing. Right-biased
+merge replacement selects the implementation. Package-script projections depend on the capability
+path itself, so replacing `/typescript/compiler` also changes the `build` script without a second
+override.
+
 Put each dependency at its semantic cause-site. `/typescript/compiler` names
 `/typescript/tsconfig`; `/eslint/linter` names `/eslint/config`. Command capabilities carry those
 exact optional file sets to targets. File rendering does not use a wildcard collection protocol.
