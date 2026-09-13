@@ -19,9 +19,9 @@ async function globModule() {
   }
 }
 
-describe('VM bridges', () => {
+describe('VM boundaries', () => {
   it('keeps implementation logic in TypeScript instead of executable source strings', async () => {
-    for (const file of ['builtins.ts', 'sandbox.ts', 'volume-registry.ts']) {
+    for (const file of ['builtins.ts', 'loader.ts', 'sandbox.ts', 'volume-registry.ts']) {
       const source = await readFile(new URL(`./${file}`, import.meta.url), 'utf8')
       assert.doesNotMatch(source, /vm\.compileFunction/, file)
       assert.doesNotMatch(source, /vm\.runInContext\(\s*`/, file)
