@@ -11,7 +11,6 @@ const OPTIONS: vm.CreateContextOptions = {
 type SandboxGlobal = Readonly<{
   Array: ArrayConstructor
   Function: FunctionConstructor
-  Math: Math
   Object: ObjectConstructor
 }>
 
@@ -84,19 +83,6 @@ export function createSandboxContainer(
   return sandboxObject(context, entries, true)
 }
 
-function jsonValue(context: vm.Context, value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return createSandboxArray(context, value.map(child => jsonValue(context, child)))
-  }
-  if (value !== null && typeof value === 'object') {
-    return createSandboxRecord(
-      context,
-      Object.entries(value).map(([key, child]) => [key, jsonValue(context, child)] as const),
-    )
-  }
-  return value
-}
-
 export function createSandboxContext(): vm.Context {
   return vm.createContext(Object.assign(Object.create(null), { Buffer }), OPTIONS)
 }
@@ -116,17 +102,23 @@ export function createConfigSandboxContext(): vm.Context {
     eval: undefined,
   }), { ...OPTIONS, name: 'dagr-config' })
 
-  const math = globalOf(context).Math
-  Object.defineProperty(math, 'random', { value: undefined })
-  Object.freeze(math)
+  vm.runInContext(`
+    Object.defineProperty(Math, 'random', { value: undefined })
+    Object.freeze(Math)
+  `, context)
   return context
 }
 
 export function createSandboxJsonParser(context: vm.Context): SandboxJsonParser {
-  return createSandboxFunction(
-    context,
-    (source: string) => jsonValue(context, JSON.parse(source)),
-  )
+  return vm.compileFunction(`
+    const freeze = value => {
+      if (value === null || typeof value !== 'object') return value
+      Object.freeze(value)
+      for (const child of Object.values(value)) freeze(child)
+      return value
+    }
+    return freeze(JSON.parse(source))
+  `, ['source'], { parsingContext: context }) as SandboxJsonParser
 }
 
 export function createSandboxStringifier(
