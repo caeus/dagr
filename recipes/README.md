@@ -10,7 +10,7 @@
 
 The TypeScript recipe uses the engine-native `dagr:rdk` library. It addresses facts, calculations,
 files, commands, requirements, and targets by absolute semantic binding paths. Derived bindings
-inject one named object: `rdk.one('/path')` resolves one exact binding and
+inject one named input object: `rdk.one('/path')` resolves one exact binding and
 `rdk.many('/path/**')` resolves an open collection of matches.
 
 ## Boundaries

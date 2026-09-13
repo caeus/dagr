@@ -45,12 +45,12 @@ function createRdkModule(context: vm.Context): vm.Module {
       nativeRdk.one,
       undefined,
       args,
-    ) as nativeRdk.OneDependency,
+    ) as nativeRdk.OneInput,
     many: (args: readonly unknown[]) => Reflect.apply(
       nativeRdk.many,
       undefined,
       args,
-    ) as nativeRdk.ManyDependency,
+    ) as nativeRdk.ManyInput,
     value: (args: readonly unknown[]) => Reflect.apply(
       nativeRdk.value,
       undefined,
@@ -78,16 +78,16 @@ function createRdkModule(context: vm.Context): vm.Module {
     compile: (graph: nativeRdk.Graph, roots?: readonly string[]) => Object.entries(
       roots === undefined ? graph.compile() : graph.compile(roots),
     ),
-    invoke: (binding: nativeRdk.Binding, dependencies: UnknownRecord) => binding.factory(dependencies),
+    invoke: (binding: nativeRdk.Binding, inputs: UnknownRecord) => binding.factory(inputs),
     register: (facade: object, graph: nativeRdk.Graph) => graphFacades.set(facade, graph),
   })
 
   const namespace = vm.compileFunction(`
-    const DEPENDENCY = Symbol.for('caeus/dagr/rdk#Dependency')
+    const INPUT = Symbol.for('caeus/dagr/rdk#Input')
 
-    const dependency = native => Object.freeze(native.path === undefined
-      ? { [DEPENDENCY]: 'many', selectors: Object.freeze([...native.selectors]) }
-      : { [DEPENDENCY]: 'one', path: native.path })
+    const input = native => Object.freeze(native.path === undefined
+      ? { [INPUT]: 'many', selectors: Object.freeze([...native.selectors]) }
+      : { [INPUT]: 'one', path: native.path })
 
     const copy = (entries, target) => {
       for (const [name, value] of entries) {
@@ -101,17 +101,17 @@ function createRdkModule(context: vm.Context): vm.Module {
     const container = entries => copy(entries, Object.create(null))
 
     const binding = native => {
-      const deps = {}
-      for (const [name, value] of Object.entries(native.deps)) {
-        Object.defineProperty(deps, name, {
-          value: dependency(value), enumerable: true, writable: false, configurable: false,
+      const inputs = {}
+      for (const [name, value] of Object.entries(native.inputs)) {
+        Object.defineProperty(inputs, name, {
+          value: input(value), enumerable: true, writable: false, configurable: false,
         })
       }
 
-      const argumentsOf = dependencies => {
+      const argumentsOf = resolved => {
         const result = {}
-        for (const [name, value] of Object.entries(dependencies)) {
-          const declaration = native.deps[name]
+        for (const [name, value] of Object.entries(resolved)) {
+          const declaration = native.inputs[name]
           Object.defineProperty(result, name, {
             value: declaration.path === undefined
               ? record(Object.entries(value))
@@ -125,8 +125,8 @@ function createRdkModule(context: vm.Context): vm.Module {
       }
 
       return Object.freeze({
-        deps: Object.freeze(deps),
-        factory: dependencies => host.invoke(native, argumentsOf(dependencies)),
+        inputs: Object.freeze(inputs),
+        factory: resolved => host.invoke(native, argumentsOf(resolved)),
       })
     }
 
@@ -148,8 +148,8 @@ function createRdkModule(context: vm.Context): vm.Module {
     const graph = bindings => wrap(host.graph(bindings))
     const merge = (...graphs) => wrap(host.mergeAll(graphs))
     const value = (...args) => binding(host.value(args))
-    const one = (...args) => dependency(host.one(args))
-    const many = (...args) => dependency(host.many(args))
+    const one = (...args) => input(host.one(args))
+    const many = (...args) => input(host.many(args))
     const derive = (...args) => binding(host.derive(args))
     const construct = (...args) => binding(host.construct(args))
 

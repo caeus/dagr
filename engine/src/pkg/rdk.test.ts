@@ -23,7 +23,7 @@ async function sandboxRdk() {
 }
 
 describe('native RDK', () => {
-  it('injects named exact dependencies', () => {
+  it('injects named exact inputs', () => {
     const container = graph({
       '/name': value('caeus'),
       '/greeting': derive({ name: one<string>('/name') }, ({ name }) => `hello ${name}`),
@@ -33,7 +33,7 @@ describe('native RDK', () => {
     assert.equal(container['/greeting'], 'hello caeus')
   })
 
-  it('constructs classes from one named dependency object', () => {
+  it('constructs classes from one named input object', () => {
     class Greeter {
       constructor(readonly name: string) {}
       greet() { return `hello ${this.name}` }
@@ -85,9 +85,9 @@ describe('native RDK', () => {
     )
   })
 
-  it('requires named dependency declarations to use one() or many()', () => {
-    assert.throws(() => derive([] as never, String), /dependencies must be an object/)
-    assert.throws(() => derive(['/value'] as never, String), /dependencies must be an object/)
+  it('requires named input declarations to use one() or many()', () => {
+    assert.throws(() => derive([] as never, String), /inputs must be an object/)
+    assert.throws(() => derive(['/value'] as never, String), /inputs must be an object/)
     assert.throws(() => derive({ value: '/value' as never }, String), /one\(\) or many\(\)/)
     assert.throws(() => derive({ value: ['/value'] as never }, String), /one\(\) or many\(\)/)
     assert.throws(
@@ -97,8 +97,8 @@ describe('native RDK', () => {
   })
 
   it('validates one() as an exact semantic path', () => {
-    for (const dependency of ['relative', '/', '/trailing/', '/double//slash', '/dot/./x']) {
-      assert.throws(() => one(dependency))
+    for (const input of ['relative', '/', '/trailing/', '/double//slash', '/dot/./x']) {
+      assert.throws(() => one(input))
     }
     assert.throws(() => one('/file/**'), /reserved wildcards/)
     assert.throws(() => one('/file/*'), /reserved wildcards/)
@@ -142,7 +142,7 @@ describe('native RDK', () => {
     })
   })
 
-  it('treats many() as a collection dependency even without wildcards', () => {
+  it('treats many() as a collection input even without wildcards', () => {
     const selection = graph({
       '/file/package-json': value(1),
       '/selection': derive({ files: many<number>('/file/package-json') }, ({ files }) => files),
@@ -200,22 +200,22 @@ describe('native RDK', () => {
     }, TypeError)
   })
 
-  it('freezes the injected dependency object', () => {
+  it('freezes the injected input object', () => {
     const result = graph({
       '/value': value(42),
-      '/result': derive({ value: one<number>('/value') }, dependencies => {
-        assert.ok(Object.isFrozen(dependencies))
+      '/result': derive({ value: one<number>('/value') }, inputs => {
+        assert.ok(Object.isFrozen(inputs))
         assert.throws(() => {
-          ;(dependencies as { value: number }).value = 0
+          ;(inputs as { value: number }).value = 0
         }, TypeError)
-        return dependencies.value
+        return inputs.value
       }),
     }).compile(['/result'])
 
     assert.equal(result['/result'], 42)
   })
 
-  it('compile roots resolve exact and collection dependencies transitively', () => {
+  it('compile roots resolve exact and collection inputs transitively', () => {
     let initialized = false
     const container = graph({
       '/shared/prefix': value('item:'),
@@ -259,14 +259,14 @@ describe('native RDK', () => {
     assert.ok(Object.isFrozen(container))
   })
 
-  it('rejects cycles involving many() dependencies', () => {
+  it('rejects cycles involving many() inputs', () => {
     const dagr = graph({
       '/item/value': derive({ values: many('/item/**') }, ({ values }) => values),
     })
 
     assert.throws(
       () => dagr.compile(['/item/value']),
-      /Circular dependency: \/item\/value -> \/item\/value/,
+      /Circular input: \/item\/value -> \/item\/value/,
     )
   })
 
@@ -319,11 +319,11 @@ describe('native RDK', () => {
     const binding = dagr.bindingOf('/copy')
     assert.ok(binding)
 
-    assert.deepEqual(Object.keys(binding), ['deps', 'factory'])
-    assert.deepEqual(Object.keys(binding.deps), ['answer'])
+    assert.deepEqual(Object.keys(binding), ['inputs', 'factory'])
+    assert.deepEqual(Object.keys(binding.inputs), ['answer'])
     assert.ok(Object.isFrozen(binding))
-    assert.ok(Object.isFrozen(binding.deps))
-    assert.ok(Object.isFrozen(binding.deps.answer))
+    assert.ok(Object.isFrozen(binding.inputs))
+    assert.ok(Object.isFrozen(binding.inputs.answer))
     assert.equal(dagr.bindingOf('/missing'), undefined)
   })
 
@@ -349,7 +349,7 @@ describe('native RDK', () => {
       '/a': derive({ b: one('/b') }, ({ b }) => b),
       '/b': derive({ a: one('/a') }, ({ a }) => a),
     })
-    assert.throws(() => circular.compile(), /Circular dependency: \/a -> \/b -> \/a/)
+    assert.throws(() => circular.compile(), /Circular input: \/a -> \/b -> \/a/)
   })
 
   it('composes promises synchronously as ordinary values', () => {
@@ -399,7 +399,7 @@ describe('dagr:rdk bridge', () => {
     assert.throws(() => rdk.construct({}, class {}, {}), /exactly two arguments/)
   })
 
-  it('passes dependency records to callbacks in the sandbox realm', async () => {
+  it('passes input records to callbacks in the sandbox realm', async () => {
     const context = createSandboxContext()
     const builtins = createBuiltinModules(context)
     const consumer = new vm.SourceTextModule(`
@@ -407,10 +407,10 @@ describe('dagr:rdk bridge', () => {
 
       const dagr = rdk.graph({
         '/file/example': rdk.value('example'),
-        '/result': rdk.derive({ files: rdk.many('/file/**') }, dependencies => (
-          Object.getPrototypeOf(dependencies) === Object.prototype
-          && Object.getPrototypeOf(dependencies.files) === Object.prototype
-          && dependencies.files['/file/example'] === 'example'
+        '/result': rdk.derive({ files: rdk.many('/file/**') }, inputs => (
+          Object.getPrototypeOf(inputs) === Object.prototype
+          && Object.getPrototypeOf(inputs.files) === Object.prototype
+          && inputs.files['/file/example'] === 'example'
         )),
       })
 

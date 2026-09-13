@@ -8,7 +8,7 @@ import rdk from 'dagr:rdk'
 
 ## Core model
 
-An RDK graph is one flat `Map` of bindings addressed by absolute semantic paths. Paths provide identity and hierarchy. Derived bindings declare named dependencies and receive one frozen dependency object.
+An RDK graph is one flat `Map` of bindings addressed by absolute semantic paths. Paths provide identity and hierarchy. Derived bindings declare named inputs and receive one frozen input object.
 
 ```js
 const graph = rdk.graph({
@@ -26,15 +26,15 @@ graph.compile(['/message/greeting'])['/message/greeting']
 ```
 
 - `value(input)` provides a fact.
-- `one(path)` declares one required exact dependency.
-- `many(...selectors)` declares one collection dependency containing every match.
-- `derive(deps, factory)` calculates from the named dependency object.
-- `construct(deps, Class)` constructs a class with the named dependency object.
+- `one(path)` declares one required exact input.
+- `many(...selectors)` declares one collection input containing every match.
+- `derive(inputs, factory)` calculates from the named input object.
+- `construct(inputs, Class)` constructs a class with the named input object.
 - `merge` is immutable and right-biased.
 - `compile()` resolves all bindings.
-- `compile(roots)` retains exact or glob roots and every transitive dependency.
+- `compile(roots)` retains exact or glob roots and every transitive input.
 
-Use names that describe the dependency's role in the factory rather than repeating its full graph path:
+Use names that describe the input's role in the factory rather than repeating its full graph path:
 
 ```js
 rdk.derive({

@@ -1,33 +1,33 @@
 import { of as globOf } from '#pkg/glob.js'
 
-declare const DEPENDENCY_VALUE: unique symbol
+declare const INPUT_VALUE: unique symbol
 declare const BINDING_VALUE: unique symbol
 declare const SEMANTIC_PATH_VALUE: unique symbol
 declare const SELECTOR_VALUE: unique symbol
 
-export interface Dependency<T = unknown> {
-  readonly [DEPENDENCY_VALUE]?: T
+export interface Input<T = unknown> {
+  readonly [INPUT_VALUE]?: T
 }
 
-export interface OneDependency<T = unknown> extends Dependency<T> {
+export interface OneInput<T = unknown> extends Input<T> {
   readonly path: string
   readonly selectors?: never
 }
 
-export interface ManyDependency<T = unknown> extends Dependency<Readonly<Record<string, T>>> {
+export interface ManyInput<T = unknown> extends Input<Readonly<Record<string, T>>> {
   readonly selectors: readonly string[]
   readonly path?: never
 }
 
-export type AnyDependency = OneDependency | ManyDependency
-export type Dependencies = Readonly<Record<string, AnyDependency>>
-export type ResolvedDependencies<D extends Dependencies> = Readonly<{
-  [K in keyof D]: D[K] extends Dependency<infer T> ? T : never
+export type AnyInput = OneInput | ManyInput
+export type Inputs = Readonly<Record<string, AnyInput>>
+export type ResolvedInputs<I extends Inputs> = Readonly<{
+  [K in keyof I]: I[K] extends Input<infer T> ? T : never
 }>
 
 export interface Binding<T = unknown> {
-  readonly deps: Dependencies
-  readonly factory: (dependencies: Readonly<Record<string, unknown>>) => T
+  readonly inputs: Inputs
+  readonly factory: (inputs: Readonly<Record<string, unknown>>) => T
   readonly [BINDING_VALUE]?: T
 }
 
@@ -40,23 +40,23 @@ export type GraphValues<B extends Bindings> = Readonly<{
 type SemanticPath = string & { readonly [SEMANTIC_PATH_VALUE]: true }
 type Selector = string & { readonly [SELECTOR_VALUE]: true }
 
-const DEPENDENCY = Symbol.for('caeus/dagr/rdk#Dependency')
+const INPUT = Symbol.for('caeus/dagr/rdk#Input')
 
-type ExactDependency = Readonly<OneDependency & {
-  readonly [DEPENDENCY]: 'one'
+type ExactInput = Readonly<OneInput & {
+  readonly [INPUT]: 'one'
   readonly path: SemanticPath
 }>
 
-type CollectionDependency = Readonly<ManyDependency & {
-  readonly [DEPENDENCY]: 'many'
+type CollectionInput = Readonly<ManyInput & {
+  readonly [INPUT]: 'many'
   readonly selectors: readonly Selector[]
 }>
 
-type NormalizedDependency = ExactDependency | CollectionDependency
-type NormalizedDependencies = Readonly<Record<string, NormalizedDependency>>
-type Factory<T = unknown> = (dependencies: Readonly<Record<string, unknown>>) => T
+type NormalizedInput = ExactInput | CollectionInput
+type NormalizedInputs = Readonly<Record<string, NormalizedInput>>
+type Factory<T = unknown> = (inputs: Readonly<Record<string, unknown>>) => T
 type NormalizedBinding<T = unknown> = Readonly<{
-  deps: NormalizedDependencies
+  inputs: NormalizedInputs
   factory: Factory<T>
 }>
 
@@ -111,56 +111,56 @@ function compileRoot(path: unknown): CompileRoot {
   return Object.freeze({ kind: 'selector', selector: normalized as Selector })
 }
 
-function exactDependency(path: unknown): ExactDependency {
+function exactInput(path: unknown): ExactInput {
   return Object.freeze({
-    [DEPENDENCY]: 'one' as const,
-    path: semanticPath(path, 'one dependency'),
+    [INPUT]: 'one' as const,
+    path: semanticPath(path, 'one input'),
   })
 }
 
-function collectionDependency(selectors: readonly unknown[]): CollectionDependency {
+function collectionInput(selectors: readonly unknown[]): CollectionInput {
   if (selectors.length === 0) throw new TypeError('many requires at least one selector')
   return Object.freeze({
-    [DEPENDENCY]: 'many' as const,
+    [INPUT]: 'many' as const,
     selectors: Object.freeze(selectors.map(value => selector(value, 'many selector'))),
   })
 }
 
-function dependencyKind(dependency: object): unknown {
-  return (dependency as Record<PropertyKey, unknown>)[DEPENDENCY]
+function inputKind(input: object): unknown {
+  return (input as Record<PropertyKey, unknown>)[INPUT]
 }
 
-function normalizeDependency(dependency: unknown): NormalizedDependency {
-  if (dependency === null || typeof dependency !== 'object' || Array.isArray(dependency)) {
-    throw new TypeError('Binding dependency must be declared with one() or many()')
+function normalizeInput(input: unknown): NormalizedInput {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new TypeError('Binding input must be declared with one() or many()')
   }
 
-  const input = dependency as Record<PropertyKey, unknown>
-  const kind = dependencyKind(dependency)
-  if (kind === 'one') return exactDependency(input['path'])
+  const value = input as Record<PropertyKey, unknown>
+  const kind = inputKind(input)
+  if (kind === 'one') return exactInput(value['path'])
   if (kind === 'many') {
-    const selectors = input['selectors']
+    const selectors = value['selectors']
     if (!Array.isArray(selectors)) {
-      throw new TypeError('Binding dependency must be declared with one() or many()')
+      throw new TypeError('Binding input must be declared with one() or many()')
     }
-    return collectionDependency(selectors)
+    return collectionInput(selectors)
   }
-  throw new TypeError('Binding dependency must be declared with one() or many()')
+  throw new TypeError('Binding input must be declared with one() or many()')
 }
 
-function normalizeDependencies(deps: unknown): NormalizedDependencies {
-  if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
-    throw new TypeError('Binding dependencies must be an object')
+function normalizeInputs(inputs: unknown): NormalizedInputs {
+  if (inputs === null || typeof inputs !== 'object' || Array.isArray(inputs)) {
+    throw new TypeError('Binding inputs must be an object')
   }
 
-  const input = deps as Record<PropertyKey, unknown>
-  const normalized: Record<string, NormalizedDependency> = {}
-  for (const key of Reflect.ownKeys(input)) {
+  const values = inputs as Record<PropertyKey, unknown>
+  const normalized: Record<string, NormalizedInput> = {}
+  for (const key of Reflect.ownKeys(values)) {
     if (typeof key !== 'string') {
-      throw new TypeError('Binding dependency names must be strings')
+      throw new TypeError('Binding input names must be strings')
     }
     Object.defineProperty(normalized, key, {
-      value: normalizeDependency(input[key]),
+      value: normalizeInput(values[key]),
       enumerable: true,
       writable: false,
       configurable: false,
@@ -169,21 +169,21 @@ function normalizeDependencies(deps: unknown): NormalizedDependencies {
   return Object.freeze(normalized)
 }
 
-function normalizeBinding<T>(deps: unknown, factory: unknown): NormalizedBinding<T> {
+function normalizeBinding<T>(inputs: unknown, factory: unknown): NormalizedBinding<T> {
   if (typeof factory !== 'function') throw new TypeError('Binding factory must be a function')
   return Object.freeze({
-    deps: normalizeDependencies(deps),
+    inputs: normalizeInputs(inputs),
     factory: factory as Factory<T>,
   })
 }
 
-export function one<T = unknown>(path: string): OneDependency<T> {
+export function one<T = unknown>(path: string): OneInput<T> {
   if (arguments.length !== 1) throw new TypeError('one accepts exactly one argument')
-  return exactDependency(path) as OneDependency<T>
+  return exactInput(path) as OneInput<T>
 }
 
-export function many<T = unknown>(...selectors: string[]): ManyDependency<T> {
-  return collectionDependency(selectors) as ManyDependency<T>
+export function many<T = unknown>(...selectors: string[]): ManyInput<T> {
+  return collectionInput(selectors) as ManyInput<T>
 }
 
 export function value<T>(input: T): Binding<T> {
@@ -191,24 +191,24 @@ export function value<T>(input: T): Binding<T> {
   return normalizeBinding<T>({}, () => input)
 }
 
-export function derive<const D extends Dependencies, T>(
-  deps: D,
-  factory: (dependencies: ResolvedDependencies<D>) => T,
+export function derive<const I extends Inputs, T>(
+  inputs: I,
+  factory: (inputs: ResolvedInputs<I>) => T,
 ): Binding<T> {
   if (arguments.length !== 2) throw new TypeError('derive accepts exactly two arguments')
-  return normalizeBinding<T>(deps, factory)
+  return normalizeBinding<T>(inputs, factory)
 }
 
-export function construct<const D extends Dependencies, T>(
-  deps: D,
-  Class: new (dependencies: ResolvedDependencies<D>) => T,
+export function construct<const I extends Inputs, T>(
+  inputs: I,
+  Class: new (inputs: ResolvedInputs<I>) => T,
 ): Binding<T> {
   if (arguments.length !== 2) throw new TypeError('construct accepts exactly two arguments')
   if (typeof Class !== 'function') throw new TypeError('Binding class must be a constructor')
   return normalizeBinding<T>(
-    deps,
-    (dependencies: Readonly<Record<string, unknown>>) => (
-      new Class(dependencies as ResolvedDependencies<D>)
+    inputs,
+    (resolved: Readonly<Record<string, unknown>>) => (
+      new Class(resolved as ResolvedInputs<I>)
     ),
   )
 }
@@ -227,11 +227,11 @@ function normalizeBindings(bindings: unknown): Map<SemanticPath, NormalizedBindi
     }
 
     const binding = candidate as Record<PropertyKey, unknown>
-    return [name, normalizeBinding(binding['deps'], binding['factory'])]
+    return [name, normalizeBinding(binding['inputs'], binding['factory'])]
   }))
 }
 
-/** Immutable RDK dependency graph. */
+/** Immutable RDK graph. */
 export class Graph<B extends Bindings = Bindings> {
   readonly #bindings: ReadonlyMap<SemanticPath, NormalizedBinding>
 
@@ -288,16 +288,16 @@ export class Graph<B extends Bindings = Bindings> {
     const values = new Map<SemanticPath, unknown>()
     const resolving: SemanticPath[] = []
 
-    const resolveDependency = (
-      dependency: NormalizedDependency,
+    const resolveInput = (
+      input: NormalizedInput,
       requiredBy: SemanticPath,
     ): unknown => {
-      switch (dependency[DEPENDENCY]) {
+      switch (input[INPUT]) {
         case 'one':
-          return resolve(dependency.path, requiredBy)
+          return resolve(input.path, requiredBy)
         case 'many': {
           const record: Record<string, unknown> = {}
-          for (const matched of matchingNames(dependency.selectors)) {
+          for (const matched of matchingNames(input.selectors)) {
             Object.defineProperty(record, matched, {
               value: resolve(matched, requiredBy),
               enumerable: true,
@@ -322,21 +322,21 @@ export class Graph<B extends Bindings = Bindings> {
       const cycleAt = resolving.indexOf(name)
       if (cycleAt !== -1) {
         const cycle = [...resolving.slice(cycleAt), name].join(' -> ')
-        throw new Error(`Circular dependency: ${cycle}`)
+        throw new Error(`Circular input: ${cycle}`)
       }
 
       resolving.push(name)
       try {
-        const dependencies: Record<string, unknown> = {}
-        for (const [key, dependency] of Object.entries(current.deps)) {
-          Object.defineProperty(dependencies, key, {
-            value: resolveDependency(dependency, name),
+        const inputs: Record<string, unknown> = {}
+        for (const [key, input] of Object.entries(current.inputs)) {
+          Object.defineProperty(inputs, key, {
+            value: resolveInput(input, name),
             enumerable: true,
             writable: false,
             configurable: false,
           })
         }
-        const result = current.factory(Object.freeze(dependencies))
+        const result = current.factory(Object.freeze(inputs))
         values.set(name, result)
         return result
       } finally {
