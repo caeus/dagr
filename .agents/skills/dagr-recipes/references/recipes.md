@@ -41,6 +41,10 @@ Recipe graphs use absolute semantic paths. Ordinary facts and calculations inclu
 - `/requirement/*` for tool packages and ambient types;
 - `/requirement/build-scripts/**` for portable, intent-scoped build-script facts.
 
+A file contribution opts into host materialization by choosing a path matching `/**/hoisted` or
+`/**/hoisted/*`. That path is the protocol; do not add a registration API or a dependency from the
+producer to the materializer.
+
 Contribution helpers use the same named input model as RDK. Use `rdk.one('/path')` for one required
 binding and `rdk.many('/a/**', '/b/**')` for the union of one or more glob patterns.
 
@@ -74,8 +78,8 @@ One command binding can become a container step, package.json script, or task in
 `for` is the intent gate. A renderer that reads `context.intent` merely to suppress itself has the
 wrong `for` value.
 
-A target binding receives `/file/**` and `/command/**` internally. Its own declared inputs are passed
-as one named object beside the context. Its target path supplies the facet and name. The target
+A target binding receives `/file/**` and `/command/**` internally. Its own declared inputs are
+passed as one named object beside the context. Its target path supplies the facet and name. The target
 chooses its render context and materializes the contributions it needs. Host-sensitive output stays
 inside the native target's `run` function.
 
@@ -86,22 +90,39 @@ The `/dagr/index` calculation selects `/target/**`, groups targets by the facet 
 paths, validates local target dependencies, and returns the Dagr index. A target creates a facet by
 existing.
 
-## Host files
+## Hoisting
 
-`hostDev()` owns `/target/dev/sync`, which puts the generated files on the host so an editor reads
-what a container builds with. Do not add a second mechanism for this, and do not enumerate paths to
-export: the target copies no source, so everything under `/repo` is recipe output and
-`EXPORT: { '/repo/': './' }` is already exactly the generated set. A feature that starts generating a
-file is synced with no list to update.
+`hoister()` owns `/target/dev/hoist`. It discovers structurally marked file contributions with
+`rdk.many('/**/hoisted', '/**/hoisted/*')` and renders only those values using the `dev` intent and the
+actual host context.
 
-It does not install. A dependency tree resolved inside an image is wrong for a host, so a manifest is
-written and the host runs its own install. Do not make a target export `node_modules`.
+A producer opts in independently:
+
+```js
+const editorConfig = () => rdk.graph({
+  '/file/editor/hoisted': file({}, {
+    for: ['dev'],
+    render: () => write('/repo/.editor.json'),
+  }),
+})
+```
+
+No producer imports, calls, or registers with `hoister()`. Adding or removing a marked graph node is
+enough because the shared namespace is the integration protocol.
+
+The hoist target copies local package tarballs but no source, renders the marked values into `/repo`,
+and exports `/repo/` to the package directory. It does not install. A dependency tree resolved inside
+an image is wrong for a host, so the host runs its own package-manager install afterwards.
+
+Graph construction remains deterministic. Hoisting is calculated entirely from graph structure; do
+not inspect the host filesystem, environment, or other ambient state to decide what should be
+hoisted.
 
 ## Package managers
 
 Manager selection is an explicit feature graph. A manager supplies `/package-manager/**` functions,
-owns `/command/pack/package`, and owns `/file/package-manager`. A custom manager uses the same paths,
-not an adapter passed to a registry. Normal right-biased graph merging makes the last manager
+owns `/command/pack/package`, and owns `/file/package-manager/hoisted`. A custom manager uses the same
+paths, not an adapter passed to a registry. Normal right-biased graph merging makes the last manager
 complete.
 
 Local package dependencies are copied from sibling `ci:pack` targets. Install manifests may point

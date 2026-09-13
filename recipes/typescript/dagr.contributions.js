@@ -79,6 +79,12 @@ export const file = (deps, options = {}) => {
   )
 }
 
+/** Every file contribution applying to a context, rendered in contribution order. */
+export const filesFor = (contributions, context) => contributionValues(contributions)
+  .filter(contribution => matches(contribution, context))
+  .sort((left, right) => left.order - right.order)
+  .flatMap(contribution => contribution.render(context))
+
 const INVOCATION_KINDS = Object.freeze(['tool', 'shell'])
 
 /**
@@ -137,18 +143,9 @@ export const contextFor = (context, files, commands) => {
     ...(overrides ?? {}),
   })
 
-  const render = (item, overrides) => {
-    const current = withContext(overrides)
-    return matches(item, current) ? item.render(current) : []
-  }
-
-  const renderAll = (items, overrides) => contributionValues(items)
-    .sort((left, right) => left.order - right.order)
-    .flatMap(item => render(item, overrides))
-
   return Object.freeze({
     ...base,
-    files: overrides => renderAll(files, overrides),
+    files: overrides => filesFor(files, withContext(overrides)),
     invocations: overrides => invocationsFor(commands, withContext(overrides).intent),
   })
 }
@@ -260,4 +257,4 @@ export const index = () => rdk.graph({
   }),
 })
 
-export default Object.freeze({ fact, file, command, target })
+export default Object.freeze({ fact, file, filesFor, command, target })

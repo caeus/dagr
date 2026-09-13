@@ -38,6 +38,7 @@ The index derives facet and name from every `/target/<facet>/<name>` binding and
 - Use `/requirement/*` bindings when files and commands must agree on tool packages or ambient types.
 - Use intent-scoped `fact` bindings under `/requirement/build-scripts/**` for dependencies whose build scripts a package manager should permit.
 - Render generated files and executable commands only as contributions.
+- Mark host-materialized file contributions structurally with paths matching `/**/hoisted` or `/**/hoisted/*`; `hoister()` discovers them with `many()`, so producers do not register with or depend on it.
 - Pass `intent`, `facet`, and `host` through render context; never make all graph values contextual.
 - Let targets select their context and explicitly render the contributions they need.
 - Keep target values native Dagr `{ name, deps, run }` objects.
@@ -47,7 +48,7 @@ The index derives facet and name from every `/target/<facet>/<name>` binding and
 
 ## Package managers
 
-Package managers are ordinary feature graphs. Built-ins are `npm()`, `pnpm()`, and `yarn()`. They provide `/package-manager/**`, `/command/pack/package`, and `/file/package-manager` bindings. Custom managers provide the same paths directly. Do not infer a manager from the base image or add a manager registry.
+Package managers are ordinary feature graphs. Built-ins are `npm()`, `pnpm()`, and `yarn()`. They provide `/package-manager/**`, `/command/pack/package`, and `/file/package-manager/hoisted` bindings. Custom managers provide the same paths directly. Do not infer a manager from the base image or add a manager registry.
 
 Local package dependencies arrive from sibling `ci:pack` targets as tarballs. Install rendering may replace their manifest ranges with `file:` references. Pack and publish rendering restores the public ranges.
 
