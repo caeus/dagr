@@ -90,11 +90,18 @@ capabilities. `builtins.ts` exposes sandbox-realm wrapper functions and containe
 RDK and glob behavior therefore live in ordinary typed TypeScript modules while their public
 `dagr:` imports remain sandbox-safe. Built-ins are resolved before repository imports.
 
-RDK compilation lazily derives an immutable segment index from the graph's binding keys when it first
-resolves a selector. Exact selectors use direct lookup. Structural selectors choose the smallest
-posting list for their literal path segments and then apply `dagr:glob` as the final matcher. Patterns made entirely of wildcards still inspect every
-key. Matching results are restored to graph-key order before resolution, preserving selector-union,
-deduplication, and merge ordering semantics.
+RDK normalizes every named graph dependency to one `input` representation. An input has required
+exact `keys`, optional plural `patterns`, and a projector. Compilation resolves every exact key,
+resolves and deduplicates every pattern match in graph-key order, freezes the two path-keyed records,
+and invokes the projector before passing its return value to the binding factory. `one()` and
+`many()` construct this same representation rather than introducing separate compiler cases. The
+sandbox bridge recreates the projector argument inside the sandbox realm before invoking user code.
+
+Pattern matching lazily derives an immutable segment index from the graph's binding keys when it
+first resolves a pattern. Exact pattern entries use direct lookup. Structural patterns choose the
+smallest posting list for their literal path segments and then apply `dagr:glob` as the final matcher.
+Patterns made entirely of wildcards still inspect every key. Matching results are restored to
+graph-key order before resolution, preserving union, deduplication, and merge ordering semantics.
 
 `node:vm` reduces accidental ambient access. It is not a security boundary, so repository source
 and pinned images must still be trusted.
@@ -180,8 +187,8 @@ by its host path. The launcher passes both `REPO_ROOT` and `HOST_REPO_ROOT`; `WO
 translated against the host root to find the current package. Docker build contexts and
 `docker cp` destinations use paths visible inside the Dagr container.
 
-The launcher mounts `/var/run/docker.sock`. Access to that socket is effectively root access to
-the host. The VM sandbox limits what build-definition code can do directly, but the repository and
+The launcher mounts `/var/run/docker.sock`. Access to that socket is effectively root access to the
+host. The VM sandbox limits what build-definition code can do directly, but the repository and
 runtime image remain trusted inputs.
 
 ## Dependency composition

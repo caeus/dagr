@@ -11,8 +11,11 @@
 The TypeScript recipe uses the engine-native `dagr:rdk` library. Features own canonical facts,
 calculations, rendered outputs, and executable capabilities at absolute semantic paths. Additional
 bindings project those values into structural integration protocols. Derived bindings inject one
-named input object: `rdk.one('/path')` requires one exact capability, `rdk.many('/path')` injects it
-optionally, and wildcard `many()` selectors resolve a genuinely open aggregate.
+named input object. `rdk.input({ keys, patterns }, project)` is the fundamental input form: exact
+`keys` are required, `patterns` are optional plural dependencies, and the projector defines the
+value exposed under that input name. `rdk.one('/path')` is the required singular convenience form;
+`rdk.many('/path')` keeps optional path-keyed collection behavior, while wildcard patterns resolve a
+genuinely open aggregate.
 
 ## Boundaries
 
