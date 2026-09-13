@@ -2,22 +2,32 @@ import { of as globOf } from 'dagr:glob'
 
 /**
  * @template T
+ * @typedef {(resolved: Readonly<{
+ *   keys: Readonly<Record<string, unknown>>,
+ *   patterns: Readonly<Record<string, unknown>>,
+ * }>) => T} Project
+ */
+
+/**
+ * @template T
  * @typedef {(inputs: Readonly<Record<string, unknown>>) => T} Factory
  */
 
 const INPUT = Symbol.for('caeus/dagr/rdk#Input')
 
 /**
+ * @template T
  * @typedef {Readonly<{
- *   [INPUT]: 'one',
- *   path: string,
- * }> | Readonly<{
- *   [INPUT]: 'many',
- *   selectors: readonly string[],
+ *   [INPUT]: 'input',
+ *   keys: readonly string[],
+ *   patterns: readonly string[],
+ *   project: Project<T>,
+ *   path?: string,
+ *   selectors?: readonly string[],
  * }>} Input
  */
 
-/** @typedef {Readonly<Record<string, Input>>} Inputs */
+/** @typedef {Readonly<Record<string, Input<unknown>>>} Inputs */
 
 /**
  * A frozen recipe for producing one binding value.
@@ -82,41 +92,106 @@ function normalizeBindingName(name) {
 }
 
 /**
+ * @template T
+ * @param {unknown} dependencies
+ * @param {unknown} project
+ * @returns {Input<T>}
+ */
+function inputDeclaration(dependencies, project) {
+  if (dependencies === null || typeof dependencies !== 'object' || Array.isArray(dependencies)) {
+    throw new TypeError('input dependencies must be an object')
+  }
+  if (typeof project !== 'function') throw new TypeError('input projection must be a function')
+
+  const keys = dependencies.keys ?? []
+  const patterns = dependencies.patterns ?? []
+  if (!Array.isArray(keys)) throw new TypeError('input keys must be an array')
+  if (!Array.isArray(patterns)) throw new TypeError('input patterns must be an array')
+
+  keys.forEach(path => validatePath(path, 'input key', false))
+  patterns.forEach(pattern => validatePath(pattern, 'input pattern', true))
+  return Object.freeze({
+    [INPUT]: 'input',
+    keys: Object.freeze([...keys]),
+    patterns: Object.freeze([...patterns]),
+    project,
+  })
+}
+
+/**
+ * Declares required exact keys and optional plural patterns, then projects their resolved values.
+ *
+ * @template T
+ * @param {{ keys?: readonly string[], patterns?: readonly string[] }} dependencies
+ * @param {Project<T>} project
+ * @returns {Input<T>}
+ */
+export function input(dependencies, project) {
+  if (arguments.length !== 2) throw new TypeError('input accepts exactly two arguments')
+  return inputDeclaration(dependencies, project)
+}
+
+/**
  * Declares one required exact input.
  *
  * @param {string} path
- * @returns {Input}
+ * @returns {Input<unknown>}
  */
 export function one(path) {
   if (arguments.length !== 1) throw new TypeError('one accepts exactly one argument')
   validatePath(path, 'one input', false)
-  return Object.freeze({ [INPUT]: 'one', path })
+  return Object.freeze({
+    ...input({ keys: [path] }, ({ keys }) => keys[path]),
+    path,
+  })
 }
 
 /**
  * Declares an input containing every binding matching any selector.
  *
  * @param {...string} selectors
- * @returns {Input}
+ * @returns {Input<Readonly<Record<string, unknown>>>}
  */
 export function many(...selectors) {
   if (selectors.length === 0) throw new TypeError('many requires at least one selector')
   selectors.forEach(selector => validatePath(selector, 'many selector', true))
   return Object.freeze({
-    [INPUT]: 'many',
+    ...input({ patterns: selectors }, ({ patterns }) => patterns),
     selectors: Object.freeze([...selectors]),
   })
 }
 
-/** @param {unknown} input */
-function normalizeInput(input) {
-  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
-    throw new TypeError('Binding input must be declared with one() or many()')
+/** @param {unknown} candidate */
+function normalizeInput(candidate) {
+  if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    throw new TypeError('Binding input must be declared with input(), one() or many()')
+  }
+  if (candidate[INPUT] !== 'input') {
+    throw new TypeError('Binding input must be declared with input(), one() or many()')
   }
 
-  if (input[INPUT] === 'one') return one(input.path)
-  if (input[INPUT] === 'many') return many(...input.selectors)
-  throw new TypeError('Binding input must be declared with one() or many()')
+  const normalized = inputDeclaration(
+    { keys: candidate.keys, patterns: candidate.patterns },
+    candidate.project,
+  )
+  if (candidate.path !== undefined && candidate.selectors !== undefined) {
+    throw new TypeError('Binding input cannot be both one() and many()')
+  }
+  if (candidate.path !== undefined) {
+    validatePath(candidate.path, 'one input', false)
+    return Object.freeze({ ...normalized, path: candidate.path })
+  }
+  if (candidate.selectors !== undefined) {
+    if (!Array.isArray(candidate.selectors)) {
+      throw new TypeError('Binding input must be declared with input(), one() or many()')
+    }
+    candidate.selectors.forEach(selector => validatePath(selector, 'many selector', true))
+    return Object.freeze({
+      ...normalized,
+      selectors: Object.freeze([...candidate.selectors]),
+    })
+  }
+  return normalized
 }
 
 /** @param {unknown} inputs */
@@ -155,17 +230,17 @@ function binding(inputs, factory) {
 
 /**
  * @template T
- * @param {T} input
+ * @param {T} valueInput
  * @returns {Binding<T>}
  */
-export function value(input) {
+export function value(valueInput) {
   if (arguments.length !== 1) throw new TypeError('value accepts exactly one argument')
-  return binding({}, () => input)
+  return binding({}, () => valueInput)
 }
 
 /**
  * @template T
- * @param {Record<string, Input>} inputs
+ * @param {Record<string, Input<unknown>>} inputs
  * @param {Factory<T>} factory
  * @returns {Binding<T>}
  */
@@ -176,7 +251,7 @@ export function derive(inputs, factory) {
 
 /**
  * @template T
- * @param {Record<string, Input>} inputs
+ * @param {Record<string, Input<unknown>>} inputs
  * @param {new (inputs: Readonly<Record<string, unknown>>) => T} Class
  * @returns {Binding<T>}
  */
@@ -202,13 +277,27 @@ function normalize(bindings) {
   return new Map(
     Reflect.ownKeys(bindings).map(inputName => {
       const name = normalizeBindingName(inputName)
-      const input = bindings[name]
-      if (input === null || typeof input !== 'object') {
+      const candidate = bindings[name]
+      if (candidate === null || typeof candidate !== 'object') {
         throw new TypeError(`Binding ${bindingName(name)} must be a binding`)
       }
-      return [name, binding(input.inputs, input.factory)]
+      return [name, binding(candidate.inputs, candidate.factory)]
     }),
   )
+}
+
+/** @param {Iterable<readonly [string, unknown]>} entries */
+function immutableRecord(entries) {
+  const record = {}
+  for (const [name, value] of entries) {
+    Object.defineProperty(record, name, {
+      value,
+      enumerable: true,
+      writable: false,
+      configurable: false,
+    })
+  }
+  return Object.freeze(record)
 }
 
 /**
@@ -285,61 +374,32 @@ class Graph {
     }
 
     /** @type {Map<string, (path: string) => boolean>} */
-    const selectors = new Map()
-    /** @param {string} selector */
-    const matcher = selector => {
-      let matches = selectors.get(selector)
+    const matchers = new Map()
+    /** @param {string} pattern */
+    const matcher = pattern => {
+      let matches = matchers.get(pattern)
       if (matches === undefined) {
-        const relative = globOf(selector.slice(1))
+        const relative = globOf(pattern.slice(1))
         matches = path => relative(path.slice(1))
-        selectors.set(selector, matches)
+        matchers.set(pattern, matches)
       }
       return matches
     }
-    let pathIndex
-    const indexedPaths = () => {
-      if (pathIndex !== undefined) return pathIndex
-      const keys = Object.freeze([...this.#bindings.keys()])
-      const positions = new Map(keys.map((key, position) => [key, position]))
-      const bySegment = new Map()
-      for (const key of keys) {
-        for (const segment of new Set(key.slice(1).split('/'))) {
-          const indexed = bySegment.get(segment) ?? []
-          indexed.push(key)
-          bySegment.set(segment, indexed)
-        }
-      }
-      pathIndex = {
-        keys,
-        positions,
-        bySegment: new Map(
-          [...bySegment].map(([segment, indexed]) => [segment, Object.freeze(indexed)]),
-        ),
-      }
-      return pathIndex
-    }
-    /** @param {readonly string[]} selectorGroup */
-    const matchingNames = selectorGroup => {
-      const { keys, positions, bySegment } = indexedPaths()
+
+    /** @param {readonly string[]} patterns */
+    const matchingNames = patterns => {
       const found = new Set()
-      for (const selector of selectorGroup) {
-        if (!selector.includes('*')) {
-          if (this.#bindings.has(selector)) found.add(selector)
+      for (const pattern of patterns) {
+        if (!pattern.includes('*')) {
+          if (this.#bindings.has(pattern)) found.add(pattern)
           continue
         }
-        let candidates = keys
-        for (const segment of selector.slice(1).split('/')) {
-          if (segment === '*' || segment === '**') continue
-          const indexed = bySegment.get(segment) ?? []
-          if (indexed.length < candidates.length) candidates = indexed
-        }
-        for (const candidate of candidates) {
-          if (matcher(selector)(candidate)) found.add(candidate)
+        const matches = matcher(pattern)
+        for (const name of this.#bindings.keys()) {
+          if (matches(name)) found.add(name)
         }
       }
-      return [...found].sort((left, right) => (
-        positions.get(left) - positions.get(right)
-      ))
+      return [...this.#bindings.keys()].filter(name => found.has(name))
     }
 
     /** @type {string[]} */
@@ -355,19 +415,15 @@ class Graph {
     /** @type {(name: string, requiredBy?: string) => unknown} */
     let resolve
 
-    /** @param {Input} input @param {string} requiredBy */
-    const resolveInput = (input, requiredBy) => {
-      if (input[INPUT] === 'one') return resolve(input.path, requiredBy)
-      const record = {}
-      for (const matched of matchingNames(input.selectors)) {
-        Object.defineProperty(record, matched, {
-          value: resolve(matched, requiredBy),
-          enumerable: true,
-          writable: false,
-          configurable: false,
-        })
-      }
-      return Object.freeze(record)
+    /** @param {Input<unknown>} declared @param {string} requiredBy */
+    const resolveInput = (declared, requiredBy) => {
+      const keys = immutableRecord(
+        declared.keys.map(path => [path, resolve(path, requiredBy)]),
+      )
+      const patterns = immutableRecord(
+        matchingNames(declared.patterns).map(path => [path, resolve(path, requiredBy)]),
+      )
+      return declared.project(Object.freeze({ keys, patterns }))
     }
 
     resolve = (name, requiredBy) => {
@@ -388,9 +444,9 @@ class Graph {
       resolving.push(name)
       try {
         const inputs = {}
-        for (const [key, input] of Object.entries(current.inputs)) {
+        for (const [key, declared] of Object.entries(current.inputs)) {
           Object.defineProperty(inputs, key, {
-            value: resolveInput(input, name),
+            value: resolveInput(declared, name),
             enumerable: true,
             writable: false,
             configurable: false,
@@ -445,4 +501,4 @@ export function merge(...graphs) {
   return graph({}).merge(...graphs)
 }
 
-export default Object.freeze({ graph, merge, value, one, many, derive, construct })
+export default Object.freeze({ graph, merge, value, input, one, many, derive, construct })
