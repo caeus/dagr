@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import vm from 'node:vm'
+import { createBuiltinModules } from '#pkg/builtins.js'
 import {
   derive,
   graph,
@@ -8,6 +10,7 @@ import {
   one,
   value,
 } from '#pkg/rdk.js'
+import { createSandboxContext } from '#pkg/sandbox.js'
 
 describe('RDK input()', () => {
   it('projects required exact keys and optional pattern matches into one named input', () => {
@@ -69,6 +72,15 @@ describe('RDK input()', () => {
     )
   })
 
+  it('validates exact keys, patterns, and the projection', () => {
+    assert.throws(() => input({ keys: ['/items/*'] }, String), /reserved wildcards/)
+    assert.throws(() => input({ patterns: ['relative'] }, String), /must start with/)
+    assert.throws(() => input({ keys: '/value' } as never, String), /keys must be an array/)
+    assert.throws(() => input({ patterns: '/**/value' } as never, String), /patterns must be an array/)
+    assert.throws(() => input({}, undefined as never), /projection must be a function/)
+    assert.throws(() => Reflect.apply(input, undefined, [{}, String, false]), /exactly two arguments/)
+  })
+
   it('freezes projection inputs and preserves graph-key ordering for pattern unions', () => {
     const selected = graph({
       '/artifact/first': value(1),
@@ -117,13 +129,20 @@ describe('RDK input()', () => {
   })
 
   it('keeps one() and many() behavior unchanged', () => {
+    const required = one<number>('/required')
+    const items = many<string>('/items/**')
+    assert.deepEqual(required.keys, ['/required'])
+    assert.deepEqual(required.patterns, [])
+    assert.deepEqual(items.keys, [])
+    assert.deepEqual(items.patterns, ['/items/**'])
+
     const result = graph({
       '/required': value(1),
       '/items/a': value('a'),
       '/items/b': value('b'),
       '/result': derive({
-        required: one<number>('/required'),
-        items: many<string>('/items/**'),
+        required,
+        items,
         optional: many('/missing/exact'),
       }, inputs => inputs),
     }).compile(['/result'])['/result']!
@@ -133,5 +152,51 @@ describe('RDK input()', () => {
     assert.deepEqual(result.optional, {})
     assert.ok(Object.isFrozen(result.items))
     assert.ok(Object.isFrozen(result.optional))
+  })
+
+  it('passes the projection argument through the sandbox realm', async () => {
+    const context = createSandboxContext()
+    const builtins = createBuiltinModules(context)
+    const consumer = new vm.SourceTextModule(`
+      import rdk from 'dagr:rdk'
+
+      const dagr = rdk.graph({
+        '/required': rdk.value('required'),
+        '/items/first': rdk.value(1),
+        '/items/second': rdk.value(2),
+        '/result': rdk.derive({
+          selected: rdk.input({
+            keys: ['/required'],
+            patterns: ['/items/**'],
+          }, resolved => ({
+            sameRealm:
+              Object.getPrototypeOf(resolved) === Object.prototype
+              && Object.getPrototypeOf(resolved.keys) === Object.prototype
+              && Object.getPrototypeOf(resolved.patterns) === Object.prototype,
+            frozen:
+              Object.isFrozen(resolved)
+              && Object.isFrozen(resolved.keys)
+              && Object.isFrozen(resolved.patterns),
+            required: resolved.keys['/required'],
+            items: Object.keys(resolved.patterns),
+          })),
+        }, ({ selected }) => selected),
+      })
+
+      export default dagr.compile(['/result'])['/result']
+    `, { context })
+
+    await consumer.link(specifier => {
+      const builtin = builtins.get(specifier)
+      assert.ok(builtin, `Unknown built-in ${specifier}`)
+      return builtin
+    })
+    await consumer.evaluate()
+
+    const result = (consumer.namespace as Record<string, unknown>)['default'] as Record<string, unknown>
+    assert.equal(result['sameRealm'], true)
+    assert.equal(result['frozen'], true)
+    assert.equal(result['required'], 'required')
+    assert.deepEqual([...(result['items'] as string[])], ['/items/first', '/items/second'])
   })
 })
