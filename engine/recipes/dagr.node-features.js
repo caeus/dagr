@@ -73,12 +73,12 @@ export function nodeTest({
       for: ['test'],
       run: () => ({ shell: invocation }),
     }),
-    '/tester': adapter('/node-test/tester'),
-    '/tester/package-json/script': adapter('/node-test/tester'),
+    '/typescript/tester': adapter('/node-test/tester'),
+    '/typescript/tester/package-json/script': adapter('/typescript/tester'),
     '/target/ci/test': target({
       ignore: rdk.one('/source/ignore'),
       exec: rdk.one('/package-manager/exec'),
-      tester: rdk.one('/tester'),
+      tester: rdk.one('/typescript/tester'),
     }, {
       render: (_context, { ignore, exec, tester }) => ({
         deps: ['build'],
