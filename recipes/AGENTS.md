@@ -17,5 +17,8 @@ Keep these rules while editing this area:
 - Keep package-manager behavior in explicit feature graphs such as `npm()`, `pnpm()`, and `yarn()`. A custom manager provides the exact `/package-manager/**` capabilities, canonical config, and its hoister adapter.
 - Keep mount identities, workflows, README files, `llms.txt`, `AGENTS.md`, and Agent Skill guidance synchronized with structural changes.
 - Put repository-only tests under `recipes/tests/`, not in published recipe directories.
+- Refactors may expose breakage. Do not hide it with shims, bridging adapters, or reserved-key
+  tricks; follow the new design through and fix the callers. See "No hacky workarounds" in the
+  root `AGENTS.md`.
 
 Validate changes with `dagr run //recipes:ci:test` and the relevant recipe image target.

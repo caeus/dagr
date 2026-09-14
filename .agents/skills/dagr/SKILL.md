@@ -7,6 +7,14 @@ description: Work effectively with Dagr repositories and the Dagr codebase. Use 
 
 Use this skill whenever the task involves Dagr, whether Dagr is being used by another repository or Dagr itself is being developed.
 
+## Refactors expose breakage; do not hide it
+
+Do not paper over a refactor with a compatibility shim, a bridging adapter, or a reserved-key trick.
+Follow the new design through and fix the abstractions and callers. If that is impossible within the
+change, stop and say so — a loud failure beats a quiet mechanism that hides one. When a refactor removes
+the reason some scaffolding existed, delete the scaffolding in the same change. See "No hacky
+workarounds" in the root `AGENTS.md` for what this cost here.
+
 ## First orient yourself
 
 1. Find the nearest `dagr.index.js` files and inspect local patterns before inventing new ones.

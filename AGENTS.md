@@ -9,6 +9,38 @@ Keep public documentation and machine-facing guidance synchronized with behavior
 
 Do not hide nontrivial JavaScript or TypeScript implementation inside strings or template literals in JavaScript or TypeScript source. This is very strongly discouraged, including `vm.compileFunction(...)` and multiline `vm.runInContext(...)` source strings. Keep implementation as ordinary typed source code. Strings passed to VM APIs are appropriate for actual externally supplied/user-authored module source or tiny intrinsic lookups such as `globalThis`, not for nested engine implementations.
 
+## No hacky workarounds
+
+Refactors are allowed to expose breakage. Do not hide that breakage with compatibility shims,
+bridging adapters, reserved-key tricks, or other workarounds. Follow the new design through the system
+and fix the abstractions and callers properly.
+
+If a change breaks callers, change the callers. If it breaks an abstraction, change the abstraction. If
+neither is possible within the change, stop and say so: a loud failure is better than a quiet mechanism
+that makes the failure invisible. When a refactor removes the reason some scaffolding existed, delete
+the scaffolding in the same change — that is the moment it stops being a solution and starts being a
+lie.
+
+This is not about `adapter()` in the TypeScript recipe, which publishes a canonical binding into a
+consumer's path. That is the intended composition mechanism, not a bridge over breakage.
+
+Three examples from this repository's own history, all found long after the fact:
+
+- `$files` and `$commands`: reserved dependency names that smuggled framework-injected inputs past the
+  caller (`03ff083`). `208b1ab` removed the auto-injection that justified them and kept `$files`
+  regardless, so the guard outlived its problem — and every caller passed an empty dependency record,
+  meaning it protected against a collision that could not happen.
+- A `sed` step in `.dagr/volumes.yaml` rewriting `from 'dagr:rdk'` to a test fixture, so an engine
+  predating that built-in could still load the workspace mount. Correct when written; dead as soon as
+  the pin advanced, and nothing reported it.
+- A 504-line RDK reimplementation and a 93-line module loader under `recipes/tests/`, so tests could
+  run outside the engine. Two tests then passed against the double while the real thing behaved
+  differently: one asserted a `.yaml` file equalled a JSON object, the other depended on the version
+  catalog being empty.
+
+Each was defensible when written. Each became false the moment its reason disappeared, and not one of
+them failed loudly when that happened.
+
 The repository has three areas:
 
 - `engine/` for Dagr execution and CLI behavior.

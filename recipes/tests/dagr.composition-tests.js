@@ -132,10 +132,10 @@ export default function compositionTests() {
       graph.bindingOf('/vitest/package-json/dependencies').inputs.tooling.path,
       '/vitest/tooling',
     )
-    assert.deepEqual(graph.bindingOf('/vitest/tester').inputs.$files.selectors, [
+    assert.deepEqual(graph.bindingOf('/vitest/tester').inputs.files.selectors, [
       '/typescript/tsconfig', '/vitest/config',
     ])
-    assert.deepEqual(graph.bindingOf('/typescript/compiler').inputs.$files.selectors, [
+    assert.deepEqual(graph.bindingOf('/typescript/compiler').inputs.files.selectors, [
       '/typescript/tsconfig',
     ])
     assert.equal(graph.bindingOf('/typescript/tester').inputs.value.path, '/vitest/tester')
@@ -228,14 +228,16 @@ export default function compositionTests() {
         for: ['build'],
         render: () => ({ RUN: 'wrong intent' }),
       }),
-      '/test/runner': command({ message: rdk.one('/test/message') }, {
-        for: ['test'],
+      '/test/runner': command({
+        message: rdk.one('/test/message'),
         files: rdk.many(
           '/test/generated',
           '/test/host-aware',
           '/test/skipped',
           '/test/absent',
         ),
+      }, {
+        for: ['test'],
         run: ({ message }) => [
           { tool: `${message} suite` },
           { shell: 'echo done > /tmp/log' },
@@ -277,9 +279,8 @@ export default function compositionTests() {
       'sourceTarget files must be exact semantic paths: /test/\\*\\*',
     )
     assert.throws(
-      () => command({}, {
+      () => command({ files: rdk.many('/test/**') }, {
         for: ['test'],
-        files: rdk.many('/test/**'),
         run: () => ({ tool: 'test' }),
       }),
       'command contribution files must use many\\(\\) with exact semantic paths',
