@@ -17,4 +17,5 @@
 
 - `dagr run //recipes:ci:test`
 - `dagr run //recipes:ci:image-typescript`
-- `dagr run //harness:ci:test` (tests needing the recipe and a consuming index together)
+- `dagr run //harness:ci:test` (tests needing the recipe and a consuming composition together)
+- `dagr run //recipes:ci:boundaries` (filesystem scan, so it stays a Node test)

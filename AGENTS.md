@@ -17,9 +17,16 @@ The repository has three areas:
 
 `harness/` contains nothing but mounts and a test target. A test that must see two packages together
 — the recipe and an index that consumes it — belongs there, because neither package may reach outside
-itself to find the other. Keeping it separate is what lets `//recipes:ci:test` still run with only
-`recipes/` present, which is the check that catches a recipe quietly depending on its consumer. Tests
-of that kind go under `recipes/tests/repository/`, outside the `tests/*.test.js` glob.
+itself to find the other. Keeping it separate is what lets `//recipes:ci:test` still cover the recipe
+with nothing but `recipes/` present, which is the check that catches a recipe quietly depending on its
+consumer.
+
+Tests run while a graph expands, not in a separate runner. A package's index imports its test modules
+and a target reports them, so the engine loads them and `dagr:rdk`, `dagr:yaml` and module resolution
+are the real ones rather than doubles. `recipes/tests/dagr.testing.js` is the hand-woven runner, and
+`recipes/tests/typescript/` mounts the recipe under test, because a recipe's own `//` imports assume it
+is the source root — true only when it is crossed as a mount. Only a test that needs a real filesystem,
+like the boundary scan, stays a Node test.
 
 A project's own conventions belong beside its mount, not inside it. `engine/recipes/` holds the
 `typescript/` mount and, next to it, `dagr.node-features.js` for features this repository adds and
