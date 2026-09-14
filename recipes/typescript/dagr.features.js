@@ -388,15 +388,13 @@ export function library({
     }),
     '/library/package-json/dependencies': packageJsonDependencies('/library/tooling'),
     '/library/tsconfig/types': tsconfigTypes('/library/tooling'),
-    '/typescript/typechecker': command({}, {
+    '/typescript/typechecker': command({ files: rdk.many('/typescript/tsconfig') }, {
       for: ['typecheck'],
-      files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
-    '/typescript/compiler': command({}, {
+    '/typescript/compiler': command({ files: rdk.many('/typescript/tsconfig') }, {
       for: ['build'],
-      files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc' }),
     }),
     '/typescript/compiler/package-json/script': adapter('/typescript/compiler'),
@@ -484,9 +482,8 @@ export function cloudflareWorker({ language = 'ES2022' } = {}) {
     '/cloudflare-worker/package-json/dependencies': packageJsonDependencies('/cloudflare-worker/tooling'),
     '/cloudflare-worker/tsconfig/types': tsconfigTypes('/cloudflare-worker/tooling'),
     '/cloudflare-worker/package-manager/builds': packageManagerBuilds('/cloudflare-worker/tooling'),
-    '/typescript/typechecker': command({}, {
+    '/typescript/typechecker': command({ files: rdk.many('/typescript/tsconfig') }, {
       for: ['typecheck'],
-      files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
@@ -548,15 +545,13 @@ export default defineConfig({
       },
     }),
     '/vite/config/hoisted': adapter('/vite/config'),
-    '/typescript/typechecker': command({}, {
+    '/typescript/typechecker': command({ files: rdk.many('/typescript/tsconfig') }, {
       for: ['typecheck'],
-      files: rdk.many('/typescript/tsconfig'),
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
-    '/vite/compiler': command({}, {
+    '/vite/compiler': command({ files: rdk.many('/typescript/tsconfig', '/vite/config') }, {
       for: ['build'],
-      files: rdk.many('/typescript/tsconfig', '/vite/config'),
       run: () => ({ tool: 'vite build' }),
     }),
     '/typescript/compiler': adapter('/vite/compiler'),
@@ -610,9 +605,8 @@ export function biome({ formatter = true, linter = true } = {}) {
     }),
     '/biome/package-json/dependencies': packageJsonDependencies('/biome/tooling'),
     ...(linter ? {
-      '/biome/linter': command({}, {
+      '/biome/linter': command({ files: rdk.many('/biome/config') }, {
         for: ['lint'],
-        files: rdk.many('/biome/config'),
         run: () => ({ tool: 'biome check .' }),
       }),
       '/typescript/linter': adapter('/biome/linter'),
@@ -662,13 +656,14 @@ export default defineConfig({ test: {
     '/vitest/package-json/dependencies': packageJsonDependencies('/vitest/tooling'),
     '/vitest/tsconfig/types': tsconfigTypes('/vitest/tooling'),
     '/vitest/package-manager/builds': packageManagerBuilds('/vitest/tooling'),
-    '/vitest/tester': command({}, {
-      for: ['test'],
+    '/vitest/tester': command({
       files: rdk.many(
         '/typescript/tsconfig',
         '/vitest/config',
         ...(environment === 'jsdom' ? ['/vite/config'] : []),
       ),
+    }, {
+      for: ['test'],
       run: () => ({ tool: 'vitest run' }),
     }),
     '/typescript/tester': adapter('/vitest/tester'),
@@ -726,13 +721,14 @@ ${enforceFormatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}exp
     '/eslint/config/hoisted': adapter('/eslint/config'),
     '/eslint/tooling': tooling({ for: ['dev', 'lint'], packages }),
     '/eslint/package-json/dependencies': packageJsonDependencies('/eslint/tooling'),
-    '/eslint/linter': command({}, {
-      for: ['lint'],
+    '/eslint/linter': command({
       files: rdk.many(
         '/typescript/tsconfig',
         '/eslint/config',
         ...(enforceFormatting ? ['/prettier/config'] : []),
       ),
+    }, {
+      for: ['lint'],
       run: () => ({ tool: 'eslint .' }),
     }),
     '/typescript/linter': adapter('/eslint/linter'),
@@ -793,9 +789,8 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
         return writeText('/repo/rollup.config.js', rollupConfig(output.runtimeFile, bundleFile, strict))
       },
     }),
-    '/rollup/bundler': command({}, {
+    '/rollup/bundler': command({ files: rdk.many('/rollup/config') }, {
       for: ['bundle'],
-      files: rdk.many('/rollup/config'),
       run: () => ({ tool: 'rollup --config rollup.config.js' }),
     }),
     '/typescript/bundler': adapter('/rollup/bundler'),
@@ -846,9 +841,8 @@ export function typedoc({ title } = {}) {
       packages: ['typedoc'],
     }),
     '/typedoc/package-json/dependencies': packageJsonDependencies('/typedoc/tooling'),
-    '/typedoc/documenter': command({}, {
+    '/typedoc/documenter': command({ files: rdk.many('/typescript/tsconfig', '/typedoc/config') }, {
       for: ['docs'],
-      files: rdk.many('/typescript/tsconfig', '/typedoc/config'),
       run: () => ({ tool: 'typedoc' }),
     }),
     '/typescript/documenter': adapter('/typedoc/documenter'),

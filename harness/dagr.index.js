@@ -1,29 +1,31 @@
-// A package whose only content is mounts. Some tests have to see two packages at once — the recipe
-// and an index that consumes it — and neither package can reach outside itself to find the other.
-// Mounting both here keeps that dependency declared, and keeps //recipes:ci:test able to prove the
-// recipe works with nothing but the recipe present.
-const ignore = ['.git']
+import engineIndexTests from '//harness/dagr.tests-engine-index.js'
+import { reportOf } from '//harness/recipes//tests/dagr.testing.js'
 
+/**
+ * A package whose only content is mounts and tests. Some tests must see more than one package at
+ * once — the recipe, and a composition that consumes it — and no package may reach outside itself to
+ * find the other. Mounting both here keeps that dependency declared.
+ *
+ * The engine loads these tests, so `dagr:rdk` and `dagr:yaml` are the real builtins rather than
+ * doubles and module resolution is the real one. Nothing is simulated and nothing is built: the tests
+ * run while the graph expands, and the target below reports them. A failure fails only this target,
+ * so a broken recipe does not take `dagr list` down with it.
+ */
 export default {
   ci: {
     test: {
       deps: [],
-      run: () => ({
-        FROM: 'node:22-alpine',
-        steps: [
-          { WORKDIR: '/repo' },
-          // The layout the loader expects: it reads /repo/tests, and resolves the engine as a sibling.
-          { COPY: { src: 'recipes//tests/', dest: '/repo/tests/' } },
-          { COPY: { src: 'recipes//typescript/', dest: '/repo/typescript/' } },
-          { COPY: { src: 'engine//dagr.index.js', dest: '/engine/dagr.index.js' } },
-          { COPY: { src: 'engine//recipes/', dest: '/engine/recipes/' } },
-          {
-            RUN: 'node --experimental-vm-modules --test'
-              + " 'tests/*.test.js' 'tests/repository/*.test.js'",
-          },
-        ],
-        IGNORE: ignore,
-      }),
+      run: () => {
+        const report = reportOf([engineIndexTests()])
+        if (report.failed.length > 0) {
+          throw new Error(`Harness tests failed:\n${report.lines.join('\n')}`)
+        }
+        return {
+          FROM: 'alpine:3.22',
+          steps: [{ RUN: `echo ${JSON.stringify(report.lines.join('\n'))}` }],
+          IGNORE: ['.git'],
+        }
+      },
     },
   },
 }

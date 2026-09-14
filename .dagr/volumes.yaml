@@ -4,12 +4,6 @@
     - COPY:
         src: recipes/typescript/
         dest: /src/
-    # The repository launcher is pinned to the previous engine. Rewrite only this workspace mount so
-    # that engine can bootstrap the next engine; published TypeScript recipe images keep dagr:rdk.
-    - COPY:
-        src: recipes/tests/dagr.rdk-fixture.js
-        dest: /src/dagr.rdk.js
-    - RUN: sed -i "s|from 'dagr:rdk'|from '//dagr.rdk.js'|" /src/dagr.*.js
     - WORKDIR: /src
   IGNORE:
     - .git
@@ -29,12 +23,17 @@
 "github.com/caeus/dagr/engine":
   FROM: alpine:3.22
   steps:
+    # The engine/ prefix is preserved: the index imports its recipe as
+    # //engine/recipes/typescript//dagr.recipe.js, so that mount has to sit where it expects it.
     - COPY:
         src: engine/dagr.index.js
-        dest: /src/
+        dest: /src/engine/
+    - COPY:
+        src: engine/dagr.engine.js
+        dest: /src/engine/
     - COPY:
         src: engine/recipes/
-        dest: /src/recipes/
+        dest: /src/engine/recipes/
     - WORKDIR: /src
   IGNORE:
     - .git

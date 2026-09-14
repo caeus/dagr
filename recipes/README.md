@@ -56,11 +56,18 @@ dagr run //recipes:ci:test
 ```
 
 That target's context is `recipes/` alone, which proves the recipe works without its consumers
-present. Its test harness provides a local stand-in for native libraries where needed. Tests that
-need a second package, the recipe plus an index that mounts it, run from the harness instead:
+present. The tests run while the graph expands, so nothing stands in for the engine: `dagr:rdk` and
+`dagr:yaml` are the builtins it serves. Tests that need a second package, the recipe plus a
+composition that mounts it, run from the harness instead:
 
 ```sh
 dagr run //harness:ci:test
+```
+
+Scans that need a real filesystem stay Node tests:
+
+```sh
+dagr run //recipes:ci:boundaries
 ```
 
 Build the recipe image with:

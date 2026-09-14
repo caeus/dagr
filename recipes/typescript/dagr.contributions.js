@@ -63,7 +63,6 @@ export const filesFor = (contributions, context) => contributionValues(contribut
   .flatMap(contribution => contribution.render(context))
 
 const INVOCATION_KINDS = Object.freeze(['tool', 'shell'])
-const COMMAND_FILES = '$files'
 const EMPTY_FILES = Object.freeze({})
 
 /**
@@ -86,20 +85,18 @@ const normalizeInvocations = rendered => {
 }
 
 /**
- * A graph binding declaring what an intent runs. `files` is an exact-path `many()` input containing
- * the canonical files that invocation needs, so a target can materialize the capability as a unit.
+ * A graph binding declaring what an intent runs. An input named `files` is an ordinary dependency
+ * with one extra meaning: an exact-path `many()` naming the canonical files that invocation needs, so
+ * a target selecting the capability materializes it as a unit.
  */
 export const command = (deps, options = {}) => {
   if (typeof options.run !== 'function') throw new TypeError('command contribution needs run')
   if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
     throw new TypeError('command contribution dependencies must be an object')
   }
-  if (COMMAND_FILES in deps) {
-    throw new TypeError(`command contribution dependency name ${COMMAND_FILES} is reserved`)
-  }
-  if (options.files !== undefined && (
-    !Array.isArray(options.files.selectors)
-    || options.files.selectors.some(path => typeof path !== 'string' || path.includes('*'))
+  if (deps.files !== undefined && (
+    !Array.isArray(deps.files.selectors)
+    || deps.files.selectors.some(path => typeof path !== 'string' || path.includes('*'))
   )) {
     throw new TypeError('command contribution files must use many() with exact semantic paths')
   }
@@ -110,19 +107,13 @@ export const command = (deps, options = {}) => {
   const order = normalizeOrder('command', options.order)
   return deriveContribution(
     'command',
-    {
-      ...deps,
-      ...(options.files === undefined ? {} : { [COMMAND_FILES]: options.files }),
-    },
-    dependencies => {
-      const { [COMMAND_FILES]: files = EMPTY_FILES, ...values } = dependencies
-      return Object.freeze({
-        for: intents,
-        order,
-        files,
-        invocations: normalizeInvocations(options.run(Object.freeze(values))),
-      })
-    },
+    deps,
+    dependencies => Object.freeze({
+      for: intents,
+      order,
+      files: dependencies.files ?? EMPTY_FILES,
+      invocations: normalizeInvocations(options.run(dependencies)),
+    }),
   )
 }
 
