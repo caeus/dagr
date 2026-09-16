@@ -12,7 +12,7 @@ import { reportOf } from '//harness/recipes//tests/dagr.testing.js'
  * so a broken recipe does not take `dagr list` down with it.
  */
 export default {
-  ci: () => ({
+  ci: {
     test: {
       deps: [],
       run: () => {
@@ -27,5 +27,5 @@ export default {
         }
       },
     },
-  }),
+  },
 }

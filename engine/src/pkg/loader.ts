@@ -55,7 +55,10 @@ export function loadedPackage(
       const cached = expanded.get(name)
       if (cached) return cached
       if (!Object.hasOwn(definition, name)) return undefined
-      const targets = FacetDef.safeParse(definition[name]!())
+
+      // A record is already its own expansion; only a function has anything to defer.
+      const declared = definition[name]!
+      const targets = FacetDef.safeParse(typeof declared === 'function' ? declared() : declared)
       if (!targets.success) {
         throw new Error(
           `Invalid facet ${JSON.stringify(name)} in Dagr index at ${location}: ${targets.error.message}`,

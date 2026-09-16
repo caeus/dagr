@@ -18,7 +18,7 @@ package             a directory containing a dagr.index.js
 
 - **Package** - a directory with a `dagr.index.js` file. Its name starts at the repository root,
   such as `//services/api` or `//libraries/common`. The root package is `//`.
-- **Facet** - a function returning a named group of targets. dagr assigns no meaning to facet names. `ci` is a convention, not a keyword. Because a facet is a function, dagr expands only the facet it needs. Facet and target names use portable filename characters: `[A-Za-z0-9][A-Za-z0-9._-]*`.
+- **Facet** - a function returning a named group of targets. dagr assigns no meaning to facet names. `ci` is a convention, not a keyword. Because a facet is a function, dagr expands only the facet it needs. A static record of targets is the older form and still loads, but cannot be lazy. Facet and target names use portable filename characters: `[A-Za-z0-9][A-Za-z0-9._-]*`.
 - **Target** - a `{ deps, run }` pair. It declares which other targets it needs and how to perform one unit of work.
 - **FQT** (fully-qualified target) - the address of a target, written `//package:facet:target`, for example `//services/api:ci:build`. The leading `//` anchors the address at the repository namespace root.
 

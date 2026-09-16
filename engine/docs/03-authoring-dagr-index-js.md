@@ -32,6 +32,17 @@ Two consequences worth knowing:
   reported the first time something asks for that facet.
 - `dagr list` prints every target, so it expands every facet by design.
 
+A facet may also be written as a static record of targets:
+
+```js
+export default {
+  ci: { build: { deps: [], run: ... } },
+}
+```
+
+That form still loads, so an index written before facets became functions keeps working. It cannot be
+lazy, because a record is already its own expansion. Write facets as functions.
+
 Facet and target names must match `[A-Za-z0-9][A-Za-z0-9._-]*`. The leading alphanumeric
 requirement prevents names from behaving like command options, hidden paths, or dagr directives.
 In particular, `/` cannot collide with a facet.

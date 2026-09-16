@@ -62,17 +62,20 @@ describe('RepositoryPackageLoader', () => {
     }
   })
 
-  it('rejects an index whose facet is a static record of targets', async () => {
+  it('still reads a facet written as a static record of targets', async () => {
     const root = await fixture('', {
-      'packages/static/dagr.index.js':
-        'export default { ci: { build: { deps: [], run: () => ({}) } } }\n',
+      'packages/static/dagr.index.js': `
+        export default {
+          ci: { build: { deps: [], run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] }) } },
+        }
+      `,
     })
 
     try {
-      await assert.rejects(
-        new RepositoryPackageLoader(root).loadPackage('packages/static'),
-        /Invalid Dagr index at \/\/packages\/static/,
-      )
+      const loaded = await new RepositoryPackageLoader(root).loadPackage('packages/static')
+
+      // A record is already its own expansion, so it needs no deferral to be readable.
+      assert.deepEqual(Object.keys(loaded?.facet('ci') ?? {}), ['build'])
     } finally {
       await rm(root, { recursive: true })
     }

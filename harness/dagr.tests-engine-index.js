@@ -13,11 +13,11 @@ export default function engineIndexTests() {
 
   test('exposes the facets and targets the engine composes', assert => {
     assert.deepEqual(Object.keys(index), ['ci', 'publish', 'dev'])
-    assert.deepEqual(Object.keys(index.ci()), [
+    assert.deepEqual(Object.keys(index.ci), [
       'typecheck', 'build', 'pack', 'bundle', 'node-base', 'test', 'bundlecheck', 'image',
     ])
-    assert.deepEqual(Object.keys(index.publish()), ['pack'])
-    assert.deepEqual(Object.keys(index.dev()), ['hoist'])
+    assert.deepEqual(Object.keys(index.publish), ['pack'])
+    assert.deepEqual(Object.keys(index.dev), ['hoist'])
   })
 
   const written = (steps, path) => {
@@ -27,7 +27,7 @@ export default function engineIndexTests() {
   }
 
   test('overrides the derived package name and emits no declarations', assert => {
-    const build = index.ci().build.run({ images: { '//engine:ci:node-base': 'base' } })
+    const build = index.ci.build.run({ images: { '//engine:ci:node-base': 'base' } })
     const manifest = written(build.steps, 'package.json')
     const tsconfig = written(build.steps, 'tsconfig.json')
 

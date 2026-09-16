@@ -62,13 +62,13 @@ export default function recipeTests() {
     ])({ location: '//example', version: '1.0.0' })
 
     assert.deepEqual(Object.keys(index), ['ci', 'publish'])
-    assert.deepEqual(Object.keys(index.ci()), ['typecheck', 'build', 'pack', 'test'])
-    assert.deepEqual(Object.keys(index.publish()), ['pack'])
-    assert.deepEqual(index.ci().typecheck.deps, ['//base:ci:image'])
-    assert.deepEqual(runTarget(index.ci().typecheck).steps[0], {
+    assert.deepEqual(Object.keys(index.ci), ['typecheck', 'build', 'pack', 'test'])
+    assert.deepEqual(Object.keys(index.publish), ['pack'])
+    assert.deepEqual(index.ci.typecheck.deps, ['//base:ci:image'])
+    assert.deepEqual(runTarget(index.ci.typecheck).steps[0], {
       COPY: { src: 'source', dest: '/repo/source' },
     })
-    assert.deepEqual(index.publish().pack.deps, ['ci:build'])
+    assert.deepEqual(index.publish.pack.deps, ['ci:build'])
   })
 
   test('installs local packages from tarballs but packs a public manifest', assert => {
@@ -82,13 +82,13 @@ export default function recipeTests() {
       deps: [{ facet: '//packages/core:ci', at: 'prod' }],
     })
 
-    const build = runTarget(index.ci().build)
+    const build = runTarget(index.ci.build)
     assert.equal(written(build.steps, 'package.json').dependencies['@internal/core'], 'file:./core.tgz')
     assert.deepEqual(build.steps[0], {
       COPY: { from: '//packages/core:ci:pack-image', src: '/out', dest: '/repo' },
     })
 
-    const packed = runTarget(index.ci().pack)
+    const packed = runTarget(index.ci.pack)
     assert.equal(written(packed.steps, 'package.json').dependencies['@internal/core'], '>=0.0.0')
     assert.equal(packed.FROM, 'build-image')
   })
@@ -103,7 +103,7 @@ export default function recipeTests() {
       deps: [{ facet: '//packages/core:ci', at: 'prod' }],
     })
 
-    const build = index.ci().build
+    const build = index.ci.build
     assert.equal(
       build.deps.includes('//packages/core:ci:pack'),
       true,
@@ -125,7 +125,7 @@ export default function recipeTests() {
     ])({
       location: '//packages/example',
       deps: [{ pkg: '//packages/core', at: 'prod' }],
-    }).ci().build
+    }).ci.build
 
     // The manifest is where a dependency is read, so render it.
     assert.throws(
@@ -142,7 +142,7 @@ export default function recipeTests() {
     ])({
       location: '//packages/example',
       deps: [{ facet: '//packages/core', at: 'prod' }],
-    }).ci().build
+    }).ci.build
 
     assert.throws(withoutFacet, 'Expected a local dependency facet as //package:facet')
   })
@@ -155,11 +155,11 @@ export default function recipeTests() {
       vitest(),
     ])({ location: '//packages/example' })
 
-    const withNpm = runTarget(indexFor(npm()).ci().test)
+    const withNpm = runTarget(indexFor(npm()).ci.test)
     assert.equal(withNpm.steps.at(-2).RUN, 'npm install --include=dev')
     assert.equal(withNpm.steps.at(-1).RUN, 'npm exec -- vitest run')
 
-    const withPnpm = runTarget(indexFor(pnpm()).ci().test)
+    const withPnpm = runTarget(indexFor(pnpm()).ci.test)
     assert.equal(withPnpm.steps.at(-2).RUN, 'pnpm install --prod=false')
     // Written by the real YAML stringifier, so this is YAML and not JSON.
     assert.match(
@@ -167,7 +167,7 @@ export default function recipeTests() {
       'allowBuilds:\\s*\\n\\s+esbuild: true',
     )
 
-    const withYarn = runTarget(indexFor(yarn()).ci().test)
+    const withYarn = runTarget(indexFor(yarn()).ci.test)
     assert.equal(withYarn.steps.at(-2).RUN, 'yarn install --no-immutable')
     const yarnrc = writtenText(withYarn.steps, '.yarnrc.yml')
     assert.match(yarnrc, 'enableScripts: false')
@@ -183,7 +183,7 @@ export default function recipeTests() {
       library(),
       vitest(),
     ])({ location: '//packages/example' })
-    const npmAfterPnpm = runTarget(replaced.ci().test)
+    const npmAfterPnpm = runTarget(replaced.ci.test)
     assert.equal(npmAfterPnpm.steps.some(step => step.RUN?.endsWith('pnpm-workspace.yaml')), false)
     assert.equal(npmAfterPnpm.steps.at(-2).RUN, 'npm install --include=dev')
   })
@@ -213,7 +213,7 @@ export default function recipeTests() {
       hoister(),
     ])({ location: '//packages/web' })
 
-    const hoist = runTarget(index.dev().hoist, { host: { os: 'linux', arch: 'arm64' } })
+    const hoist = runTarget(index.dev.hoist, { host: { os: 'linux', arch: 'arm64' } })
     const yarnrc = writtenText(hoist.steps, '.yarnrc.yml')
     assert.match(yarnrc, 'supportedArchitectures:')
     assert.match(yarnrc, 'arm64')
@@ -225,7 +225,7 @@ export default function recipeTests() {
     assert.equal(hoist.steps.some(step => step.RUN?.includes('install')), false)
 
     // Only the hoisting materialization is host-aware.
-    const build = runTarget(index.ci().build, { host: { os: 'linux', arch: 'arm64' } })
+    const build = runTarget(index.ci.build, { host: { os: 'linux', arch: 'arm64' } })
     assert.doesNotMatch(writtenText(build.steps, '.yarnrc.yml'), 'supportedArchitectures')
   })
 
@@ -248,12 +248,12 @@ export default function recipeTests() {
       library(),
     ])({ location: '//packages/example' })
 
-    const typecheck = runTarget(index.ci().typecheck)
+    const typecheck = runTarget(index.ci.typecheck)
     assert.ok(typecheck.steps.some(step => step.RUN === 'write bunfig.toml'))
     assert.equal(typecheck.steps.at(-2).RUN, 'bun install')
     assert.equal(typecheck.steps.at(-1).RUN, 'bun x tsc --noEmit')
     assert.equal(
-      runTarget(index.ci().pack).steps.at(-1).RUN,
+      runTarget(index.ci.pack).steps.at(-1).RUN,
       'bun pm pack --destination /out --filename example.tgz',
     )
   })
@@ -266,7 +266,7 @@ export default function recipeTests() {
       rdk.graph({ '/package/location': rdk.value('//wrong') }),
     ])({ location: '//packages/example', metadata: { description: 'Example' } })
 
-    const manifest = written(runTarget(index.ci().typecheck).steps, 'package.json')
+    const manifest = written(runTarget(index.ci.typecheck).steps, 'package.json')
     assert.equal(manifest.name, '@internal/example')
     assert.equal(manifest.description, 'Example')
   })
@@ -308,7 +308,7 @@ export default function recipeTests() {
     const worker = recipe([
       typescript({ base: '//base:ci:image', versions }), npm(), cloudflareWorker(),
     ])({ location: '//worker' })
-    const typecheck = runTarget(worker.ci().typecheck)
+    const typecheck = runTarget(worker.ci.typecheck)
 
     assert.deepEqual(written(typecheck.steps, 'package.json').imports, { '#/*': './src/*' })
   })

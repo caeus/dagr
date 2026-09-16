@@ -37,8 +37,13 @@ describe('PackageDef facets', () => {
     assert.equal(PackageDef.safeParse({ 'ci;rm': () => ({ build: target }) }).success, false)
   })
 
-  it('rejects a static record of targets, because a facet is a function', () => {
-    assert.equal(PackageDef.safeParse({ ci: { build: target } }).success, false)
+  it('accepts a static record of targets as the older form', () => {
+    assert.equal(PackageDef.safeParse({ ci: { build: target } }).success, true)
+  })
+
+  it('rejects a facet that is neither a function nor a record of targets', () => {
+    assert.equal(PackageDef.safeParse({ ci: 'build' }).success, false)
+    assert.equal(PackageDef.safeParse({ ci: { build: { deps: [] } } }).success, false)
   })
 
   it('accepts a facet without expanding it', () => {

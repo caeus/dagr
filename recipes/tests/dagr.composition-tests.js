@@ -73,7 +73,7 @@ const writtenText = (steps, path) => {
 const written = (steps, path) => JSON.parse(writtenText(steps, path))
 
 const runTarget = (index, facet, name, extra = {}) => {
-  const built = index[facet]()[name]
+  const built = index[facet][name]
   const images = Object.fromEntries(built.deps.map(dependency => [dependency, `${dependency}-image`]))
   return built.run({ images, ...extra })
 }
@@ -264,7 +264,7 @@ export default function compositionTests() {
     })
 
     const index = recipe([feature])({ location: '//example' })
-    const rendered = index.quality().inspect.run({ host: { os: 'linux', arch: 'arm64' } })
+    const rendered = index.quality.inspect.run({ host: { os: 'linux', arch: 'arm64' } })
 
     // A tool invocation is resolved by the materializer; a shell one is passed through verbatim.
     assert.deepEqual(rendered.steps, [
@@ -300,14 +300,14 @@ export default function compositionTests() {
     const twoFacets = recipe([contribution('ci', 'ci'), contribution('dev', 'dev')])({
       location: '//example',
     })
-    assert.equal(twoFacets.ci().same.name, 'same')
-    assert.equal(twoFacets.dev().same.name, 'same')
+    assert.equal(twoFacets.ci.same.name, 'same')
+    assert.equal(twoFacets.dev.same.name, 'same')
 
     const replaced = recipe([
       contribution('ci', 'first'),
       contribution('ci', 'second'),
     ])({ location: '//example' })
-    assert.equal(replaced.ci().same.run().FROM, 'second')
+    assert.equal(replaced.ci.same.run().FROM, 'second')
   })
 
   test('materializes one invocation as both a container step and a manager script', assert => {
@@ -377,7 +377,7 @@ export default function compositionTests() {
     ])({ location: '//packages/example' })
 
     const bundle = runTarget(index, 'ci', 'bundle')
-    assert.deepEqual(index.ci().bundle.deps, ['build'])
+    assert.deepEqual(index.ci.bundle.deps, ['build'])
     assert.equal(bundle.EXPORT['/repo/dist/example.js'], 'dist/example.js')
     assert.equal(bundle.steps.at(-1).RUN, 'pnpm exec rollup --config rollup.config.js')
 
@@ -424,29 +424,29 @@ export default function compositionTests() {
     // A bare name resolves against the depending target's own facet. The check runs when the facet
     // expands, because that is when its targets exist.
     assert.throws(
-      () => recipe([dependent('publish', 'build')])({ location: '//example' }).publish(),
+      () => recipe([dependent('publish', 'build')])({ location: '//example' }),
       'target "publish:ship" depends on "build", which no contribution owns',
     )
     assert.throws(
-      () => recipe([dependent('publish', 'ci:build')])({ location: '//example' }).publish(),
+      () => recipe([dependent('publish', 'ci:build')])({ location: '//example' }),
       'target "publish:ship" depends on "ci:build", which no contribution owns',
     )
 
     // The library already owns ci:build, so both forms resolve against it.
     assert.deepEqual(
       nodeLibrary().with(dependent('publish', 'ci:build'))({ location: '//example' })
-        .publish().ship.deps,
+        .publish.ship.deps,
       ['ci:build'],
     )
     assert.deepEqual(
-      nodeLibrary().with(dependent('ci', 'build'))({ location: '//example' }).ci().ship.deps,
+      nodeLibrary().with(dependent('ci', 'build'))({ location: '//example' }).ci.ship.deps,
       ['build'],
     )
 
     // Another package's target cannot be checked here.
     assert.deepEqual(
       recipe([dependent('ci', '//packages/core:ci:pack')])({ location: '//example' })
-        .ci().ship.deps,
+        .ci.ship.deps,
       ['//packages/core:ci:pack'],
     )
   })
@@ -459,7 +459,7 @@ export default function compositionTests() {
         run: () => ({ FROM: 'scratch', steps: context.files(files), IGNORE: [] }),
       }),
     }),
-  })])({ location: '//example' }).ci().build.run({ images: {} })
+  })])({ location: '//example' }).ci.build.run({ images: {} })
 
   const notAStep = 'file contribution render must return a Dagr step or an array of steps'
   const notAnInvocation = 'an invocation needs exactly one of tool or shell, naming what to run'
@@ -519,7 +519,7 @@ export default function compositionTests() {
     }))({ location: '//packages/example' })
 
     assert.throws(
-      () => unpublished.ci().build.run({ images: { '//base:ci:image': 'base' } }),
+      () => unpublished.ci.build.run({ images: { '//base:ci:image': 'base' } }),
       'No version configured for package "definitely-not-a-published-package"',
     )
   })

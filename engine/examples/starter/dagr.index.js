@@ -1,5 +1,5 @@
 export default {
-  ci: () => ({
+  ci: {
     hello: {
       deps: [],
       run: () => ({
@@ -8,5 +8,5 @@ export default {
         IGNORE: ['.git'],
       }),
     },
-  }),
+  },
 }

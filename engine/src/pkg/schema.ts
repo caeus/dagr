@@ -99,12 +99,18 @@ export interface FacetDef extends z.infer<typeof FacetDef> {}
 
 export type FacetFn = () => unknown;
 
-// A facet is a function, so expanding it is an evaluation boundary: loading a package reveals which
-// facets exist without computing the targets of any of them.
-export const Facet = z.custom<FacetFn>(
-  (value) => typeof value === "function",
-  "must be a function returning its targets",
-);
+/**
+ * A facet is a function returning its targets, which makes expanding it an evaluation boundary:
+ * loading a package reveals which facets exist without computing the targets of any of them.
+ *
+ * A static record of targets is also accepted, and is the older form. It cannot be lazy — a record is
+ * already expanded — so it exists only so an engine can read indexes written before this shape. Write
+ * facets as functions.
+ */
+export const Facet = z.union([
+  z.custom<FacetFn>((value) => typeof value === "function"),
+  FacetDef,
+]);
 
 export const PackageDef = z.record(Name, Facet).readonly();
 export interface PackageDef extends z.infer<typeof PackageDef> {}
