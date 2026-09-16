@@ -3,7 +3,7 @@ set -e
 
 DAGR_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$DAGR_DIR/.." && pwd)"
-PIN="ghcr.io/caeus/dagr:208b1ab58b705d2ab642e4eeca0ffeaa884b4fe1"
+PIN="ghcr.io/caeus/dagr:22fe7db5244035f8011bb90217759ce2e34a07bb"
 
 TARGET_PLATFORM="${DOCKER_DEFAULT_PLATFORM:-}"
 unset DOCKER_DEFAULT_PLATFORM
