@@ -119,12 +119,12 @@ Shared build logic is ordinary Dagr JavaScript:
 // build/dagr.node.js
 export function component({ image = 'alpine:3.22' } = {}) {
   return {
-    ci: {
+    ci: () => ({
       build: {
         deps: [],
         run: () => ({ FROM: image, steps: [], IGNORE: ['out'] }),
       },
-    },
+    }),
   }
 }
 ```

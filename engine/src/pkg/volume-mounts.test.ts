@@ -11,12 +11,12 @@ import type { MountImplementation } from '#pkg/schema.js'
 
 const PACKAGE = (image = 'alpine') => `
   export default {
-    ci: {
+    ci: () => ({
       build: {
         deps: [],
         run: () => ({ FROM: ${JSON.stringify(image)}, steps: [], IGNORE: [] })
       }
-    }
+    }),
   }
 `
 
@@ -369,7 +369,7 @@ fallback: null
 
     try {
       const local = await loader.loadPackage('tool')
-      assert.equal(local?.definition['ci']?.['build']?.run({
+      assert.equal(local?.facet('ci')?.['build']?.run({
         images: {}, host: { os: 'linux', arch: 'x64' },
       }).FROM, 'local')
       assert.equal(calls.length, 0)

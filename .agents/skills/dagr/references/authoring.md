@@ -19,7 +19,7 @@ On the CLI, prefer a complete address when there is any ambiguity. A bare target
 
 ```js
 export default {
-  ci: {
+  ci: () => ({
     build: {
       deps: [],
       run: ({ images, host }) => ({
@@ -28,7 +28,7 @@ export default {
         IGNORE: [],
       }),
     },
-  },
+  }),
 }
 ```
 

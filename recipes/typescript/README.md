@@ -311,6 +311,21 @@ const bun = () => rdk.graph({
 })
 ```
 
-Local package dependencies arrive from sibling `ci:pack` targets as tarballs. Install rendering may
-replace their manifest ranges with `file:` references. Pack and publish rendering restores the public
-ranges.
+## Local project dependencies
+
+A dependency on another project in the repository names the **facet** it needs, not just the package:
+
+```js
+deps: [
+  { facet: '//packages/core:ci', at: 'prod' },
+]
+```
+
+The package is derived from the reference, so it is never declared twice. Choosing `pack` within that
+facet is still this recipe's decision — the reference resolves to `//packages/core:ci:pack` — which
+leaves room for a dependency to identify a capability later without changing what a dependant writes.
+
+A reference with no facet, or a `{ pkg: ... }` declaration, is rejected.
+
+Those tarballs arrive from the sibling's pack target. Install rendering may replace their manifest
+ranges with `file:` references; pack and publish rendering restores the public ranges.

@@ -156,7 +156,7 @@ export function buildRunner(
       const fqt = FQT.parse(raw)
       const packagePath = packageLogicalPath(fqt.pkg)
       const loaded = await packageLoader.loadPackage(packagePath)
-      const target = loaded?.definition[fqt.facet]?.[fqt.target]
+      const target = loaded?.facet(fqt.facet)?.[fqt.target]
       if (!target) throw new Error(`Unknown target: ${raw}`)
 
       const nextTrace = [...trace, raw]

@@ -93,10 +93,20 @@ export const TargetDef = z
   .readonly();
 export interface TargetDef extends z.infer<typeof TargetDef> {}
 
+// What a facet expands into. Validated when a facet is expanded, not when a package is loaded.
 export const FacetDef = z.record(Name, TargetDef).readonly();
 export interface FacetDef extends z.infer<typeof FacetDef> {}
 
-export const PackageDef = z.record(Name, FacetDef).readonly();
+export type FacetFn = () => unknown;
+
+// A facet is a function, so expanding it is an evaluation boundary: loading a package reveals which
+// facets exist without computing the targets of any of them.
+export const Facet = z.custom<FacetFn>(
+  (value) => typeof value === "function",
+  "must be a function returning its targets",
+);
+
+export const PackageDef = z.record(Name, Facet).readonly();
 export interface PackageDef extends z.infer<typeof PackageDef> {}
 
 export const JsonValue = z.json();

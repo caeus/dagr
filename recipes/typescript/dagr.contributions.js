@@ -203,33 +203,47 @@ const localRef = (dependency, facet) => {
   return undefined
 }
 
-const validateLocalRefs = facets => {
-  for (const [facet, targets] of Object.entries(facets)) {
-    for (const [name, target] of Object.entries(targets)) {
-      for (const dependency of target.deps) {
-        const sibling = localRef(dependency, facet)
-        if (sibling === undefined) continue
-        if (facets[sibling[0]]?.[sibling[1]] === undefined) {
-          throw new Error(
-            `target ${JSON.stringify(`${facet}:${name}`)} depends on ${JSON.stringify(dependency)}, which no contribution owns`,
-          )
-        }
+/**
+ * Checks one expanded facet's dependencies against every target the graph owns. Ownership comes from
+ * binding paths, so this needs no other facet to be expanded.
+ */
+const validateLocalRefs = (facet, targets, owned) => {
+  for (const [name, target] of Object.entries(targets)) {
+    for (const dependency of target.deps) {
+      const sibling = localRef(dependency, facet)
+      if (sibling === undefined) continue
+      if (!owned.get(sibling[0])?.has(sibling[1])) {
+        throw new Error(
+          `target ${JSON.stringify(`${facet}:${name}`)} depends on ${JSON.stringify(dependency)}, which no contribution owns`,
+        )
       }
     }
   }
 }
 
-/** The deliberately boring final calculation: materialize target paths, group, and validate refs. */
+/**
+ * The deliberately boring final calculation: group target paths by facet and hand each facet a
+ * function that materializes its own targets. A facet nobody runs is never materialized, which is
+ * why ownership is derived from the paths rather than from expanded targets.
+ */
 export const index = () => rdk.graph({
   '/dagr/index': rdk.derive({ targets: rdk.many('/target/**') }, ({ targets }) => {
-    const facets = {}
+    const owned = new Map()
+    const grouped = new Map()
     for (const path of Object.keys(targets)) {
       const { facet, name } = targetCoordinates(path)
-      const facetTargets = facets[facet] ??= {}
-      facetTargets[name] = targets[path].materialize(name, facet)
+      if (!owned.has(facet)) owned.set(facet, new Set())
+      if (!grouped.has(facet)) grouped.set(facet, [])
+      owned.get(facet).add(name)
+      grouped.get(facet).push([name, targets[path]])
     }
-    validateLocalRefs(facets)
-    return facets
+
+    return Object.fromEntries([...grouped].map(([facet, entries]) => [facet, () => {
+      const expanded = {}
+      for (const [name, binding] of entries) expanded[name] = binding.materialize(name, facet)
+      validateLocalRefs(facet, expanded, owned)
+      return expanded
+    }]))
   }),
 })
 

@@ -38,7 +38,7 @@ Choose a domain directory. No directory name is privileged:
 ```js
 // services/api/dagr.index.js
 export default {
-  ci: {
+  ci: () => ({
     build: {
       deps: [],
       run: () => ({
@@ -51,7 +51,7 @@ export default {
         IGNORE: ['.git', 'out'],
       }),
     },
-  },
+  }),
 }
 ```
 

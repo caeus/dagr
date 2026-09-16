@@ -7,7 +7,7 @@ targets. Filesystem composition is separate and uses `dagr.mount.yaml`.
 
 ```js
 export default {
-  <facetName>: {
+  <facetName>: () => ({
     <targetName>: {
       deps: [ /* target references, strings */ ],
       run: ({ images, host }) => ({
@@ -17,9 +17,20 @@ export default {
         EXPORT: { '<abs path in image>': '<path relative to package dir>' },  // optional
       }),
     },
-  },
+  }),
 }
 ```
+
+A facet is a **function** that returns its targets, not a record of them. That makes expansion an
+evaluation boundary: loading a package reveals which facets exist, and dagr expands only the facet it
+needs. Running `//app:ci:build` never evaluates a `publish` facet, so work that only `publish` targets
+require is not done, and a mistake inside `publish` cannot break `ci`.
+
+Two consequences worth knowing:
+
+- A facet's targets are validated when it expands, not when the package loads. An invalid target is
+  reported the first time something asks for that facet.
+- `dagr list` prints every target, so it expands every facet by design.
 
 Facet and target names must match `[A-Za-z0-9][A-Za-z0-9._-]*`. The leading alphanumeric
 requirement prevents names from behaving like command options, hidden paths, or dagr directives.

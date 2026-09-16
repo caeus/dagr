@@ -17,7 +17,7 @@ const recipeImage = directory => ({
 })
 
 export default {
-  ci: {
+  ci: () => ({
     // The recipe's tests run while this graph expands, so the RDK is the one the engine serves and
     // the generated files are produced by the real writers. Nothing outside this package is read,
     // which is what keeps proving the recipe needs nothing but itself.
@@ -49,5 +49,5 @@ export default {
       }),
     },
     'image-typescript': recipeImage('typescript'),
-  },
+  }),
 }

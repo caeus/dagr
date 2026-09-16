@@ -56,7 +56,7 @@ const checks = Object.fromEntries(
 )
 
 export default {
-  ci: {
+  ci: () => ({
     prepare: {
       deps: [],
       run: () => ({
@@ -69,7 +69,7 @@ export default {
       }),
     },
     ...checks,
-  },
+  }),
 }
 ```
 
