@@ -22,12 +22,12 @@ depending. So all three forms work in `deps`:
 
 ```js
 export default {
-  ci: {
+  ci: () => ({
     install: { deps: [], run: ... },
     build:   { deps: ['install'], run: ... },                      // same package, same facet
     docs:    { deps: ['release:bundle'], run: ... },               // same package, other facet
     deploy:  { deps: ['//services/api:ci:build'], run: ... },       // another package
-  },
+  }),
 }
 ```
 

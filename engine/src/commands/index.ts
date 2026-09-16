@@ -83,8 +83,9 @@ export class ListCommandRunner implements CommandRunner {
     const packages = await this.packageLoader.loadAllPackages();
 
     for (const [packageName, loaded] of packages) {
-      const facets = loaded.definition;
-      for (const [facetName, targets] of Object.entries(facets)) {
+      // Listing is the one command that needs every target, so it expands every facet.
+      for (const facetName of Object.keys(loaded.definition)) {
+        const targets = loaded.facet(facetName) ?? {};
         for (const [targetName, target] of Object.entries(targets)) {
           const fqt = new FQT(canonicalPackageName(packageName), facetName, targetName);
           const deps = target.deps.map((d) =>
@@ -184,15 +185,15 @@ export class ShowCommandRunner {
       if (selector.facet === undefined) {
         documents.push(this.document(
           selector.pkg,
-          Object.fromEntries(Object.entries(loaded.definition).map(([facetName, facet]) => [
+          Object.fromEntries(Object.keys(loaded.definition).map((facetName) => [
             facetName,
-            this.facetOutline(selector.pkg, facetName, facet),
+            this.facetOutline(selector.pkg, facetName, loaded.facet(facetName) ?? {}),
           ])),
         ));
         continue;
       }
 
-      const facet = loaded.definition[selector.facet];
+      const facet = loaded.facet(selector.facet);
       if (!facet) throw new Error(`Unknown facet: ${raw}`);
 
       if (selector.target === undefined) {

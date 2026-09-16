@@ -10,6 +10,7 @@ import {
   copyAssets,
   copyLocalPackages,
   copySource,
+  facetReference,
   localPackagesOf,
   packageJsonDependencies,
   packageManagerBuilds,
@@ -32,13 +33,15 @@ const dependencyEntries = (name, scope, deps, versions, runtimePackages) => {
   const prod = runtimePackages.map(pkg => [pkg, versionOf(versions, pkg)])
   const dev = []
   for (const dependency of deps) {
-    const sources = ['pkg', 'npm'].filter(source => source in dependency)
-    if (sources.length !== 1) throw new Error(`${name}: dependency needs exactly one of pkg or npm`)
-    if (!['prod', 'dev'].includes(dependency.at)) {
-      throw new Error(`${name}: dependency ${dependency.pkg ?? dependency.npm} needs at prod or dev`)
+    const sources = ['facet', 'npm'].filter(source => source in dependency)
+    if (sources.length !== 1) {
+      throw new Error(`${name}: dependency needs exactly one of facet or npm`)
     }
-    const entry = 'pkg' in dependency
-      ? [projectName(dependency.pkg, scope), '>=0.0.0']
+    if (!['prod', 'dev'].includes(dependency.at)) {
+      throw new Error(`${name}: dependency ${dependency.facet ?? dependency.npm} needs at prod or dev`)
+    }
+    const entry = 'facet' in dependency
+      ? [projectName(facetReference(dependency.facet).pkg, scope), '>=0.0.0']
       : [dependency.npm, versionOf(versions, dependency.npm)]
     ;(dependency.at === 'dev' ? dev : prod).push(entry)
   }

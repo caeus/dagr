@@ -4,7 +4,20 @@ import { parse as parseYaml } from 'yaml'
 import type { DockerImageExtractor } from '#runner/docker-extractor.js'
 import { FQT, type Runner } from '#runner/index.js'
 import type { PackageLoader } from '#pkg/loader.js'
-import type { HostPlatform, PackageDef } from '#pkg/schema.js'
+import { loadedPackage } from '#pkg/loader.js'
+import type { FacetDef, HostPlatform, PackageDef } from '#pkg/schema.js'
+
+/**
+ * Fixtures declare their targets directly; facets are functions, so this wraps a static record into
+ * the package shape the loader produces. Laziness itself is covered in the loader tests.
+ */
+type StaticFacets = Readonly<Record<string, FacetDef>>
+const asPackage = (facets: StaticFacets, context: string, location = '//pkg') =>
+  loadedPackage(
+    Object.fromEntries(Object.entries(facets).map(([name, targets]) => [name, () => targets])) as PackageDef,
+    context,
+    location,
+  )
 import {
   ListCommandRunner,
   PackageListCommandRunner,
@@ -151,7 +164,7 @@ describe('RunCommandRunner', () => {
 
 describe('ShowCommandRunner', () => {
   const host: HostPlatform = { os: 'linux', arch: 'x64', libc: 'glibc' }
-  const hello: PackageDef = {
+  const hello: StaticFacets = {
     ci: {
       hello: {
         deps: [],
@@ -160,7 +173,7 @@ describe('ShowCommandRunner', () => {
     },
   }
   const showFrom = async (
-    definition: PackageDef,
+    definition: StaticFacets,
     currentPackage: string,
     ...fqts: readonly string[]
   ) => {
@@ -170,7 +183,7 @@ describe('ShowCommandRunner', () => {
       {
         loadPackage: async (logicalPath) => {
           requested.push(logicalPath)
-          return { definition, context: '/repo/pkg' }
+          return asPackage(definition, '/repo/pkg')
         },
         loadAllPackages: async () => { throw new Error('show must not scan the repository') },
       },
@@ -196,7 +209,7 @@ describe('ShowCommandRunner', () => {
   })
 
   it('passes resolved dependency addresses as images', async () => {
-    const definition: PackageDef = {
+    const definition: StaticFacets = {
       ci: {
         build: {
           deps: ['ci:install', '//libraries/common:ci:pack'],
@@ -225,7 +238,7 @@ describe('ShowCommandRunner', () => {
   })
 
   it('passes the host platform to run', async () => {
-    const definition: PackageDef = {
+    const definition: StaticFacets = {
       ci: {
         probe: {
           deps: [],
@@ -259,7 +272,7 @@ describe('ShowCommandRunner', () => {
 
   it('keeps a long command on one line', async () => {
     const long = `node --experimental-vm-modules --enable-source-maps --import tsx/esm --test --test-reporter=spec 'src/**/*.test.ts'`
-    const definition: PackageDef = {
+    const definition: StaticFacets = {
       ci: { long: { deps: [], run: () => ({ FROM: 'alpine', steps: [{ RUN: long }], IGNORE: [] }) } },
     }
 
@@ -272,7 +285,7 @@ describe('ShowCommandRunner', () => {
   })
 
   const recipe = () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
-  const workspace: PackageDef = {
+  const workspace: StaticFacets = {
     ci: {
       install: { deps: [], run: recipe },
       build: { deps: ['install'], run: recipe },
@@ -319,7 +332,7 @@ describe('ShowCommandRunner', () => {
   })
 
   it('never evaluates run when showing a facet or package', async () => {
-    const exploding: PackageDef = {
+    const exploding: StaticFacets = {
       ci: { boom: { deps: [], run: () => { throw new Error('run must not be called') } } },
     }
 
@@ -358,7 +371,7 @@ describe('ShowCommandRunner', () => {
   it('throws on an invalid run definition', async () => {
     const definition = {
       ci: { broken: { deps: [], run: () => ({ FROM: 'alpine' }) } },
-    } as unknown as PackageDef
+    } as unknown as StaticFacets
 
     await assert.rejects(
       showFrom(definition, '//pkg', '//pkg:ci:broken'),
@@ -368,13 +381,13 @@ describe('ShowCommandRunner', () => {
 })
 
 describe('PackageListCommandRunner', () => {
-  const leaf: PackageDef = {
+  const leaf: StaticFacets = {
     ci: { build: { deps: [], run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] }) } },
   }
   const loaderWith = (...logicalPaths: readonly string[]): PackageLoader => ({
     loadPackage: async () => { throw new Error('pkg ls must not resolve individual packages') },
     loadAllPackages: async () => new Map(
-      logicalPaths.map(path => [path, { definition: leaf, context: `/repo/${path}` }]),
+      logicalPaths.map(path => [path, asPackage(leaf, `/repo/${path}`)]),
     ),
   })
   const namesFrom = async (currentPackage: string, ...logicalPaths: readonly string[]) => {
@@ -424,7 +437,7 @@ describe('PackageListCommandRunner', () => {
 describe('ListCommandRunner', () => {
   it('requests the explicit full package scan only when executed', async () => {
     let scans = 0
-    const definition: PackageDef = {
+    const definition: StaticFacets = {
       ci: {
         build: {
           deps: ['//stacks/ts//:ci:build'],
@@ -436,7 +449,7 @@ describe('ListCommandRunner', () => {
       loadPackage: async () => { throw new Error('list must not resolve individual packages') },
       loadAllPackages: async () => {
         scans++
-        return new Map([['packages/ui', { definition, context: '/repo/packages/ui' }]])
+        return new Map([['packages/ui', asPackage(definition, '/repo/packages/ui')]])
       },
     }
     const lines: string[] = []

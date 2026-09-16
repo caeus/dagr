@@ -421,7 +421,8 @@ export default function compositionTests() {
       }),
     })
 
-    // A bare name resolves against the depending target's own facet.
+    // A bare name resolves against the depending target's own facet. The check runs when the facet
+    // expands, because that is when its targets exist.
     assert.throws(
       () => recipe([dependent('publish', 'build')])({ location: '//example' }),
       'target "publish:ship" depends on "build", which no contribution owns',

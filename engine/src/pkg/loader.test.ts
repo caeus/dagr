@@ -38,21 +38,44 @@ recursive: *volume
 }
 
 describe('RepositoryPackageLoader', () => {
-  it('reports an invalid index with its logical package path', async () => {
+  it('reports an invalid facet when it is expanded, not when the package loads', async () => {
     const root = await fixture('', {
-      'packages/broken/dagr.index.js': 'export default { ci: { build: {} } }\n',
+      'packages/broken/dagr.index.js': 'export default { ci: () => ({ build: {} }) }\n',
     })
 
     try {
-      await assert.rejects(
-        new RepositoryPackageLoader(root).loadPackage('packages/broken'),
+      const loaded = await new RepositoryPackageLoader(root).loadPackage('packages/broken')
+      // Targets are validated where they are produced, so loading a package cannot see this.
+      assert.ok(loaded, 'the package loads: nothing has asked for a facet yet')
+
+      assert.throws(
+        () => loaded.facet('ci'),
         error => {
-          assert.match(String(error), /Invalid Dagr index at \/\/packages\/broken/)
+          assert.match(String(error), /Invalid facet "ci" in Dagr index at \/\/packages\/broken/)
           assert.match(String(error), /deps/)
           assert.match(String(error), /run/)
           return true
         },
       )
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('still reads a facet written as a static record of targets', async () => {
+    const root = await fixture('', {
+      'packages/static/dagr.index.js': `
+        export default {
+          ci: { build: { deps: [], run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] }) } },
+        }
+      `,
+    })
+
+    try {
+      const loaded = await new RepositoryPackageLoader(root).loadPackage('packages/static')
+
+      // A record is already its own expansion, so it needs no deferral to be readable.
+      assert.deepEqual(Object.keys(loaded?.facet('ci') ?? {}), ['build'])
     } finally {
       await rm(root, { recursive: true })
     }
@@ -83,12 +106,12 @@ describe('RepositoryPackageLoader', () => {
       import { right } from '//lib/dagr.right.js'
 
       export default {
-        ci: {
+        ci: () => ({
           inspect: {
             deps: [],
             run: () => ({ FROM: left + right, steps: [], IGNORE: [] })
           }
-        }
+        }),
       }
     `, {
       'lib/dagr.left.js': `
@@ -104,7 +127,7 @@ describe('RepositoryPackageLoader', () => {
 
     try {
       const loaded = await new RepositoryPackageLoader(root).loadPackage('.')
-      assert.equal(loaded?.definition['ci']?.['inspect']?.run({
+      assert.equal(loaded?.facet('ci')?.['inspect']?.run({
         images: {},
         host: { os: 'linux', arch: 'x64' },
       }).FROM, 'aa')
@@ -116,12 +139,12 @@ describe('RepositoryPackageLoader', () => {
   it('discovers packages recursively without privileging a directory name', async () => {
     const declaration = `
       export default {
-        ci: {
+        ci: () => ({
           build: {
             deps: [],
             run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
           }
-        }
+        }),
       }
     `
     const root = await fixture(declaration, {
@@ -141,12 +164,12 @@ describe('RepositoryPackageLoader', () => {
   it('continues discovery below packages and ignores repository metadata', async () => {
     const declaration = `
       export default {
-        ci: {
+        ci: () => ({
           build: {
             deps: [],
             run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
           }
-        }
+        }),
       }
     `
     const root = await fixture('', {
@@ -181,12 +204,12 @@ describe('RepositoryPackageLoader', () => {
       }
 
       export default {
-        ci: {
+        ci: () => ({
           inspect: {
             deps: [],
             run: () => ({ FROM: 'alpine', steps: [{ ENV: metadata }], IGNORE: [] })
           }
-        }
+        }),
       }
     `
     const root = await fixture(declaration, { 'a/b/dagr.index.js': declaration })
@@ -198,7 +221,7 @@ describe('RepositoryPackageLoader', () => {
         loader.loadPackage('a/b'),
       ])
       const inspect = (loaded: Awaited<typeof rootPackage>) => {
-        const run = loaded?.definition['ci']?.['inspect']?.run({
+        const run = loaded?.facet('ci')?.['inspect']?.run({
           images: {},
           host: { os: 'linux', arch: 'x64' },
         })
@@ -226,12 +249,12 @@ describe('RepositoryPackageLoader', () => {
     const root = await fixture('', {
       'a/b/c/dagr.index.js': `
         export default {
-          dev: {
+          dev: () => ({
             sync: {
               deps: [],
               run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
             }
-          }
+          }),
         }
       `,
       'packages/broken/dagr.index.js': 'this is not JavaScript',
@@ -243,7 +266,7 @@ describe('RepositoryPackageLoader', () => {
       const second = loader.loadPackage('a/b/c')
 
       assert.equal(first, second)
-      assert.equal((await first)?.definition['dev']?.['sync']?.deps.length, 0)
+      assert.equal((await first)?.facet('dev')?.['sync']?.deps.length, 0)
     } finally {
       await rm(root, { recursive: true })
     }
@@ -258,12 +281,12 @@ describe('RepositoryPackageLoader', () => {
       await mkdir(join(mountedRoot, name), { recursive: true })
       await writeFile(join(mountedRoot, name, 'dagr.index.js'), `
         export default {
-          ci: {
+          ci: () => ({
             pack: {
               deps: [],
               run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
             }
-          }
+          }),
         }
       `)
     }
@@ -302,7 +325,7 @@ describe('RepositoryPackageLoader', () => {
         import toml from '//config/dagr.values.toml'
 
         export default {
-          ci: {
+          ci: () => ({
             build: {
               deps: [],
               run: () => ({
@@ -311,7 +334,7 @@ describe('RepositoryPackageLoader', () => {
                 IGNORE: []
               })
             }
-          }
+          }),
         }
       `,
       {
@@ -324,7 +347,7 @@ describe('RepositoryPackageLoader', () => {
 
     try {
       const packages = await new RepositoryPackageLoader(root).loadAllPackages()
-      const run = packages.get('.')?.definition['ci']?.['build']?.run({
+      const run = packages.get('.')?.facet('ci')?.['build']?.run({
         images: {},
         host: { os: 'linux', arch: 'x64' },
       })
@@ -349,7 +372,7 @@ describe('RepositoryPackageLoader', () => {
         import { yaml, toml, exports, same } from '//lib/dagr.formats.js'
 
         export default {
-          ci: {
+          ci: () => ({
             build: {
               deps: [],
               run: () => ({
@@ -358,7 +381,7 @@ describe('RepositoryPackageLoader', () => {
                 IGNORE: []
               })
             }
-          }
+          }),
         }
       `,
       {
@@ -381,7 +404,7 @@ describe('RepositoryPackageLoader', () => {
 
     try {
       const loaded = await new RepositoryPackageLoader(root).loadPackage('.')
-      const run = loaded?.definition['ci']?.['build']?.run({
+      const run = loaded?.facet('ci')?.['build']?.run({
         images: {},
         host: { os: 'linux', arch: 'x64' },
       })
@@ -443,18 +466,18 @@ describe('RepositoryPackageLoader', () => {
       }
 
       export default {
-        ci: {
+        ci: () => ({
           build: {
             deps: [],
             run: () => ({ FROM: 'alpine', steps: [{ ENV: checks }], IGNORE: [] })
           }
-        }
+        }),
       }
     `)
 
     try {
       const loaded = await new RepositoryPackageLoader(root).loadPackage('.')
-      const run = loaded?.definition['ci']?.['build']?.run({
+      const run = loaded?.facet('ci')?.['build']?.run({
         images: {},
         host: { os: 'linux', arch: 'x64' },
       })
@@ -483,12 +506,12 @@ describe('RepositoryPackageLoader', () => {
       'a/dagr.index.js': `
         import image from '//b//dagr.util.js'
         export default {
-          ci: {
+          ci: () => ({
             build: {
               deps: [],
               run: () => ({ FROM: image, steps: [], IGNORE: [] })
             }
-          }
+          }),
         }
       `,
       'b/dagr.mount.yaml': 'id: b\n',
@@ -514,7 +537,7 @@ describe('RepositoryPackageLoader', () => {
 
     try {
       const loaded = await new RepositoryPackageLoader(root, materializer).loadPackage('a')
-      const run = loaded?.definition['ci']?.['build']?.run({
+      const run = loaded?.facet('ci')?.['build']?.run({
         images: {},
         host: { os: 'linux', arch: 'x64' },
       })
@@ -593,12 +616,12 @@ describe('RepositoryPackageLoader', () => {
     await writeFile(join(mountedRoot, 'c', 'dagr.index.js'), `
       const location = import.meta.dagr.location
       export default {
-        ci: {
+        ci: () => ({
           inspect: {
             deps: [],
             run: () => ({ FROM: location, steps: [], IGNORE: [] })
           }
-        }
+        }),
       }
     `)
     const materializer: VolumeMaterializer = {
@@ -613,7 +636,7 @@ describe('RepositoryPackageLoader', () => {
         loader.loadPackage('packages/left//c'),
         loader.loadPackage('packages/right//c'),
       ])
-      const location = (loaded: typeof left) => loaded?.definition['ci']?.['inspect']?.run({
+      const location = (loaded: typeof left) => loaded?.facet('ci')?.['inspect']?.run({
         images: {},
         host: { os: 'linux', arch: 'x64' },
       }).FROM
@@ -639,12 +662,12 @@ describe('RepositoryPackageLoader', () => {
     await mkdir(join(innerRoot, 'e'), { recursive: true })
     await writeFile(join(innerRoot, 'e', 'dagr.index.js'), `
       export default {
-        ci: {
+        ci: () => ({
           pack: {
             deps: [],
             run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
           }
-        }
+        }),
       }
     `)
     const materializer: VolumeMaterializer = {
@@ -687,6 +710,99 @@ describe('RepositoryPackageLoader', () => {
         rm(root, { recursive: true }),
         rm(mountedRoot, { recursive: true }),
       ])
+    }
+  })
+})
+
+describe('facets expand on demand', () => {
+  it('returns the target record of the facet asked for', async () => {
+    const root = await fixture('', {
+      'dagr.index.js': `
+        export default {
+          ci: () => ({
+            build: { deps: [], run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] }) },
+            pack: { deps: ['build'], run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] }) },
+          }),
+        }
+      `,
+    })
+
+    try {
+      const loaded = await new RepositoryPackageLoader(root).loadPackage('.')
+      const ci = loaded?.facet('ci')
+
+      assert.deepEqual(Object.keys(ci ?? {}), ['build', 'pack'])
+      // Dependency references inside an expanded facet keep their meaning.
+      assert.equal(ci?.['pack']?.deps.length, 1)
+      assert.equal(ci?.['pack']?.deps[0], 'build')
+      assert.equal(loaded?.facet('absent'), undefined)
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('does not expand a facet nobody asked for', async () => {
+    const root = await fixture('', {
+      'dagr.index.js': `
+        export default {
+          wanted: () => ({
+            build: { deps: [], run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] }) },
+          }),
+          ignored: () => {
+            throw new Error('the ignored facet must not be expanded')
+          },
+        }
+      `,
+    })
+
+    try {
+      const loaded = await new RepositoryPackageLoader(root).loadPackage('.')
+
+      // The package loaded even though one facet throws on expansion, so loading expanded neither.
+      assert.deepEqual(Object.keys(loaded?.definition ?? {}), ['wanted', 'ignored'])
+      assert.deepEqual(Object.keys(loaded?.facet('wanted') ?? {}), ['build'])
+      // And asking for one facet still did not touch the other.
+      assert.throws(() => loaded?.facet('ignored'), /must not be expanded/)
+    } finally {
+      await rm(root, { recursive: true })
+    }
+  })
+
+  it('expands a facet once, however often it is asked for', async () => {
+    const root = await fixture('', {
+      'dagr.index.js': `
+        let expansions = 0
+        export default {
+          ci: () => {
+            expansions++
+            return {
+              build: {
+                deps: [],
+                run: () => ({
+                  FROM: 'alpine',
+                  steps: [{ RUN: String(expansions) }],
+                  IGNORE: [],
+                }),
+              },
+            }
+          },
+        }
+      `,
+    })
+
+    try {
+      const loaded = await new RepositoryPackageLoader(root).loadPackage('.')
+      const first = loaded?.facet('ci')
+
+      assert.equal(loaded?.facet('ci'), first, 'the same expansion is returned')
+      const step = first?.['build']?.run({ images: {}, host: { os: 'linux', arch: 'x64' } }).steps[0]
+      assert.equal(
+        step && 'RUN' in step ? step.RUN : undefined,
+        '1',
+        'the facet ran exactly once',
+      )
+    } finally {
+      await rm(root, { recursive: true })
     }
   })
 })

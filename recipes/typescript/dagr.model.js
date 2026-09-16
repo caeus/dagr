@@ -22,15 +22,35 @@ export function projectName(location, scope) {
   return `@${scope}/${relativePath.replaceAll('/', '-')}`
 }
 
+/**
+ * Splits `//packages/core:ci` into the package it names and the facet within it. A local dependency
+ * identifies a facet, so the package is derived from it rather than declared separately.
+ */
+export function facetReference(reference) {
+  const boundary = reference.lastIndexOf(':')
+  const pkg = boundary === -1 ? '' : reference.slice(0, boundary)
+  const facet = boundary === -1 ? '' : reference.slice(boundary + 1)
+  if (!pkg.startsWith('//') || facet === '' || facet.includes('/')) {
+    throw new Error(
+      `Expected a local dependency facet as //package:facet, got ${JSON.stringify(reference)}`,
+    )
+  }
+  return Object.freeze({ pkg, facet })
+}
+
+/**
+ * The facet is declared; choosing `pack` within it is still this recipe's decision, not the
+ * dependant's.
+ */
 export const localPackagesOf = (deps, scope) => Object.freeze(deps
-  .filter(dependency => 'pkg' in dependency)
+  .filter(dependency => 'facet' in dependency)
   .map(dependency => {
-    const name = projectName(dependency.pkg, scope)
+    const name = projectName(facetReference(dependency.facet).pkg, scope)
     return Object.freeze({
       name,
       tarball: `${name.slice(name.indexOf('/') + 1)}.tgz`,
       at: dependency.at,
-      target: `${dependency.pkg}:ci:pack`,
+      target: `${dependency.facet}:pack`,
     })
   }))
 

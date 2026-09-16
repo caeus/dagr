@@ -3,9 +3,19 @@ import assert from 'node:assert/strict'
 import { FQT, buildRunner, parseSelector, relativePackageName } from '#runner/index.js'
 import type { TargetRunnerDeps } from '#runner/index.js'
 import type { BuildResult } from '#runner/docker-builder.js'
-import type { HostPlatform, PackageDef, RunContext } from '#pkg/schema.js'
+import type { FacetDef, HostPlatform, PackageDef, RunContext } from '#pkg/schema.js'
+
+// Fixtures declare targets directly; facets are functions, so this wraps a static record into the
+// package shape the loader produces.
+type StaticFacets = Readonly<Record<string, FacetDef>>
+const asPackage = (facets: StaticFacets, context: string) =>
+  loadedPackage(
+    Object.fromEntries(Object.entries(facets).map(([name, targets]) => [name, () => targets])) as PackageDef,
+    context,
+    '//pkg',
+  )
 import type { Reporter } from '#report/reporter.js'
-import type { LoadedPackage, PackageLoader } from '#pkg/loader.js'
+import { loadedPackage, type LoadedPackage, type PackageLoader } from '#pkg/loader.js'
 
 describe('FQT.parse', () => {
   it('parses fully qualified //package:facet:target', () => {
@@ -219,7 +229,7 @@ describe('buildRunner', () => {
     reporter: silentReporter(),
   }
 
-  const makePackage = (): Map<string, PackageDef> =>
+  const makePackage = (): Map<string, StaticFacets> =>
     new Map([['pkg', {
       ci: {
         a: { deps: [], run: (_d) => ({ FROM: 'alpine', steps: [], IGNORE: [] }) },
@@ -228,7 +238,7 @@ describe('buildRunner', () => {
     }]])
 
   const packageLoader = (
-    packages: ReadonlyMap<string, PackageDef>,
+    packages: ReadonlyMap<string, StaticFacets>,
     contexts: ReadonlyMap<string, string> = new Map(),
     calls?: string[],
   ): PackageLoader => ({
@@ -236,13 +246,13 @@ describe('buildRunner', () => {
       calls?.push(name)
       const definition = packages.get(name)
       return definition
-        ? { definition, context: contexts.get(name) ?? `/${name}` }
+        ? asPackage(definition, contexts.get(name) ?? `/${name}`)
         : undefined
     },
     loadAllPackages: async () => new Map(
       [...packages].map(([name, definition]) => [
         name,
-        { definition, context: contexts.get(name) ?? `/${name}` } satisfies LoadedPackage,
+        asPackage(definition, contexts.get(name) ?? `/${name}`) satisfies LoadedPackage,
       ]),
     ),
   })
@@ -297,7 +307,7 @@ describe('buildRunner', () => {
 
   it('loads packages reached by fully qualified dependencies on demand', async () => {
     const calls: string[] = []
-    const packages = new Map<string, PackageDef>([
+    const packages = new Map<string, StaticFacets>([
       ['a/b/c', {
         dev: {
           sync: {
@@ -328,7 +338,7 @@ describe('buildRunner', () => {
 
   it('passes dependency images and host as one context', async () => {
     let receivedArgs: RunContext[] = []
-    const packages = new Map<string, PackageDef>([['pkg', {
+    const packages = new Map<string, StaticFacets>([['pkg', {
       ci: {
         a: { deps: [], run: (_d) => ({ FROM: 'alpine', steps: [], IGNORE: [] }) },
         b: { deps: ['a'], run: (...args: [RunContext]) => { receivedArgs = args; return { FROM: args[0].images['a']!, steps: [], IGNORE: [] } } },
@@ -381,7 +391,7 @@ describe('buildRunner', () => {
   })
 
   it('detects circular dependencies', async () => {
-    const circular = new Map<string, PackageDef>([['pkg', {
+    const circular = new Map<string, StaticFacets>([['pkg', {
       ci: {
         a: { deps: ['b'], run: (_d) => ({ FROM: 'alpine', steps: [], IGNORE: [] }) },
         b: { deps: ['a'], run: (_d) => ({ FROM: 'alpine', steps: [], IGNORE: [] }) },

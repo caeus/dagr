@@ -42,12 +42,12 @@ inner:
       const declaration = `
         import { image } from '//stack//dagr.stack.js'
         export default {
-          ci: {
+          ci: () => ({
             test: {
               deps: [],
               run: () => ({ FROM: image, steps: [], IGNORE: [] })
             }
-          }
+          }),
         }
       `
       const packageNames = ['a', 'b', 'c', 'd']
@@ -65,7 +65,7 @@ inner:
       assert.equal(packages.size, packageNames.length)
 
       for (const name of packageNames) {
-        const run = packages.get(`packages/${name}`)?.definition['ci']?.['test']?.run({
+        const run = packages.get(`packages/${name}`)?.facet('ci')?.['test']?.run({
           images: {},
           host: { os: 'linux', arch: 'x64' },
         })

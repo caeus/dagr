@@ -7,6 +7,7 @@ import { BUILTIN_PREFIX, createBuiltinModules } from '#pkg/builtins.js'
 import { ROOT_MARKER } from '#pkg/namespace.js'
 import { createSandboxContext } from '#pkg/sandbox.js'
 import {
+  FacetDef,
   IndexDef,
   type MountImplementation,
   type PackageDef,
@@ -29,6 +30,45 @@ export interface PackageLoader {
 export interface LoadedPackage {
   readonly definition: PackageDef
   readonly context: string
+  /**
+   * Expands one facet into its targets, or returns undefined when the package has no such facet.
+   * Expansion happens here rather than at load, so a facet nobody asks for is never evaluated, and
+   * it is memoized so asking twice does not compute twice.
+   */
+  readonly facet: (name: string) => FacetDef | undefined
+}
+
+/**
+ * Builds a LoadedPackage whose facets expand on demand. The location is carried only so a facet that
+ * returns something other than a record of targets can say which package it came from.
+ */
+export function loadedPackage(
+  definition: PackageDef,
+  context: string,
+  location: string,
+): LoadedPackage {
+  const expanded = new Map<string, FacetDef>()
+  return Object.freeze({
+    definition,
+    context,
+    facet(name: string): FacetDef | undefined {
+      const cached = expanded.get(name)
+      if (cached) return cached
+      if (!Object.hasOwn(definition, name)) return undefined
+
+      // A record is already its own expansion; only a function has anything to defer.
+      const declared = definition[name]!
+      const targets = FacetDef.safeParse(typeof declared === 'function' ? declared() : declared)
+      if (!targets.success) {
+        throw new Error(
+          `Invalid facet ${JSON.stringify(name)} in Dagr index at ${location}: ${targets.error.message}`,
+        )
+      }
+      const frozen = deepFreeze(targets.data)
+      expanded.set(name, frozen)
+      return frozen
+    },
+  })
 }
 
 export interface ResolvedCopySource {
@@ -390,7 +430,7 @@ export class RepositoryPackageLoader implements PackageLoader {
       if (i === parts.length - 1) {
         const index = await this.indexAt(dir, declarationPath, sourceRoot, logicalRoot, trace)
         if (!index) return undefined
-        return Object.freeze({ definition: index, context: dir })
+        return loadedPackage(index, dir, packageLocation(declarationPath))
       }
       const crossed = await this.crossMount(dir, declarationPath, {
         sourceRoot,
@@ -561,7 +601,7 @@ export class RepositoryPackageLoader implements PackageLoader {
     context: string,
     acc: Map<string, LoadedPackage>,
   ): void {
-    const loaded = Object.freeze({ definition, context })
+    const loaded = loadedPackage(definition, context, packageLocation(logicalPath))
     acc.set(logicalPath, loaded)
     this.packageCache.set(logicalPath, Promise.resolve(loaded))
   }

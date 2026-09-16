@@ -79,7 +79,7 @@ export default function recipeTests() {
     ])({
       location: '//packages/example',
       version: '1.0.0',
-      deps: [{ pkg: '//packages/core', at: 'prod' }],
+      deps: [{ facet: '//packages/core:ci', at: 'prod' }],
     })
 
     const build = runTarget(index.ci.build)
@@ -91,6 +91,60 @@ export default function recipeTests() {
     const packed = runTarget(index.ci.pack)
     assert.equal(written(packed.steps, 'package.json').dependencies['@internal/core'], '>=0.0.0')
     assert.equal(packed.FROM, 'build-image')
+  })
+
+  test('a local dependency names a facet, and the recipe still chooses pack within it', assert => {
+    const index = recipe([
+      typescript({ base: '//base:ci:image', versions }),
+      pnpm(),
+      library(),
+    ])({
+      location: '//packages/example',
+      deps: [{ facet: '//packages/core:ci', at: 'prod' }],
+    })
+
+    const build = index.ci.build
+    assert.equal(
+      build.deps.includes('//packages/core:ci:pack'),
+      true,
+      `expected a dependency on //packages/core:ci:pack, got ${JSON.stringify(build.deps)}`,
+    )
+
+    // The facet is the declaration; the package name is derived from it, not declared twice.
+    assert.equal(
+      written(runTarget(build).steps, 'package.json').dependencies['@internal/core'],
+      'file:./core.tgz',
+    )
+  })
+
+  test('rejects a local dependency that names a package instead of a facet', assert => {
+    const withPackage = () => recipe([
+      typescript({ base: '//base:ci:image', versions }),
+      pnpm(),
+      library(),
+    ])({
+      location: '//packages/example',
+      deps: [{ pkg: '//packages/core', at: 'prod' }],
+    }).ci.build
+
+    // The manifest is where a dependency is read, so render it.
+    assert.throws(
+      () => runTarget(withPackage()),
+      'dependency needs exactly one of facet or npm',
+    )
+  })
+
+  test('rejects a facet reference with no facet', assert => {
+    const withoutFacet = () => recipe([
+      typescript({ base: '//base:ci:image', versions }),
+      pnpm(),
+      library(),
+    ])({
+      location: '//packages/example',
+      deps: [{ facet: '//packages/core', at: 'prod' }],
+    }).ci.build
+
+    assert.throws(withoutFacet, 'Expected a local dependency facet as //package:facet')
   })
 
   test('expresses npm, pnpm, and yarn as ordinary nodes plus contributions', assert => {

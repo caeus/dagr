@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { IndexDef, MountImplementation, Name, PackageDef, Run, Volumes } from '#pkg/schema.js'
+import { FacetDef, IndexDef, MountImplementation, Name, PackageDef, Run, Volumes } from '#pkg/schema.js'
 
 const target = { deps: [], run: () => ({ FROM: 'scratch', steps: [], IGNORE: [] }) }
 
@@ -32,21 +32,42 @@ describe('Name', () => {
   })
 })
 
-describe('PackageDef names', () => {
+describe('PackageDef facets', () => {
   it('applies Name to facet keys', () => {
-    assert.equal(PackageDef.safeParse({ 'ci;rm': { build: target } }).success, false)
+    assert.equal(PackageDef.safeParse({ 'ci;rm': () => ({ build: target }) }).success, false)
   })
 
+  it('accepts a static record of targets as the older form', () => {
+    assert.equal(PackageDef.safeParse({ ci: { build: target } }).success, true)
+  })
+
+  it('rejects a facet that is neither a function nor a record of targets', () => {
+    assert.equal(PackageDef.safeParse({ ci: 'build' }).success, false)
+    assert.equal(PackageDef.safeParse({ ci: { build: { deps: [] } } }).success, false)
+  })
+
+  it('accepts a facet without expanding it', () => {
+    let expansions = 0
+    const parsed = PackageDef.parse({
+      ci: () => {
+        expansions++
+        return { build: target }
+      },
+    })
+
+    assert.equal(typeof parsed['ci'], 'function')
+    assert.equal(expansions, 0, 'parsing a package must not expand its facets')
+  })
+})
+
+describe('FacetDef expansion', () => {
   it('applies Name to target keys', () => {
-    assert.equal(PackageDef.safeParse({ ci: { 'build/run': target } }).success, false)
+    assert.equal(FacetDef.safeParse({ 'build/run': target }).success, false)
   })
 
   it('preserves additional target fields', () => {
     const definition = { ...target, name: 'build' }
-    assert.deepEqual(
-      PackageDef.parse({ ci: { build: definition } }),
-      { ci: { build: definition } },
-    )
+    assert.deepEqual(FacetDef.parse({ build: definition }), { build: definition })
   })
 })
 
