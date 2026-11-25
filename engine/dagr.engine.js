@@ -1,4 +1,4 @@
-import { rdk, target } from '//engine/recipes/typescript//dagr.recipe.js'
+import { derive, value, target } from '//engine/recipes/typescript//dagr.recipe.js'
 import { nodeCli } from '//engine/recipes/dagr.node-cli.js'
 
 const SMOKE_RUN = 'mkdir -p /tmp/dagr-smoke/packages'
@@ -15,14 +15,14 @@ const versions = {
   zod: '4.4.3',
 }
 
-const dagr = rdk.graph({
-  '/package/name': rdk.value('@caeus/dagr'),
+const dagr = ({
+  '/package/name': value('@caeus/dagr'),
 
   // A bundled CLI publishes one JavaScript file, so type declarations are dead weight.
-  '/typescript/emit-declarations': rdk.value(false),
+  '/typescript/emit-declarations': value(false),
 
-  '/source/import-alias': rdk.derive(
-    { source: rdk.one('/source/directory'), output: rdk.one('/output/directory') },
+  '/source/import-alias': derive(
+    { source: '/source/directory', output: '/output/directory' },
     ({ source, output }) => ({
       specifier: '#*',
       sourcePath: `./${source}/*`,
@@ -30,31 +30,25 @@ const dagr = rdk.graph({
     }),
   ),
 
-  '/target/ci/bundlecheck': target({ ignore: rdk.one('/source/ignore') }, {
-    render: (_context, { ignore }) => ({
-      deps: ['ci:bundle'],
-      run: ({ images }) => ({
-        FROM: images['ci:bundle'],
+  '/target/ci/bundlecheck': target({ ignore: '/source/ignore', bundle: '/target/ci/bundle' }, {
+    render: (_context, { ignore, bundle }) => ({
+        FROM: bundle,
         steps: [{ RUN: SMOKE_RUN }],
         IGNORE: ignore,
-      }),
     }),
   }),
 
-  '/target/ci/image': target({}, {
-    render: () => ({
-      deps: ['ci:bundlecheck'],
-      run: ({ images }) => ({
+  '/target/ci/image': target({ checked: '/target/ci/bundlecheck' }, {
+    render: (_context, { checked }) => ({
         FROM: 'node:22-alpine',
         steps: [
           { RUN: 'apk add --no-cache docker-cli docker-cli-buildx' },
           { WORKDIR: '/dagr' },
-          { COPY: { from: images['ci:bundlecheck'], src: '/repo/dist/dagr.js', dest: '/dagr/dagr.js' } },
+          { COPY: { from: checked, src: '/repo/dist/dagr.js', dest: '/dagr/dagr.js' } },
           { ENV: { REPO_ROOT: '/repo' } },
           { ENTRYPOINT: ['node', '--experimental-vm-modules', '/dagr/dagr.js'] },
         ],
         IGNORE: [],
-      }),
     }),
   }),
 })

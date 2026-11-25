@@ -1,4 +1,4 @@
-import rdk from 'dagr:rdk'
+import { value, derive, select } from '//dagr.nodes.js'
 import { file } from '//dagr.contributions.js'
 import { DEVELOPMENT_INTENTS, adapter, buildsFor } from '//dagr.model.js'
 import { writeYaml } from '//dagr.file-utils.js'
@@ -14,12 +14,12 @@ export const fileTarballs = (manifest, localPackages, _context) => localPackages
 const packDestination = command => slug =>
   `mkdir -p /tmp/pack /out && ${command} --pack-destination /tmp/pack && mv /tmp/pack/*.tgz /out/${slug}.tgz`
 
-export const npm = () => rdk.graph({
-  '/package-manager/install-manifest': rdk.value(fileTarballs),
-  '/package-manager/exec': rdk.value(invocation => `npm exec -- ${invocation}`),
-  '/package-manager/script': rdk.value(invocation => invocation),
-  '/package-manager/install': rdk.value(host => `npm install --include=dev${host ? ` --os=${host.os} --cpu=${host.arch}` : ''}`),
-  '/package-manager/pack': rdk.value(packDestination('npm pack')),
+export const npm = () => ({
+  '/package-manager/install-manifest': value(fileTarballs),
+  '/package-manager/exec': value(invocation => `npm exec -- ${invocation}`),
+  '/package-manager/script': value(invocation => invocation),
+  '/package-manager/install': value(host => `npm install --include=dev${host ? ` --os=${host.os} --cpu=${host.arch}` : ''}`),
+  '/package-manager/pack': value(packDestination('npm pack')),
   '/package-manager/config': file({}, {
     for: DEVELOPMENT_INTENTS,
     render: () => [],
@@ -27,14 +27,14 @@ export const npm = () => rdk.graph({
   '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })
 
-export const pnpm = () => rdk.graph({
-  '/package-manager/install-manifest': rdk.value(fileTarballs),
-  '/package-manager/exec': rdk.value(invocation => `pnpm exec ${invocation}`),
-  '/package-manager/script': rdk.value(invocation => invocation),
-  '/package-manager/install': rdk.value(host => `pnpm install --prod=false${host ? ` --os ${host.os} --cpu ${host.arch}` : ''}`),
-  '/package-manager/pack': rdk.value(packDestination('pnpm pack')),
+export const pnpm = () => ({
+  '/package-manager/install-manifest': value(fileTarballs),
+  '/package-manager/exec': value(invocation => `pnpm exec ${invocation}`),
+  '/package-manager/script': value(invocation => invocation),
+  '/package-manager/install': value(host => `pnpm install --prod=false${host ? ` --os ${host.os} --cpu ${host.arch}` : ''}`),
+  '/package-manager/pack': value(packDestination('pnpm pack')),
   '/package-manager/config': file({
-    builds: rdk.many('/**/package-manager/builds'),
+    builds: select('/**/package-manager/builds'),
   }, {
     for: DEVELOPMENT_INTENTS,
     render(context, { builds }) {
@@ -49,9 +49,9 @@ export const pnpm = () => rdk.graph({
   '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })
 
-export const yarn = () => rdk.graph({
-  '/package-manager/install-manifest': rdk.derive(
-    { builds: rdk.many('/**/package-manager/builds') },
+export const yarn = () => ({
+  '/package-manager/install-manifest': derive(
+    { builds: select('/**/package-manager/builds') },
     ({ builds }) => (manifest, localPackages, context) => {
       const allowBuilds = buildsFor(builds, context.intent)
       return {
@@ -67,10 +67,10 @@ export const yarn = () => rdk.graph({
       }
     },
   ),
-  '/package-manager/exec': rdk.value(invocation => `yarn exec ${invocation}`),
-  '/package-manager/script': rdk.value(invocation => invocation),
-  '/package-manager/install': rdk.value(() => 'yarn install --no-immutable'),
-  '/package-manager/pack': rdk.value(slug => `mkdir -p /out && yarn pack --out /out/${slug}.tgz`),
+  '/package-manager/exec': value(invocation => `yarn exec ${invocation}`),
+  '/package-manager/script': value(invocation => invocation),
+  '/package-manager/install': value(() => 'yarn install --no-immutable'),
+  '/package-manager/pack': value(slug => `mkdir -p /out && yarn pack --out /out/${slug}.tgz`),
   '/package-manager/config': file({}, {
     for: DEVELOPMENT_INTENTS,
     render: context => writeYaml('/repo/.yarnrc.yml', {

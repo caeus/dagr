@@ -1,4 +1,4 @@
-import rdk from 'dagr:rdk'
+import { value, derive } from '//dagr.nodes.js'
 import { invocationsFor } from '//dagr.contributions.js'
 
 export const DEVELOPMENT_INTENTS = Object.freeze([
@@ -22,35 +22,26 @@ export function projectName(location, scope) {
   return `@${scope}/${relativePath.replaceAll('/', '-')}`
 }
 
-/**
- * Splits `//packages/core:ci` into the package it names and the facet within it. A local dependency
- * identifies a facet, so the package is derived from it rather than declared separately.
- */
-export function facetReference(reference) {
-  const boundary = reference.lastIndexOf(':')
-  const pkg = boundary === -1 ? '' : reference.slice(0, boundary)
-  const facet = boundary === -1 ? '' : reference.slice(boundary + 1)
-  if (!pkg.startsWith('//') || facet === '' || facet.includes('/')) {
-    throw new Error(
-      `Expected a local dependency facet as //package:facet, got ${JSON.stringify(reference)}`,
-    )
+/** A local dependency names the exact node producing its tarball. */
+export function projectReference(reference) {
+  const boundary = reference.indexOf(':')
+  const pkg = reference.slice(0, boundary)
+  const path = reference.slice(boundary + 1)
+  if (!pkg.startsWith('//') || !path.startsWith('/')) {
+    throw new Error(`Expected //project:/node/path, got ${JSON.stringify(reference)}`)
   }
-  return Object.freeze({ pkg, facet })
+  return Object.freeze({ pkg, path })
 }
 
-/**
- * The facet is declared; choosing `pack` within it is still this recipe's decision, not the
- * dependant's.
- */
 export const localPackagesOf = (deps, scope) => Object.freeze(deps
-  .filter(dependency => 'facet' in dependency)
+  .filter(dependency => 'target' in dependency)
   .map(dependency => {
-    const name = projectName(facetReference(dependency.facet).pkg, scope)
+    const name = projectName(projectReference(dependency.target).pkg, scope)
     return Object.freeze({
       name,
       tarball: `${name.slice(name.indexOf('/') + 1)}.tgz`,
       at: dependency.at,
-      target: `${dependency.facet}:pack`,
+      target: dependency.target,
     })
   }))
 
@@ -64,8 +55,8 @@ export function versionOf(versions, name) {
 }
 
 /** Projects one canonical binding into an integration or capability path. */
-export const adapter = path => rdk.derive(
-  { value: rdk.one(path) },
+export const adapter = path => derive(
+  { value: path },
   ({ value }) => value,
 )
 
@@ -87,7 +78,7 @@ export function tooling({
   if (!Array.isArray(builds) || builds.some(name => typeof name !== 'string' || name === '')) {
     throw new TypeError('tooling builds must be an array of package names')
   }
-  return rdk.value(Object.freeze({
+  return value(Object.freeze({
     for: Object.freeze([...intents]),
     packages: Object.freeze([...packages]),
     types: Object.freeze([...types]),
@@ -95,8 +86,8 @@ export function tooling({
   }))
 }
 
-const toolingProjection = (path, field) => rdk.derive(
-  { tooling: rdk.one(path) },
+const toolingProjection = (path, field) => derive(
+  { tooling: path },
   ({ tooling: contribution }) => Object.freeze({
     for: contribution.for,
     values: contribution[field],

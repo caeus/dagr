@@ -1,5 +1,5 @@
 import bundledVersions from '//dagr.versions.yaml'
-import rdk from 'dagr:rdk'
+import { value, derive, select } from '//dagr.nodes.js'
 import { command, file, filesFor, target } from '//dagr.contributions.js'
 import { writeJson, writeText } from '//dagr.file-utils.js'
 import { RECOMMENDED_IGNORE } from '//dagr.dockerignore.js'
@@ -10,7 +10,7 @@ import {
   copyAssets,
   copyLocalPackages,
   copySource,
-  facetReference,
+  projectReference,
   localPackagesOf,
   packageJsonDependencies,
   packageManagerBuilds,
@@ -33,15 +33,15 @@ const dependencyEntries = (name, scope, deps, versions, runtimePackages) => {
   const prod = runtimePackages.map(pkg => [pkg, versionOf(versions, pkg)])
   const dev = []
   for (const dependency of deps) {
-    const sources = ['facet', 'npm'].filter(source => source in dependency)
+    const sources = ['target', 'npm'].filter(source => source in dependency)
     if (sources.length !== 1) {
       throw new Error(`${name}: dependency needs exactly one of facet or npm`)
     }
     if (!['prod', 'dev'].includes(dependency.at)) {
-      throw new Error(`${name}: dependency ${dependency.facet ?? dependency.npm} needs at prod or dev`)
+      throw new Error(`${name}: dependency ${dependency.target ?? dependency.npm} needs at prod or dev`)
     }
-    const entry = 'facet' in dependency
-      ? [projectName(facetReference(dependency.facet).pkg, scope), '>=0.0.0']
+    const entry = 'target' in dependency
+      ? [projectName(projectReference(dependency.target).pkg, scope), '>=0.0.0']
       : [dependency.npm, versionOf(versions, dependency.npm)]
     ;(dependency.at === 'dev' ? dev : prod).push(entry)
   }
@@ -95,32 +95,32 @@ const packageManifest = (
 }
 
 /** Bundles the facts that describe the published package, so renderers take a named record. */
-const packageFacts = rdk.derive(
+const packageFacts = derive(
   {
-    name: rdk.one('/package/name'),
-    version: rdk.one('/package/version'),
-    deps: rdk.one('/package/dependencies'),
-    metadata: rdk.one('/package/metadata'),
-    scope: rdk.one('/package/scope'),
-    format: rdk.one('/javascript/module-format'),
-    product: rdk.one('/product/kind'),
-    source: rdk.one('/source/directory'),
-    entry: rdk.one('/source/entry'),
-    output: rdk.one('/output/layout'),
-    alias: rdk.one('/source/import-alias'),
-    runtime: rdk.one('/package/runtime-dependencies'),
+    name: '/package/name',
+    version: '/package/version',
+    deps: '/package/dependencies',
+    metadata: '/package/metadata',
+    scope: '/package/scope',
+    format: '/javascript/module-format',
+    product: '/product/kind',
+    source: '/source/directory',
+    entry: '/source/entry',
+    output: '/output/layout',
+    alias: '/source/import-alias',
+    runtime: '/package/runtime-dependencies',
   },
   facts => Object.freeze({ ...facts }),
 )
 
 const packageJson = file(
   {
-    facts: rdk.one('/package/facts'),
-    dependencies: rdk.many('/**/package-json/dependencies'),
-    configuredVersions: rdk.one('/version/catalog'),
-    installManifest: rdk.one('/package-manager/install-manifest'),
-    localPackages: rdk.one('/package/local-dependencies'),
-    scripts: rdk.one('/package/scripts'),
+    facts: '/package/facts',
+    dependencies: select('/**/package-json/dependencies'),
+    configuredVersions: '/version/catalog',
+    installManifest: '/package-manager/install-manifest',
+    localPackages: '/package/local-dependencies',
+    scripts: '/package/scripts',
   },
   {
     for: [...DEVELOPMENT_INTENTS, ...DISTRIBUTION_INTENTS],
@@ -137,17 +137,17 @@ const packageJson = file(
 
 const tsconfig = file(
   {
-    product: rdk.one('/product/kind'),
-    language: rdk.one('/typescript/language-target'),
-    sourceMaps: rdk.one('/output/source-maps'),
-    emitDeclarations: rdk.one('/typescript/emit-declarations'),
-    source: rdk.one('/source/directory'),
-    output: rdk.one('/output/layout'),
-    module: rdk.one('/typescript/module-kind'),
-    moduleResolution: rdk.one('/typescript/module-resolution'),
-    libraries: rdk.one('/typescript/libraries'),
-    alias: rdk.one('/source/import-alias'),
-    types: rdk.many('/**/tsconfig/types'),
+    product: '/product/kind',
+    language: '/typescript/language-target',
+    sourceMaps: '/output/source-maps',
+    emitDeclarations: '/typescript/emit-declarations',
+    source: '/source/directory',
+    output: '/output/layout',
+    module: '/typescript/module-kind',
+    moduleResolution: '/typescript/module-resolution',
+    libraries: '/typescript/libraries',
+    alias: '/source/import-alias',
+    types: select('/**/tsconfig/types'),
   },
   {
     for: DEVELOPMENT_INTENTS,
@@ -214,33 +214,32 @@ export const sourceTarget = ({
 
   return target(
     {
-      base: rdk.one('/image/base'),
-      ignore: rdk.one('/source/ignore'),
-      source: rdk.one('/source/directory'),
-      localPackages: rdk.one('/package/local-dependencies'),
-      exec: rdk.one('/package-manager/exec'),
-      install: rdk.one('/package-manager/install'),
-      files: rdk.many(
+      base: '/image/base',
+      ignore: '/source/ignore',
+      source: '/source/directory',
+      localPackages: '/package/local-dependencies',
+      localImages: '/package/local-images',
+      exec: '/package-manager/exec',
+      install: '/package-manager/install',
+      files: select(
         '/typescript/package-json',
         '/package-manager/config',
         ...files,
       ),
       ...(commandInput === undefined ? {} : { command: commandInput }),
-      ...(assets ? { buildAssets: rdk.one('/source/assets') } : {}),
+      ...(assets ? { buildAssets: '/source/assets' } : {}),
     },
     {
       intent,
       render(context, values) {
         const {
-          base, ignore, source, localPackages, exec, install, files: targetFiles,
+          base, ignore, source, localPackages, localImages, exec, install, files: targetFiles,
           command: selected, buildAssets = [],
         } = values
         return {
-          deps: [base, ...localPackages.map(pkg => pkg.target)],
-          run: ({ images }) => ({
-            FROM: images[base],
+            FROM: base,
             steps: [
-              ...copyLocalPackages(localPackages, images),
+              ...copyLocalPackages(localPackages, localImages),
               copySource(source),
               ...copyAssets(buildAssets),
               { WORKDIR: '/repo' },
@@ -250,7 +249,6 @@ export const sourceTarget = ({
             ],
             IGNORE: ignore,
             ...(exported === undefined ? {} : { EXPORT: exported }),
-          }),
         }
       },
     },
@@ -259,30 +257,28 @@ export const sourceTarget = ({
 
 /** Materializes every structurally hoisted file contribution onto the host. */
 export function hoister() {
-  return rdk.graph({
+  return ({
     '/target/dev/hoist': target(
       {
-        base: rdk.one('/image/base'),
-        ignore: rdk.one('/source/ignore'),
-        localPackages: rdk.one('/package/local-dependencies'),
-        hoisted: rdk.many('/**/hoisted', '/**/hoisted/*'),
+        base: '/image/base',
+        ignore: '/source/ignore',
+        localPackages: '/package/local-dependencies',
+        localImages: '/package/local-images',
+        hoisted: select('/**/hoisted', '/**/hoisted/*'),
       },
       {
         intent: 'dev',
-        render(context, { base, ignore, localPackages, hoisted }) {
+        render(context, { base, ignore, localPackages, localImages, hoisted }) {
           return {
-            deps: [base, ...localPackages.map(pkg => pkg.target)],
-            run: ({ images, host }) => ({
-              FROM: images[base],
+              FROM: base,
               steps: [
-                ...copyLocalPackages(localPackages, images),
+                ...copyLocalPackages(localPackages, localImages),
                 { WORKDIR: '/repo' },
                 ...filesFor(hoisted, {
                   intent: context.intent,
                   facet: context.facet,
-                  host,
+                  host: context.host,
                   install: true,
-                }),
               ],
               IGNORE: ignore,
               EXPORT: { '/repo/': './' },
@@ -306,33 +302,33 @@ export function typescript({
   ignore = RECOMMENDED_IGNORE,
 } = {}) {
   if (!base) throw new Error('typescript() requires a base target')
-  return rdk.graph({
-    '/image/base': rdk.value(base),
-    '/source/ignore': rdk.value(ignore),
-    '/package/scope': rdk.value(scope),
-    '/version/catalog': rdk.value(Object.freeze({ ...bundledVersions.deps, ...versions })),
-    '/source/directory': rdk.value(sourceDirectory),
-    '/source/entry': rdk.value(entryFile),
-    '/output/directory': rdk.value(outputDirectory),
-    '/javascript/module-format': rdk.value(javascriptModuleFormat),
-    '/typescript/emit-declarations': rdk.value(true),
-    '/package/name': rdk.derive(
-      { location: rdk.one('/package/location'), scope: rdk.one('/package/scope') },
+  return ({
+    '/image/base': derive({ image: base }, ({ image }) => image),
+    '/source/ignore': value(ignore),
+    '/package/scope': value(scope),
+    '/version/catalog': value(Object.freeze({ ...bundledVersions.deps, ...versions })),
+    '/source/directory': value(sourceDirectory),
+    '/source/entry': value(entryFile),
+    '/output/directory': value(outputDirectory),
+    '/javascript/module-format': value(javascriptModuleFormat),
+    '/typescript/emit-declarations': value(true),
+    '/package/name': derive(
+      { location: '/package/location', scope: '/package/scope' },
       ({ location, scope: packageScope }) => projectName(location, packageScope),
     ),
-    '/package/slug': rdk.derive(
-      { name: rdk.one('/package/name') },
+    '/package/slug': derive(
+      { name: '/package/name' },
       ({ name }) => name.slice(name.indexOf('/') + 1),
     ),
-    '/source/layout': rdk.derive(
-      { directory: rdk.one('/source/directory'), entry: rdk.one('/source/entry') },
+    '/source/layout': derive(
+      { directory: '/source/directory', entry: '/source/entry' },
       ({ directory, entry }) => ({ directory, entry }),
     ),
-    '/output/layout': rdk.derive(
+    '/output/layout': derive(
       {
-        product: rdk.one('/product/kind'),
-        directory: rdk.one('/output/directory'),
-        entry: rdk.one('/source/entry'),
+        product: '/product/kind',
+        directory: '/output/directory',
+        entry: '/source/entry',
       },
       ({ product, directory, entry }) => {
         if (product === 'worker') return undefined
@@ -341,12 +337,12 @@ export function typescript({
         return { directory, runtimeFile: `${directory}/${stem}.js`, declarationFile: `${directory}/${stem}.d.ts` }
       },
     ),
-    '/package/local-dependencies': rdk.derive(
-      { dependencies: rdk.one('/package/dependencies'), scope: rdk.one('/package/scope') },
+    '/package/local-dependencies': derive(
+      { dependencies: '/package/dependencies', scope: '/package/scope' },
       ({ dependencies, scope: packageScope }) => localPackagesOf(dependencies, packageScope),
     ),
-    '/package/scripts': rdk.derive(
-      { commands: rdk.many('/**/package-json/script'), script: rdk.one('/package-manager/script') },
+    '/package/scripts': derive(
+      { commands: select('/**/package-json/script'), script: '/package-manager/script' },
       ({ commands, script }) => scriptsFor(commands, script),
     ),
     '/package/facts': packageFacts,
@@ -374,84 +370,82 @@ export function library({
   }
   const packages = typescriptPackages(runtime)
   const types = runtime === 'node' ? ['node'] : []
-  return rdk.graph({
-    '/product/kind': rdk.value('library'),
-    '/runtime/kind': rdk.value(runtime),
-    '/typescript/language-target': rdk.value(language),
-    '/output/source-maps': rdk.value(sourceMaps),
-    '/source/assets': rdk.value(Object.freeze([...assets])),
-    '/package/runtime-dependencies': rdk.value(Object.freeze([])),
-    '/typescript/module-kind': rdk.value(runtime === 'node' ? 'NodeNext' : 'ESNext'),
-    '/typescript/module-resolution': rdk.value(runtime === 'node' ? 'NodeNext' : 'Bundler'),
-    '/typescript/libraries': rdk.value(Object.freeze([language])),
-    '/source/import-alias': rdk.value(undefined),
+  return ({
+    '/product/kind': value('library'),
+    '/runtime/kind': value(runtime),
+    '/typescript/language-target': value(language),
+    '/output/source-maps': value(sourceMaps),
+    '/source/assets': value(Object.freeze([...assets])),
+    '/package/runtime-dependencies': value(Object.freeze([])),
+    '/typescript/module-kind': value(runtime === 'node' ? 'NodeNext' : 'ESNext'),
+    '/typescript/module-resolution': value(runtime === 'node' ? 'NodeNext' : 'Bundler'),
+    '/typescript/libraries': value(Object.freeze([language])),
+    '/source/import-alias': value(undefined),
     '/library/tooling': tooling({
       packages,
       types,
     }),
     '/library/package-json/dependencies': packageJsonDependencies('/library/tooling'),
     '/library/tsconfig/types': tsconfigTypes('/library/tooling'),
-    '/typescript/typechecker': command({ files: rdk.many('/typescript/tsconfig') }, {
+    '/typescript/typechecker': command({ files: select('/typescript/tsconfig') }, {
       for: ['typecheck'],
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
-    '/typescript/compiler': command({ files: rdk.many('/typescript/tsconfig') }, {
+    '/typescript/compiler': command({ files: select('/typescript/tsconfig') }, {
       for: ['build'],
       run: () => ({ tool: 'tsc' }),
     }),
     '/typescript/compiler/package-json/script': adapter('/typescript/compiler'),
-    '/target/ci/typecheck': sourceTarget({ command: rdk.one('/typescript/typechecker') }),
-    '/target/ci/build': sourceTarget({ command: rdk.one('/typescript/compiler'), assets: true }),
+    '/target/ci/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
+    '/target/ci/build': sourceTarget({ command: '/typescript/compiler', assets: true }),
     '/target/ci/pack': target(
       {
-        ignore: rdk.one('/source/ignore'),
-        localPackages: rdk.one('/package/local-dependencies'),
-        pack: rdk.one('/package-manager/pack'),
-        slug: rdk.one('/package/slug'),
-        files: rdk.many('/typescript/package-json'),
+        ignore: '/source/ignore',
+        localPackages: '/package/local-dependencies',
+        localImages: '/package/local-images',
+        base: '/target/ci/build',
+        pack: '/package-manager/pack',
+        slug: '/package/slug',
+        files: select('/typescript/package-json'),
       },
       {
-        render(context, { ignore, localPackages, pack, slug, files }) {
+        render(context, { ignore, localPackages, localImages, base, pack, slug, files }) {
           return {
-            deps: ['build', ...localPackages.map(pkg => pkg.target)],
-            run: ({ images }) => ({
-              FROM: images.build,
+              FROM: base,
               steps: [
-                ...copyLocalPackages(localPackages, images, '/out'),
+                ...copyLocalPackages(localPackages, localImages, '/out'),
                 { WORKDIR: '/repo' },
                 ...context.files(files, { install: false }),
                 { RUN: pack(slug) },
               ],
               IGNORE: ignore,
-            }),
           }
         },
       },
     ),
     '/target/publish/pack': target(
       {
-        ignore: rdk.one('/source/ignore'),
-        localPackages: rdk.one('/package/local-dependencies'),
-        pack: rdk.one('/package-manager/pack'),
-        slug: rdk.one('/package/slug'),
-        files: rdk.many('/typescript/package-json'),
+        ignore: '/source/ignore',
+        localPackages: '/package/local-dependencies',
+        localImages: '/package/local-images',
+        base: '/target/ci/build',
+        pack: '/package-manager/pack',
+        slug: '/package/slug',
+        files: select('/typescript/package-json'),
       },
       {
         intent: 'publish',
-        render(context, { ignore, localPackages, pack, slug, files }) {
+        render(context, { ignore, localPackages, localImages, base, pack, slug, files }) {
           return {
-            deps: ['ci:build', ...localPackages.map(pkg => pkg.target)],
-            run: ({ images }) => ({
-              FROM: images['ci:build'],
+              FROM: base,
               steps: [
-                ...copyLocalPackages(localPackages, images, '/out'),
+                ...copyLocalPackages(localPackages, localImages, '/out'),
                 { WORKDIR: '/repo' },
                 ...context.files(files, { install: false }),
                 { RUN: pack(slug) },
               ],
               IGNORE: ignore,
-            }),
           }
         },
       },
@@ -461,18 +455,18 @@ export function library({
 
 export function cloudflareWorker({ language = 'ES2022' } = {}) {
   const packages = [...typescriptPackages('portable'), '@cloudflare/workers-types', 'wrangler']
-  return rdk.graph({
-    '/product/kind': rdk.value('worker'),
-    '/runtime/kind': rdk.value('cloudflare-worker'),
-    '/typescript/language-target': rdk.value(language),
-    '/output/source-maps': rdk.value(false),
-    '/source/assets': rdk.value(Object.freeze([])),
-    '/package/runtime-dependencies': rdk.value(Object.freeze([])),
-    '/typescript/module-kind': rdk.value('NodeNext'),
-    '/typescript/module-resolution': rdk.value('NodeNext'),
-    '/typescript/libraries': rdk.value(Object.freeze([language])),
-    '/source/import-alias': rdk.derive(
-      { source: rdk.one('/source/directory') },
+  return ({
+    '/product/kind': value('worker'),
+    '/runtime/kind': value('cloudflare-worker'),
+    '/typescript/language-target': value(language),
+    '/output/source-maps': value(false),
+    '/source/assets': value(Object.freeze([])),
+    '/package/runtime-dependencies': value(Object.freeze([])),
+    '/typescript/module-kind': value('NodeNext'),
+    '/typescript/module-resolution': value('NodeNext'),
+    '/typescript/libraries': value(Object.freeze([language])),
+    '/source/import-alias': derive(
+      { source: '/source/directory' },
       ({ source }) => ({
         specifier: '#/*', sourcePath: `./${source}/*`, runtimePath: `./${source}/*`,
       }),
@@ -485,12 +479,12 @@ export function cloudflareWorker({ language = 'ES2022' } = {}) {
     '/cloudflare-worker/package-json/dependencies': packageJsonDependencies('/cloudflare-worker/tooling'),
     '/cloudflare-worker/tsconfig/types': tsconfigTypes('/cloudflare-worker/tooling'),
     '/cloudflare-worker/package-manager/builds': packageManagerBuilds('/cloudflare-worker/tooling'),
-    '/typescript/typechecker': command({ files: rdk.many('/typescript/tsconfig') }, {
+    '/typescript/typechecker': command({ files: select('/typescript/tsconfig') }, {
       for: ['typecheck'],
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
-    '/target/ci/typecheck': sourceTarget({ command: rdk.one('/typescript/typechecker') }),
+    '/target/ci/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
   })
 }
 
@@ -508,18 +502,18 @@ const viteRuntimePackages = Object.freeze([
 
 export function viteReact({ language = 'ES2020' } = {}) {
   const packages = [...typescriptPackages('node'), 'vite']
-  return rdk.graph({
-    '/product/kind': rdk.value('web'),
-    '/runtime/kind': rdk.value('browser'),
-    '/typescript/language-target': rdk.value(language),
-    '/output/source-maps': rdk.value(false),
-    '/source/assets': rdk.value(Object.freeze(['index.html', 'public'])),
-    '/package/runtime-dependencies': rdk.value(viteRuntimePackages),
-    '/typescript/module-kind': rdk.value('ESNext'),
-    '/typescript/module-resolution': rdk.value('Bundler'),
-    '/typescript/libraries': rdk.value(Object.freeze([language, 'DOM', 'DOM.Iterable'])),
-    '/source/import-alias': rdk.derive(
-      { source: rdk.one('/source/directory') },
+  return ({
+    '/product/kind': value('web'),
+    '/runtime/kind': value('browser'),
+    '/typescript/language-target': value(language),
+    '/output/source-maps': value(false),
+    '/source/assets': value(Object.freeze(['index.html', 'public'])),
+    '/package/runtime-dependencies': value(viteRuntimePackages),
+    '/typescript/module-kind': value('ESNext'),
+    '/typescript/module-resolution': value('Bundler'),
+    '/typescript/libraries': value(Object.freeze([language, 'DOM', 'DOM.Iterable'])),
+    '/source/import-alias': derive(
+      { source: '/source/directory' },
       ({ source }) => ({
         specifier: '#/*', sourcePath: `./${source}/*`, runtimePath: `./${source}/*`,
       }),
@@ -532,7 +526,7 @@ export function viteReact({ language = 'ES2020' } = {}) {
     '/vite/package-json/dependencies': packageJsonDependencies('/vite/tooling'),
     '/vite/tsconfig/types': tsconfigTypes('/vite/tooling'),
     '/vite/package-manager/builds': packageManagerBuilds('/vite/tooling'),
-    '/vite/config': file({ source: rdk.one('/source/directory') }, {
+    '/vite/config': file({ source: '/source/directory' }, {
       for: ['dev', 'test', 'build'],
       render(_context, { source }) {
         return writeText('/repo/vite.config.ts', `import { fileURLToPath, URL } from 'node:url'
@@ -548,19 +542,19 @@ export default defineConfig({
       },
     }),
     '/vite/config/hoisted': adapter('/vite/config'),
-    '/typescript/typechecker': command({ files: rdk.many('/typescript/tsconfig') }, {
+    '/typescript/typechecker': command({ files: select('/typescript/tsconfig') }, {
       for: ['typecheck'],
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
-    '/vite/compiler': command({ files: rdk.many('/typescript/tsconfig', '/vite/config') }, {
+    '/vite/compiler': command({ files: select('/typescript/tsconfig', '/vite/config') }, {
       for: ['build'],
       run: () => ({ tool: 'vite build' }),
     }),
     '/typescript/compiler': adapter('/vite/compiler'),
     '/typescript/compiler/package-json/script': adapter('/typescript/compiler'),
-    '/target/ci/typecheck': sourceTarget({ command: rdk.one('/typescript/typechecker') }),
-    '/target/ci/build': sourceTarget({ command: rdk.one('/typescript/compiler'), assets: true }),
+    '/target/ci/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
+    '/target/ci/build': sourceTarget({ command: '/typescript/compiler', assets: true }),
   })
 }
 
@@ -571,7 +565,7 @@ export function prettier({
   printWidth = 100,
   trailingComma = 'none',
 } = {}) {
-  return rdk.graph({
+  return ({
     '/prettier/tooling': tooling({
       for: ['dev'],
       packages: ['prettier'],
@@ -593,7 +587,7 @@ export function prettier({
 }
 
 export function biome({ formatter = true, linter = true } = {}) {
-  return rdk.graph({
+  return ({
     '/biome/config': file({}, {
       for: ['dev', 'lint'],
       render: () => writeJson('/repo/biome.json', {
@@ -608,22 +602,22 @@ export function biome({ formatter = true, linter = true } = {}) {
     }),
     '/biome/package-json/dependencies': packageJsonDependencies('/biome/tooling'),
     ...(linter ? {
-      '/biome/linter': command({ files: rdk.many('/biome/config') }, {
+      '/biome/linter': command({ files: select('/biome/config') }, {
         for: ['lint'],
         run: () => ({ tool: 'biome check .' }),
       }),
       '/typescript/linter': adapter('/biome/linter'),
       '/typescript/linter/package-json/script': adapter('/typescript/linter'),
-      '/target/ci/lint': sourceTarget({ command: rdk.one('/typescript/linter') }),
+      '/target/ci/lint': sourceTarget({ command: '/typescript/linter' }),
     } : {}),
   })
 }
 
 export function vitest({ environment = 'node', globals = false, typecheck = false } = {}) {
   const configDeps = environment === 'jsdom'
-    ? { viteConfig: rdk.one('/vite/config') }
+    ? { viteConfig: '/vite/config' }
     : {}
-  return rdk.graph({
+  return ({
     '/vitest/config': file(configDeps, {
       for: ['dev', 'test'],
       render() {
@@ -660,7 +654,7 @@ export default defineConfig({ test: {
     '/vitest/tsconfig/types': tsconfigTypes('/vitest/tooling'),
     '/vitest/package-manager/builds': packageManagerBuilds('/vitest/tooling'),
     '/vitest/tester': command({
-      files: rdk.many(
+      files: select(
         '/typescript/tsconfig',
         '/vitest/config',
         ...(environment === 'jsdom' ? ['/vite/config'] : []),
@@ -671,7 +665,7 @@ export default defineConfig({ test: {
     }),
     '/typescript/tester': adapter('/vitest/tester'),
     '/typescript/tester/package-json/script': adapter('/typescript/tester'),
-    '/target/ci/test': sourceTarget({ command: rdk.one('/typescript/tester') }),
+    '/target/ci/test': sourceTarget({ command: '/typescript/tester' }),
   })
 }
 
@@ -683,8 +677,8 @@ export function eslint({ prettier: enforceFormatting = false, explicitReturnType
     'eslint',
     ...(enforceFormatting ? ['eslint-plugin-prettier', 'prettier'] : []),
   ]
-  return rdk.graph({
-    '/eslint/config': file({ source: rdk.one('/source/directory') }, {
+  return ({
+    '/eslint/config': file({ source: '/source/directory' }, {
       for: ['dev', 'lint'],
       render(_context, { source }) {
         const rules = {
@@ -725,7 +719,7 @@ ${enforceFormatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}exp
     '/eslint/tooling': tooling({ for: ['dev', 'lint'], packages }),
     '/eslint/package-json/dependencies': packageJsonDependencies('/eslint/tooling'),
     '/eslint/linter': command({
-      files: rdk.many(
+      files: select(
         '/typescript/tsconfig',
         '/eslint/config',
         ...(enforceFormatting ? ['/prettier/config'] : []),
@@ -736,7 +730,7 @@ ${enforceFormatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}exp
     }),
     '/typescript/linter': adapter('/eslint/linter'),
     '/typescript/linter/package-json/script': adapter('/typescript/linter'),
-    '/target/ci/lint': sourceTarget({ command: rdk.one('/typescript/linter') }),
+    '/target/ci/lint': sourceTarget({ command: '/typescript/linter' }),
   })
 }
 
@@ -770,10 +764,10 @@ export default {
  * `bundle` intent keeps the config and the bundler out of the compile target that feeds it.
  */
 export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
-  return rdk.graph({
-    '/output/bundle-directory': rdk.value(bundleDirectory),
-    '/output/bundle-file': rdk.derive(
-      { directory: rdk.one('/output/bundle-directory'), slug: rdk.one('/package/slug') },
+  return ({
+    '/output/bundle-directory': value(bundleDirectory),
+    '/output/bundle-file': derive(
+      { directory: '/output/bundle-directory', slug: '/package/slug' },
       ({ directory, slug }) => `${directory}/${slug}.js`,
     ),
     '/rollup/tooling': tooling({
@@ -781,8 +775,8 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
     }),
     '/rollup/package-json/dependencies': packageJsonDependencies('/rollup/tooling'),
     '/rollup/config': file({
-      output: rdk.one('/output/layout'),
-      bundleFile: rdk.one('/output/bundle-file'),
+      output: '/output/layout',
+      bundleFile: '/output/bundle-file',
     }, {
       for: ['bundle'],
       render(_context, { output, bundleFile }) {
@@ -792,37 +786,35 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
         return writeText('/repo/rollup.config.js', rollupConfig(output.runtimeFile, bundleFile, strict))
       },
     }),
-    '/rollup/bundler': command({ files: rdk.many('/rollup/config') }, {
+    '/rollup/bundler': command({ files: select('/rollup/config') }, {
       for: ['bundle'],
       run: () => ({ tool: 'rollup --config rollup.config.js' }),
     }),
     '/typescript/bundler': adapter('/rollup/bundler'),
     '/target/ci/bundle': target({
-      ignore: rdk.one('/source/ignore'),
-      exec: rdk.one('/package-manager/exec'),
-      bundleFile: rdk.one('/output/bundle-file'),
-      bundler: rdk.one('/typescript/bundler'),
+      ignore: '/source/ignore',
+      exec: '/package-manager/exec',
+      bundleFile: '/output/bundle-file',
+      bundler: '/typescript/bundler',
+      base: '/target/ci/build',
     }, {
-      render: (context, { ignore, exec, bundleFile, bundler }) => ({
-        deps: ['build'],
-        run: ({ images }) => ({
-          FROM: images.build,
+      render: (context, { ignore, exec, bundleFile, bundler, base }) => ({
+          FROM: base,
           steps: [...context.files(bundler.files), ...runSteps(bundler.invocations, exec)],
           IGNORE: ignore,
           EXPORT: { [`/repo/${bundleFile}`]: bundleFile },
-        }),
       }),
     }),
   })
 }
 
 export function typedoc({ title } = {}) {
-  return rdk.graph({
+  return ({
     '/typedoc/config': file({
-      source: rdk.one('/source/directory'),
-      entry: rdk.one('/source/entry'),
-      name: rdk.one('/package/name'),
-      product: rdk.one('/product/kind'),
+      source: '/source/directory',
+      entry: '/source/entry',
+      name: '/package/name',
+      product: '/product/kind',
     }, {
       for: ['dev', 'docs'],
       render(context, { source, entry, name, product }) {
@@ -844,14 +836,14 @@ export function typedoc({ title } = {}) {
       packages: ['typedoc'],
     }),
     '/typedoc/package-json/dependencies': packageJsonDependencies('/typedoc/tooling'),
-    '/typedoc/documenter': command({ files: rdk.many('/typescript/tsconfig', '/typedoc/config') }, {
+    '/typedoc/documenter': command({ files: select('/typescript/tsconfig', '/typedoc/config') }, {
       for: ['docs'],
       run: () => ({ tool: 'typedoc' }),
     }),
     '/typescript/documenter': adapter('/typedoc/documenter'),
     '/typescript/documenter/package-json/script': adapter('/typescript/documenter'),
     '/target/ci/docs': sourceTarget({
-      command: rdk.one('/typescript/documenter'),
+      command: '/typescript/documenter',
       export: { '/repo/docs/': 'docs/' },
     }),
   })

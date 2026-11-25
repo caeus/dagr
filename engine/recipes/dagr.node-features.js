@@ -3,7 +3,6 @@ import {
   command,
   packageJsonDependencies,
   packageManagerBuilds,
-  rdk,
   runSteps,
   target,
   tooling,
@@ -24,18 +23,15 @@ export function nodeBase({
   image = 'node:22-alpine',
   packageManager = 'pnpm@11.20.0',
 } = {}) {
-  return rdk.graph({
+  return ({
     [`/target/ci/${name}`]: target({}, {
       render: () => ({
-        deps: [],
-        run: () => ({
           FROM: image,
           steps: [
             { RUN: `corepack enable && corepack prepare ${packageManager} --activate` },
             { WORKDIR: '/repo' },
           ],
           IGNORE: [],
-        }),
       }),
     }),
   })
@@ -60,7 +56,7 @@ export function nodeTest({
     `'${pattern}'`,
   ].join(' ')
 
-  return rdk.graph({
+  return ({
     // Every development intent, not just `test`: the target below runs in the image `build` produced,
     // so tsx has to be in the manifest that image installed. esbuild is tsx's own build step.
     '/node-test/tooling': tooling({
@@ -76,17 +72,15 @@ export function nodeTest({
     '/typescript/tester': adapter('/node-test/tester'),
     '/typescript/tester/package-json/script': adapter('/typescript/tester'),
     '/target/ci/test': target({
-      ignore: rdk.one('/source/ignore'),
-      exec: rdk.one('/package-manager/exec'),
-      tester: rdk.one('/typescript/tester'),
+      ignore: '/source/ignore',
+      exec: '/package-manager/exec',
+      tester: '/typescript/tester',
+      base: '/target/ci/build',
     }, {
-      render: (_context, { ignore, exec, tester }) => ({
-        deps: ['build'],
-        run: ({ images }) => ({
-          FROM: images.build,
+      render: (_context, { ignore, exec, tester, base }) => ({
+          FROM: base,
           steps: runSteps(tester.invocations, exec),
           IGNORE: ignore,
-        }),
       }),
     }),
   })
