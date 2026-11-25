@@ -368,7 +368,7 @@ fallback: null
 
     try {
       const local = await loader.loadPackage('tool')
-      assert.equal(Run.parse((local?.definition['/ci/build']?.run({}, { os: 'linux', arch: 'x64' }) as { build: unknown } | undefined)?.build), 'local')
+      assert.equal(Run.parse((local?.definition['/ci/build']?.run({}, { os: 'linux', arch: 'x64' }) as { build: unknown } | undefined)?.build).FROM, 'local')
       assert.equal(calls.length, 0)
 
       assert.ok(await loader.loadPackage('tool//pkg'))

@@ -10,13 +10,11 @@ import {
   copyAssets,
   copyLocalPackages,
   copySource,
-  projectReference,
   localPackagesOf,
   packageJsonDependencies,
   packageManagerBuilds,
   packagesFor,
   present,
-  projectName,
   runSteps,
   scriptsFor,
   tooling,
@@ -33,6 +31,8 @@ const dependencyEntries = (name, scope, deps, versions, runtimePackages) => {
   const prod = runtimePackages.map(pkg => [pkg, versionOf(versions, pkg)])
   const dev = []
   for (const dependency of deps) {
+    if ('target' in dependency && (typeof dependency.name !== 'string' || !dependency.name))
+      throw new Error('Local package dependencies must name the npm package')
     const sources = ['target', 'npm'].filter(source => source in dependency)
     if (sources.length !== 1) {
       throw new Error(`${name}: dependency needs exactly one of facet or npm`)
@@ -41,7 +41,7 @@ const dependencyEntries = (name, scope, deps, versions, runtimePackages) => {
       throw new Error(`${name}: dependency ${dependency.target ?? dependency.npm} needs at prod or dev`)
     }
     const entry = 'target' in dependency
-      ? [projectName(projectReference(dependency.target).pkg, scope), '>=0.0.0']
+      ? [dependency.name, '>=0.0.0']
       : [dependency.npm, versionOf(versions, dependency.npm)]
     ;(dependency.at === 'dev' ? dev : prod).push(entry)
   }
@@ -259,7 +259,8 @@ export function hoister(name) {
 /** Common facts and the two universal generated files. All values are ordinary Dagr nodes. */
 export function typescript(name, {
   base = '/node-base',
-  location = `//${name}`,
+  location,
+  packageName,
   version = '0.1.0',
   deps = [],
   metadata = {},
@@ -283,10 +284,7 @@ export function typescript(name, {
     '/output/directory': value(outputDirectory),
     '/javascript/module-format': value(javascriptModuleFormat),
     '/typescript/emit-declarations': value(true),
-    '/package/name': derive(
-      { location: '/package/location', scope: '/package/scope' },
-      ({ location, scope: packageScope }) => projectName(location, packageScope),
-    ),
+    '/package/name': value(packageName ?? `@${packageScope}/${name}`),
     '/package/slug': derive(
       { name: '/package/name' },
       ({ name }) => name.slice(name.indexOf('/') + 1),
@@ -309,8 +307,8 @@ export function typescript(name, {
       },
     ),
     '/package/local-dependencies': derive(
-      { dependencies: '/package/dependencies', scope: '/package/scope' },
-      ({ dependencies, scope: packageScope }) => localPackagesOf(dependencies, packageScope),
+      { dependencies: '/package/dependencies' },
+      ({ dependencies }) => localPackagesOf(dependencies),
     ),
     '/package/scripts': derive(
       { commands: select('/**/package-json/script'), script: '/package-manager/script' },
@@ -389,6 +387,7 @@ export function library(name, {
                 { RUN: pack(slug) },
               ],
               IGNORE: ignore,
+              path: '/out',
           }
         },
       },
@@ -415,6 +414,7 @@ export function library(name, {
                 { RUN: pack(slug) },
               ],
               IGNORE: ignore,
+              path: '/out',
           }
         },
       },

@@ -95,7 +95,7 @@ describe('RepositoryPackageLoader', () => {
 
     try {
       const loaded = await new RepositoryPackageLoader(root).loadPackage('.')
-      assert.equal(Run.parse((loaded?.definition['/ci/inspect']?.run({}, { os: 'linux', arch: 'x64' }) as { build: unknown } | undefined)?.build), 'aa')
+      assert.equal(Run.parse((loaded?.definition['/ci/inspect']?.run({}, { os: 'linux', arch: 'x64' }) as { build: unknown } | undefined)?.build).FROM, 'aa')
     } finally {
       await rm(root, { recursive: true })
     }
@@ -566,7 +566,7 @@ describe('RepositoryPackageLoader', () => {
         loader.loadPackage('packages/left//c'),
         loader.loadPackage('packages/right//c'),
       ])
-      const location = (loaded: typeof left) => Run.parse((loaded?.definition['/ci/inspect']?.run({}, { os: 'linux', arch: 'x64' }) as { build: unknown } | undefined)?.build)
+      const location = (loaded: typeof left) => Run.parse((loaded?.definition['/ci/inspect']?.run({}, { os: 'linux', arch: 'x64' }) as { build: unknown } | undefined)?.build).FROM
 
       assert.equal(location(left), '//c')
       assert.equal(location(right), '//c')

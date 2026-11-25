@@ -23,7 +23,6 @@ export function scope(name, definitions) {
 }
 
 export function packageNodes({ location, version = '0.1.0', deps = [], metadata = {} }) {
-  if (!location) throw new Error('A package declaration requires a location')
   return {
     '/package/location': value(location),
     '/package/version': value(version),

@@ -12,34 +12,18 @@ export const present = entries => Object.fromEntries(
 
 export const unique = values => [...new Set(values.flat())]
 
-export function projectName(location, scope) {
-  if (!location.startsWith('//')) {
-    throw new Error(`Expected a logical package location, got ${JSON.stringify(location)}`)
-  }
-  const path = location.slice(2)
-  const relativePath = path.startsWith('packages/') ? path.slice('packages/'.length) : path
-  if (!relativePath) throw new Error(`Cannot infer a project name from ${location}`)
-  return `@${scope}/${relativePath.replaceAll('/', '-')}`
-}
-
-/** A local dependency names the exact node producing its tarball. */
-export function projectReference(reference) {
-  const boundary = reference.indexOf(':')
-  const pkg = reference.slice(0, boundary)
-  const path = reference.slice(boundary + 1)
-  if (!pkg.startsWith('//') || !path.startsWith('/')) {
-    throw new Error(`Expected //project:/node/path, got ${JSON.stringify(reference)}`)
-  }
-  return Object.freeze({ pkg, path })
-}
-
-export const localPackagesOf = (deps, scope) => Object.freeze(deps
+/** Local package names and artifact coordinates are independent facts. */
+export const localPackagesOf = deps => Object.freeze(deps
   .filter(dependency => 'target' in dependency)
   .map(dependency => {
-    const name = projectName(projectReference(dependency.target).pkg, scope)
+    if (typeof dependency.name !== 'string' || !dependency.name ||
+        typeof dependency.target !== 'string' || !dependency.target.startsWith('//') ||
+        !dependency.target.includes(':/')) {
+      throw new Error('Local package needs name and //project:/node/path target')
+    }
     return Object.freeze({
-      name,
-      tarball: `${name.slice(name.indexOf('/') + 1)}.tgz`,
+      name: dependency.name,
+      tarball: `${dependency.name.slice(dependency.name.indexOf('/') + 1)}.tgz`,
       at: dependency.at,
       target: dependency.target,
     })
@@ -134,7 +118,7 @@ export const scriptsFor = (contributions, script) => present(DEVELOPMENT_INTENTS
 }))
 
 export const copyLocalPackages = (localPackages, images, destination = '/repo') => localPackages.map(pkg => ({
-  COPY: { from: images[pkg.target], src: '/out', dest: destination },
+  COPY: { from: images[pkg.target].image, src: images[pkg.target].path, dest: destination },
 }))
 
 export const copySource = directory => ({ COPY: { src: directory, dest: `/repo/${directory}` } })

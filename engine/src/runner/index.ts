@@ -7,7 +7,7 @@ import { runTarget, type TargetRunnerDeps } from '#runner/target-runner.js'
 
 export class FQT {
   constructor(readonly pkg: string, readonly path: string) {
-    if (!pkg.startsWith(ROOT_MARKER) || pkg.includes(':') ||
+    if (!pkg.startsWith(ROOT_MARKER) || pkg.includes(':') || pkg.includes('\\') ||
         pkg.slice(2).split('/').some(segment => segment === '.' || segment === '..'))
       throw new Error(`Invalid project: ${pkg}`)
     if (!SemanticPath.safeParse(path).success) throw new Error(`Invalid semantic path: ${path}`)
@@ -20,8 +20,18 @@ export class FQT {
     const parts = raw.split(':')
     if (parts.length === 1 && context)
       return new FQT(context.pkg, raw)
-    if (parts.length === 2)
-      return new FQT(parts[0]!, parts[1]!)
+    if (parts.length === 2) {
+      const project = parts[0]!
+      if (project === '.' || project.startsWith('./')) {
+        if (!context) throw new Error(`Project context required: ${raw}`)
+        const rest = project === '.' ? '' : project.slice(2)
+        if (rest === '') return new FQT(context.pkg, parts[1]!)
+        if (rest.split('/').some(segment => !segment || segment === '.' || segment === '..'))
+          throw new Error(`Invalid relative project: ${project}`)
+        return new FQT(context.pkg.endsWith('/') ? context.pkg + rest : context.pkg + '/' + rest, parts[1]!)
+      }
+      return new FQT(project, parts[1]!)
+    }
     throw new Error(`Expected /node/path or //project:/node/path: ${raw}`)
   }
 }
