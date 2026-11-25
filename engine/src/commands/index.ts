@@ -8,12 +8,10 @@ import { run } from "@optique/run";
 import { resolve } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import type { PackageLoader } from "#pkg/loader.js";
-import { Run, type FacetDef, type HostPlatform } from "#pkg/schema.js";
 import {
   canonicalPackageName,
   FQT,
   packageLogicalPath,
-  parseSelector,
   relativePackageName,
   type Runner,
 } from "#runner/index.js";
@@ -28,7 +26,7 @@ const runCommand = command('run', object({
   ),
   fqts: multiple(
     argument(string({ metavar: 'TARGET' }), {
-      description: message`A target as //package:facet:target; the package, or package and facet, may be omitted and taken from the working directory.`,
+      description: message`A target as //project:/node/path; omit the project to use the working directory.`,
     }),
     { min: 1 },
   ),
@@ -47,12 +45,12 @@ const showCommand = command('show', object({
   command: constant('show'),
   fqts: multiple(
     argument(string({ metavar: 'TARGET' }), {
-      description: message`A target as //package:facet:target; the package, or package and facet, may be omitted and taken from the working directory.`,
+      description: message`A target as //project:/node/path; omit the project to use the working directory.`,
     }),
     { min: 1 },
   ),
 }), {
-  brief: message`Print the run definition of targets as YAML, without building them.`,
+  brief: message`Print node dependencies as YAML, without evaluating them.`,
 })
 const parser = or(runCommand, listCommand, pkgCommand, showCommand)
 
@@ -83,16 +81,10 @@ export class ListCommandRunner implements CommandRunner {
     const packages = await this.packageLoader.loadAllPackages();
 
     for (const [packageName, loaded] of packages) {
-      // Listing is the one command that needs every target, so it expands every facet.
-      for (const facetName of Object.keys(loaded.definition)) {
-        const targets = loaded.facet(facetName) ?? {};
-        for (const [targetName, target] of Object.entries(targets)) {
-          const fqt = new FQT(canonicalPackageName(packageName), facetName, targetName);
-          const deps = target.deps.map((d) =>
-            FQT.parse(d, { pkg: fqt.pkg, facet: facetName }).toString(),
-          );
-          graph.set(fqt.toString(), deps);
-        }
+      for (const [path, node] of Object.entries(loaded.definition)) {
+        const fqt = new FQT(canonicalPackageName(packageName), path);
+        graph.set(fqt.toString(), Object.values(node.deps).map(ref =>
+          FQT.parse(ref, { pkg: fqt.pkg }).toString()));
       }
     }
 
@@ -147,17 +139,17 @@ export class RunCommandRunner {
     );
 
     const mountedExport = results.find(
-      result => result.export && result.fqt.pkg.slice(2).includes('//'),
+      result => result.build?.export && result.fqt.pkg.slice(2).includes('//'),
     );
     if (mountedExport)
       throw new Error(`Cannot EXPORT from a mounted package: ${mountedExport.fqt}`);
 
     for (const result of results) {
-      if (result.export) {
+      if (result.build?.export) {
         const packageDir = resolve(this.root, packageLogicalPath(result.fqt.pkg));
         await this.extractor.extractFromImage(
-          result.imageTag,
-          result.export,
+          result.build.imageTag,
+          result.build.export,
           packageDir,
         );
       }
@@ -169,75 +161,21 @@ export class ShowCommandRunner {
   constructor(
     private readonly packageLoader: PackageLoader,
     private readonly output: Output,
-    private readonly host: HostPlatform,
     private readonly currentPackage: string,
   ) {}
 
   async execute(cmd: ShowCmd): Promise<void> {
-    const context = { pkg: this.currentPackage };
     const documents: string[] = [];
-
     for (const raw of cmd.fqts) {
-      const selector = parseSelector(raw, context);
-      const loaded = await this.packageLoader.loadPackage(packageLogicalPath(selector.pkg));
-      if (!loaded) throw new Error(`Unknown package: ${raw}`);
-
-      if (selector.facet === undefined) {
-        documents.push(this.document(
-          selector.pkg,
-          Object.fromEntries(Object.keys(loaded.definition).map((facetName) => [
-            facetName,
-            this.facetOutline(selector.pkg, facetName, loaded.facet(facetName) ?? {}),
-          ])),
-        ));
-        continue;
-      }
-
-      const facet = loaded.facet(selector.facet);
-      if (!facet) throw new Error(`Unknown facet: ${raw}`);
-
-      if (selector.target === undefined) {
-        documents.push(this.document(
-          `${selector.pkg}:${selector.facet}`,
-          this.facetOutline(selector.pkg, selector.facet, facet),
-        ));
-        continue;
-      }
-
-      const target = facet[selector.target];
-      if (!target) throw new Error(`Unknown target: ${raw}`);
-      const fqt = new FQT(selector.pkg, selector.facet, selector.target);
-      const images = Object.fromEntries(
-        target.deps.map(dep => [dep, this.resolveDep(dep, fqt.pkg, fqt.facet)]),
-      );
-      const parsed = Run.safeParse(target.run({ images, host: this.host }));
-      if (!parsed.success)
-        throw new Error(`Invalid run definition for ${fqt}: ${parsed.error.message}`);
-
-      documents.push(this.document(fqt.toString(), parsed.data));
+      const fqt = FQT.parse(raw, { pkg: this.currentPackage });
+      const loaded = await this.packageLoader.loadPackage(packageLogicalPath(fqt.pkg));
+      const node = loaded?.definition[fqt.path];
+      if (!node) throw new Error(`Unknown node: ${fqt}`);
+      const deps = Object.fromEntries(Object.entries(node.deps).map(([id, ref]) =>
+        [id, FQT.parse(ref, { pkg: fqt.pkg }).toString()]));
+      documents.push(`# ${fqt}\n${stringifyYaml({ deps }, { lineWidth: 0 }).trimEnd()}`);
     }
-
     this.output.write(documents.join('\n---\n'));
-  }
-
-  private facetOutline(
-    pkg: string,
-    facetName: string,
-    facet: FacetDef,
-  ): Record<string, readonly string[]> {
-    return Object.fromEntries(Object.entries(facet).map(([targetName, target]) => [
-      targetName,
-      target.deps.map(dep => this.resolveDep(dep, pkg, facetName)),
-    ]));
-  }
-
-  private resolveDep(dep: string, pkg: string, facet: string): string {
-    return FQT.parse(dep, { pkg, facet }).toString();
-  }
-
-  private document(label: string, value: unknown): string {
-    // Recipes carry long shell commands; folding them across lines makes one command read as two.
-    return `# ${label}\n${stringifyYaml(value, { lineWidth: 0 }).trimEnd()}`;
   }
 }
 

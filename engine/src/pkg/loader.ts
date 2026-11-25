@@ -394,7 +394,7 @@ export class RepositoryPackageLoader implements PackageLoader {
       if (i === parts.length - 1) {
         const index = await this.indexAt(dir, declarationPath, sourceRoot, logicalRoot, trace)
         if (!index) return undefined
-        return loadedPackage(index, dir))
+        return loadedPackage(index, dir)
       }
       const crossed = await this.crossMount(dir, declarationPath, {
         sourceRoot,
@@ -565,7 +565,7 @@ export class RepositoryPackageLoader implements PackageLoader {
     context: string,
     acc: Map<string, LoadedPackage>,
   ): void {
-    const loaded = loadedPackage(definition, context))
+    const loaded = loadedPackage(definition, context)
     acc.set(logicalPath, loaded)
     this.packageCache.set(logicalPath, Promise.resolve(loaded))
   }
