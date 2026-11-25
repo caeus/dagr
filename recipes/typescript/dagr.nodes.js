@@ -4,7 +4,6 @@ export const derive = (deps, calculate) => ({
   deps,
   run: (args, host) => ({ value: calculate(args, host) }),
 })
-export const define = (deps, run) => ({ deps, run })
 
 /** Prefix definitions and internal dependencies. Fully qualified references stay absolute.
  * No inspection of other graphs or evaluation of dependency values.
@@ -13,8 +12,7 @@ export function scope(name, definitions) {
   if (typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name))
     throw new Error('Expected a namespace name')
   const prefix = ref => ref.startsWith('//') ? ref : `/${name}${ref}`
-  return Object.fromEntries(Object.entries(definitions).map(([path, declaration]) => {
-    const node = typeof declaration === 'function' ? declaration(path) : declaration
+  return Object.fromEntries(Object.entries(definitions).map(([path, node]) => {
     return [prefix(path), {
       deps: Object.fromEntries(Object.entries(node.deps).map(([id, dep]) => [
         id, Array.isArray(dep) ? dep.map(prefix) : prefix(dep),

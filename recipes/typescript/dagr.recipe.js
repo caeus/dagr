@@ -1,5 +1,5 @@
 export { value, derive, select, scope } from '//dagr.nodes.js'
-export { command, file, target } from '//dagr.contributions.js'
+export { command, file, copyFiles, target } from '//dagr.contributions.js'
 export * from '//dagr.features.js'
 export * from '//dagr.file-utils.js'
 export * from '//dagr.package-managers.js'

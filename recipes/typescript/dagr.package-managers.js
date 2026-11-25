@@ -1,6 +1,6 @@
 import { value, derive, select, scope } from '//dagr.nodes.js'
 import { file } from '//dagr.contributions.js'
-import { DEVELOPMENT_INTENTS, adapter, buildsFor } from '//dagr.model.js'
+import { DEVELOPMENT_INTENTS, buildsFor } from '//dagr.model.js'
 import { writeYaml } from '//dagr.file-utils.js'
 
 export const fileTarballs = (manifest, localPackages, _context) => localPackages.reduce(
@@ -20,11 +20,7 @@ export const npm = name => scope(name, {
   '/package-manager/script': value(invocation => invocation),
   '/package-manager/install': value(host => `npm install --include=dev${host ? ` --os=${host.os} --cpu=${host.arch}` : ''}`),
   '/package-manager/pack': value(packDestination('npm pack')),
-  '/package-manager/config': file({}, {
-    for: DEVELOPMENT_INTENTS,
-    render: () => [],
-  }),
-  '/package-manager/config/hoisted': adapter('/package-manager/config'),
+
 })
 
 export const pnpm = name => scope(name, {
@@ -33,20 +29,18 @@ export const pnpm = name => scope(name, {
   '/package-manager/script': value(invocation => invocation),
   '/package-manager/install': value(host => `pnpm install --prod=false${host ? ` --os ${host.os} --cpu ${host.arch}` : ''}`),
   '/package-manager/pack': value(packDestination('pnpm pack')),
-  '/package-manager/config': file({
+  ...file('/repo/pnpm-workspace.yaml', {
     builds: select('/**/package-manager/builds'),
   }, {
     for: DEVELOPMENT_INTENTS,
+    key: 'package-manager/pnpm-workspace.yaml',
     render(context, { builds }) {
       const allowBuilds = buildsFor(builds, context.intent)
-      return allowBuilds.length === 0
-        ? []
-        : writeYaml('/repo/pnpm-workspace.yaml', {
-            allowBuilds: Object.fromEntries(allowBuilds.map(pkg => [pkg, true])),
-          })
+      return writeYaml('/repo/pnpm-workspace.yaml', {
+        allowBuilds: Object.fromEntries(allowBuilds.map(pkg => [pkg, true])),
+      })
     },
   }),
-  '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })
 
 export const yarn = name => scope(name, {
@@ -71,8 +65,9 @@ export const yarn = name => scope(name, {
   '/package-manager/script': value(invocation => invocation),
   '/package-manager/install': value(() => 'yarn install --no-immutable'),
   '/package-manager/pack': value(slug => `mkdir -p /out && yarn pack --out /out/${slug}.tgz`),
-  '/package-manager/config': file({}, {
+  ...file('/repo/.yarnrc.yml', {}, {
     for: DEVELOPMENT_INTENTS,
+    key: 'package-manager/yarnrc.yml',
     render: context => writeYaml('/repo/.yarnrc.yml', {
       enableScripts: false,
       nodeLinker: 'node-modules',
@@ -81,5 +76,4 @@ export const yarn = name => scope(name, {
         : {}),
     }),
   }),
-  '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })

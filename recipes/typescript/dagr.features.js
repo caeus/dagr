@@ -1,6 +1,6 @@
 import bundledVersions from '//dagr.versions.yaml'
 import { value, derive, select, scope, packageNodes } from '//dagr.nodes.js'
-import { command, file, filesFor, target } from '//dagr.contributions.js'
+import { command, file, copyFiles, target } from '//dagr.contributions.js'
 import { writeJson, writeText } from '//dagr.file-utils.js'
 import { RECOMMENDED_IGNORE } from '//dagr.dockerignore.js'
 import {
@@ -113,7 +113,7 @@ const packageFacts = derive(
   facts => Object.freeze({ ...facts }),
 )
 
-const packageJson = (intent, install) => target(
+const packageJson = file('/repo/package.json',
   {
     facts: '/package/facts',
     dependencies: select('/**/package-json/dependencies'),
@@ -123,21 +123,17 @@ const packageJson = (intent, install) => target(
     scripts: '/package/scripts',
   },
   {
-    intent,
+    for: [...DEVELOPMENT_INTENTS, ...DISTRIBUTION_INTENTS],
     render(context, { facts, dependencies, configuredVersions, installManifest, localPackages, scripts }) {
       const packages = packagesFor(dependencies, context, configuredVersions)
       const manifest = packageManifest(context, facts, { packages }, configuredVersions, scripts)
-      return {
-        FROM: 'alpine:3.22',
-        steps: [writeJson('/package.json', install ? installManifest(manifest, localPackages, context) : manifest)],
-        IGNORE: [],
-        path: '/package.json',
-      }
+      return writeJson('/repo/package.json',
+        DISTRIBUTION_INTENTS.includes(context.intent) ? manifest : installManifest(manifest, localPackages, context))
     },
   },
 )
 
-const tsconfig = file(
+const tsconfig = file('/repo/tsconfig.json',
   {
     product: '/product/kind',
     language: '/typescript/language-target',
@@ -194,108 +190,69 @@ const tsconfig = file(
   },
 )
 
-const copyManifest = manifest => ({
-  COPY: { from: manifest.image, src: manifest.path, dest: '/repo/package.json' },
-})
-
-/**
- * A target that builds the package from its own sources: local tarballs, the source tree,
- * its exact file dependencies, then one exact command capability. Installation is structural
- * here rather than a contribution, because only a fresh image needs it.
- */
-export const sourceTarget = ({
-  intent,
-  command: commandInput,
-  files = [],
-  assets = false,
-  export: exported,
-} = {}) => {
-  if (!Array.isArray(files)) {
-    throw new TypeError('sourceTarget files must be an array of exact semantic paths')
-  }
-  const nonExact = files.filter(path => typeof path !== 'string' || path.includes('*'))
-  if (nonExact.length > 0) {
-    throw new TypeError(`sourceTarget files must be exact semantic paths: ${nonExact.join(', ')}`)
-  }
-
-  return path => target(
-    {
-      manifest: `/file/package.json/${intent ?? path.split('/').at(-1)}`,
-      base: '/image/base',
-      ignore: '/source/ignore',
-      source: '/source/directory',
-      localPackages: '/package/local-dependencies',
-      localImages: '/package/local-images',
-      exec: '/package-manager/exec',
-      install: '/package-manager/install',
-      files: select(
-        '/package-manager/config',
-        ...files,
-      ),
-      ...(commandInput === undefined ? {} : { command: commandInput }),
-      ...(assets ? { buildAssets: '/source/assets' } : {}),
+/** Every source build copies the exact files it consumes from their generating images. */
+export const sourceTarget = ({ intent, command, files = [], assets = false, export: exported } = {}) => {
+  if (!intent) throw new Error('sourceTarget requires an intent')
+  return target({
+    base: '/image/base',
+    ignore: '/source/ignore',
+    source: '/source/directory',
+    localPackages: '/package/local-dependencies',
+    localImages: '/package/local-images',
+    exec: '/package-manager/exec',
+    install: '/package-manager/install',
+    files: select(
+      `/file/${intent}/package.json`,
+      `/file/${intent}/package-manager/**`,
+      ...files.map(path => `/file/${intent}/${path}`),
+    ),
+    ...(command === undefined ? {} : { command }),
+    ...(assets ? { buildAssets: '/source/assets' } : {}),
+  }, {
+    intent,
+    render(context, { base, ignore, source, localPackages, localImages, exec, install, files, command, buildAssets = [] }) {
+      return {
+        FROM: base,
+        steps: [
+          ...copyLocalPackages(localPackages, localImages),
+          copySource(source),
+          ...copyAssets(buildAssets),
+          { WORKDIR: '/repo' },
+          ...copyFiles(files),
+          { RUN: install() },
+          ...(command === undefined ? [] : runSteps(command.invocations, exec)),
+        ],
+        IGNORE: ignore,
+        ...(exported === undefined ? {} : { EXPORT: exported }),
+      }
     },
-    {
-      intent,
-      render(context, values) {
-        const {
-          manifest, base, ignore, source, localPackages, localImages, exec, install, files: targetFiles,
-          command: selected, buildAssets = [],
-        } = values
-        return {
-            FROM: base,
-            steps: [
-              ...copyLocalPackages(localPackages, localImages),
-              copySource(source),
-              ...copyAssets(buildAssets),
-              { WORKDIR: '/repo' },
-              copyManifest(manifest),
-              ...context.files({ ...targetFiles, ...(selected?.files ?? {}) }, { install: true }),
-              { RUN: install() },
-              ...(selected === undefined ? [] : runSteps(selected.invocations, exec)),
-            ],
-            IGNORE: ignore,
-            ...(exported === undefined ? {} : { EXPORT: exported }),
-        }
-      },
-    },
-  )(path)
+  })
 }
 
-/** Materializes every structurally hoisted file contribution onto the host. */
+/** Host materialization is an explicit build with EXPORT. */
 export function hoister(name) {
   return scope(name, {
-    '/dev/hoist': target(
-      {
-        base: '/image/base',
-        ignore: '/source/ignore',
-        localPackages: '/package/local-dependencies',
-        localImages: '/package/local-images',
-        manifest: '/file/package.json/dev',
-        hoisted: select('/**/hoisted', '/**/hoisted/*'),
+    '/dev/hoist': target({
+      base: '/image/base',
+      ignore: '/source/ignore',
+      localPackages: '/package/local-dependencies',
+      localImages: '/package/local-images',
+      files: select('/file/dev/**'),
+    }, {
+      intent: 'dev',
+      render(_context, { base, ignore, localPackages, localImages, files }) {
+        return {
+          FROM: base,
+          steps: [
+            ...copyLocalPackages(localPackages, localImages),
+            { WORKDIR: '/repo' },
+            ...copyFiles(files),
+          ],
+          IGNORE: ignore,
+          EXPORT: { '/repo/': './' },
+        }
       },
-      {
-        intent: 'dev',
-        render(context, { manifest, base, ignore, localPackages, localImages, hoisted }) {
-          return {
-              FROM: base,
-              steps: [
-                ...copyLocalPackages(localPackages, localImages),
-                { WORKDIR: '/repo' },
-                copyManifest(manifest),
-                ...filesFor(hoisted, {
-                  intent: context.intent,
-                  facet: context.facet,
-                  host: context.host,
-                  install: true,
-              ],
-              IGNORE: ignore,
-              EXPORT: { '/repo/': './' },
-            }),
-          }
-        },
-      },
-    ),
+    }),
   })
 }
 
@@ -360,16 +317,8 @@ export function typescript(name, {
       ({ commands, script }) => scriptsFor(commands, script),
     ),
     '/package/facts': packageFacts,
-    ...Object.fromEntries([
-      ...DEVELOPMENT_INTENTS.map(intent => [
-        `/file/package.json/${intent}`, packageJson(intent, true),
-      ]),
-      ...DISTRIBUTION_INTENTS.map(intent => [
-        `/file/package.json/${intent}`, packageJson(intent, false),
-      ]),
-    ]),
-    '/typescript/tsconfig': tsconfig,
-    '/typescript/tsconfig/hoisted': adapter('/typescript/tsconfig'),
+    ...packageJson,
+    ...tsconfig,
   })
 }
 
@@ -407,18 +356,18 @@ export function library(name, {
     }),
     '/library/package-json/dependencies': packageJsonDependencies('/library/tooling'),
     '/library/tsconfig/types': tsconfigTypes('/library/tooling'),
-    '/typescript/typechecker': command({ files: select('/typescript/tsconfig') }, {
+    '/typescript/typechecker': command({}, {
       for: ['typecheck'],
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
-    '/typescript/compiler': command({ files: select('/typescript/tsconfig') }, {
+    '/typescript/compiler': command({}, {
       for: ['build'],
       run: () => ({ tool: 'tsc' }),
     }),
     '/typescript/compiler/package-json/script': adapter('/typescript/compiler'),
-    '/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
-    '/build': sourceTarget({ command: '/typescript/compiler', assets: true }),
+    '/typecheck': sourceTarget({ intent: 'typecheck', command: '/typescript/typechecker', files: ['tsconfig.json'] }),
+    '/build': sourceTarget({ intent: 'build', command: '/typescript/compiler', files: ['tsconfig.json'], assets: true }),
     '/pack': target(
       {
         ignore: '/source/ignore',
@@ -427,7 +376,7 @@ export function library(name, {
         base: '/build',
         pack: '/package-manager/pack',
         slug: '/package/slug',
-        manifest: '/file/package.json/pack',
+        manifest: '/file/pack/package.json',
       },
       {
         render(context, { ignore, localPackages, localImages, base, pack, slug, manifest }) {
@@ -436,7 +385,7 @@ export function library(name, {
               steps: [
                 ...copyLocalPackages(localPackages, localImages, '/out'),
                 { WORKDIR: '/repo' },
-                copyManifest(manifest),
+                ...copyFiles({ manifest }),
                 { RUN: pack(slug) },
               ],
               IGNORE: ignore,
@@ -452,7 +401,7 @@ export function library(name, {
         base: '/build',
         pack: '/package-manager/pack',
         slug: '/package/slug',
-        manifest: '/file/package.json/publish',
+        manifest: '/file/publish/package.json',
       },
       {
         intent: 'publish',
@@ -462,7 +411,7 @@ export function library(name, {
               steps: [
                 ...copyLocalPackages(localPackages, localImages, '/out'),
                 { WORKDIR: '/repo' },
-                copyManifest(manifest),
+                ...copyFiles({ manifest }),
                 { RUN: pack(slug) },
               ],
               IGNORE: ignore,
@@ -499,12 +448,12 @@ export function cloudflareWorker(name, { language = 'ES2022' } = {}) {
     '/cloudflare-worker/package-json/dependencies': packageJsonDependencies('/cloudflare-worker/tooling'),
     '/cloudflare-worker/tsconfig/types': tsconfigTypes('/cloudflare-worker/tooling'),
     '/cloudflare-worker/package-manager/builds': packageManagerBuilds('/cloudflare-worker/tooling'),
-    '/typescript/typechecker': command({ files: select('/typescript/tsconfig') }, {
+    '/typescript/typechecker': command({}, {
       for: ['typecheck'],
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
-    '/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
+    '/typecheck': sourceTarget({ intent: 'typecheck', command: '/typescript/typechecker', files: ['tsconfig.json'] }),
   })
 }
 
@@ -546,7 +495,7 @@ export function viteReact(name, { language = 'ES2020' } = {}) {
     '/vite/package-json/dependencies': packageJsonDependencies('/vite/tooling'),
     '/vite/tsconfig/types': tsconfigTypes('/vite/tooling'),
     '/vite/package-manager/builds': packageManagerBuilds('/vite/tooling'),
-    '/vite/config': file({ source: '/source/directory' }, {
+    ...file('/repo/vite.config.ts', { source: '/source/directory' }, {
       for: ['dev', 'test', 'build'],
       render(_context, { source }) {
         return writeText('/repo/vite.config.ts', `import { fileURLToPath, URL } from 'node:url'
@@ -561,20 +510,19 @@ export default defineConfig({
 `)
       },
     }),
-    '/vite/config/hoisted': adapter('/vite/config'),
-    '/typescript/typechecker': command({ files: select('/typescript/tsconfig') }, {
+    '/typescript/typechecker': command({}, {
       for: ['typecheck'],
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
-    '/vite/compiler': command({ files: select('/typescript/tsconfig', '/vite/config') }, {
+    '/vite/compiler': command({}, {
       for: ['build'],
       run: () => ({ tool: 'vite build' }),
     }),
     '/typescript/compiler': adapter('/vite/compiler'),
     '/typescript/compiler/package-json/script': adapter('/typescript/compiler'),
-    '/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
-    '/build': sourceTarget({ command: '/typescript/compiler', assets: true }),
+    '/typecheck': sourceTarget({ intent: 'typecheck', command: '/typescript/typechecker', files: ['tsconfig.json'] }),
+    '/build': sourceTarget({ intent: 'build', command: '/typescript/compiler', files: ['tsconfig.json', 'vite.config.ts'], assets: true }),
   })
 }
 
@@ -591,7 +539,8 @@ export function prettier(name, {
       packages: ['prettier'],
     }),
     '/prettier/package-json/dependencies': packageJsonDependencies('/prettier/tooling'),
-    '/prettier/config': file({}, {
+    ...file('/repo/.prettierrc.json', {}, {
+      key: 'prettierrc.json',
       for: ['dev', 'lint'],
       render: () => writeJson('/repo/.prettierrc.json', {
         $schema: 'https://json.schemastore.org/prettierrc',
@@ -602,43 +551,38 @@ export function prettier(name, {
         trailingComma,
       }),
     }),
-    '/prettier/config/hoisted': adapter('/prettier/config'),
   })
 }
 
 export function biome(name, { formatter = true, linter = true } = {}) {
   return scope(name, {
-    '/biome/config': file({}, {
+    ...file('/repo/biome.json', {}, {
       for: ['dev', 'lint'],
       render: () => writeJson('/repo/biome.json', {
         formatter: { enabled: formatter },
         linter: { enabled: linter },
       }),
     }),
-    '/biome/config/hoisted': adapter('/biome/config'),
     '/biome/tooling': tooling({
       for: ['dev', 'lint'],
       packages: ['@biomejs/biome'],
     }),
     '/biome/package-json/dependencies': packageJsonDependencies('/biome/tooling'),
     ...(linter ? {
-      '/biome/linter': command({ files: select('/biome/config') }, {
+      '/biome/linter': command({}, {
         for: ['lint'],
         run: () => ({ tool: 'biome check .' }),
       }),
       '/typescript/linter': adapter('/biome/linter'),
       '/typescript/linter/package-json/script': adapter('/typescript/linter'),
-      '/lint': sourceTarget({ command: '/typescript/linter' }),
+      '/lint': sourceTarget({ intent: 'lint', command: '/typescript/linter', files: ['biome.json'] }),
     } : {}),
   })
 }
 
 export function vitest(name, { environment = 'node', globals = false, typecheck = false } = {}) {
-  const configDeps = environment === 'jsdom'
-    ? { viteConfig: '/vite/config' }
-    : {}
   return scope(name, {
-    '/vitest/config': file(configDeps, {
+    ...file('/repo/vitest.config.ts', {}, {
       for: ['dev', 'test'],
       render() {
         if (environment === 'jsdom') return writeText('/repo/vitest.config.ts', `import { fileURLToPath } from 'node:url'
@@ -663,7 +607,6 @@ export default defineConfig({ test: {
 `)
       },
     }),
-    '/vitest/config/hoisted': adapter('/vitest/config'),
     '/vitest/tooling': tooling({
       for: ['dev', 'test', 'lint'],
       packages: ['vitest', ...(environment === 'jsdom' ? ['jsdom'] : [])],
@@ -673,19 +616,13 @@ export default defineConfig({ test: {
     '/vitest/package-json/dependencies': packageJsonDependencies('/vitest/tooling'),
     '/vitest/tsconfig/types': tsconfigTypes('/vitest/tooling'),
     '/vitest/package-manager/builds': packageManagerBuilds('/vitest/tooling'),
-    '/vitest/tester': command({
-      files: select(
-        '/typescript/tsconfig',
-        '/vitest/config',
-        ...(environment === 'jsdom' ? ['/vite/config'] : []),
-      ),
-    }, {
+    '/vitest/tester': command({}, {
       for: ['test'],
       run: () => ({ tool: 'vitest run' }),
     }),
     '/typescript/tester': adapter('/vitest/tester'),
     '/typescript/tester/package-json/script': adapter('/typescript/tester'),
-    '/test': sourceTarget({ command: '/typescript/tester' }),
+    '/test': sourceTarget({ intent: 'test', command: '/typescript/tester', files: ['tsconfig.json', 'vitest.config.ts', ...(environment === 'jsdom' ? ['vite.config.ts'] : [])] }),
   })
 }
 
@@ -698,7 +635,7 @@ export function eslint(name, { prettier: enforceFormatting = false, explicitRetu
     ...(enforceFormatting ? ['eslint-plugin-prettier', 'prettier'] : []),
   ]
   return scope(name, {
-    '/eslint/config': file({ source: '/source/directory' }, {
+    ...file('/repo/eslint.config.mjs', { source: '/source/directory' }, {
       for: ['dev', 'lint'],
       render(_context, { source }) {
         const rules = {
@@ -735,22 +672,15 @@ ${enforceFormatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}exp
 `)
       },
     }),
-    '/eslint/config/hoisted': adapter('/eslint/config'),
     '/eslint/tooling': tooling({ for: ['dev', 'lint'], packages }),
     '/eslint/package-json/dependencies': packageJsonDependencies('/eslint/tooling'),
-    '/eslint/linter': command({
-      files: select(
-        '/typescript/tsconfig',
-        '/eslint/config',
-        ...(enforceFormatting ? ['/prettier/config'] : []),
-      ),
-    }, {
+    '/eslint/linter': command({}, {
       for: ['lint'],
       run: () => ({ tool: 'eslint .' }),
     }),
     '/typescript/linter': adapter('/eslint/linter'),
     '/typescript/linter/package-json/script': adapter('/typescript/linter'),
-    '/lint': sourceTarget({ command: '/typescript/linter' }),
+    '/lint': sourceTarget({ intent: 'lint', command: '/typescript/linter', files: ['tsconfig.json', 'eslint.config.mjs', ...(enforceFormatting ? ['prettierrc.json'] : [])] }),
   })
 }
 
@@ -794,7 +724,7 @@ export function rollup(name, { bundleDirectory = 'dist', strict = true } = {}) {
       packages: ['@rollup/plugin-commonjs', '@rollup/plugin-node-resolve', 'rollup'],
     }),
     '/rollup/package-json/dependencies': packageJsonDependencies('/rollup/tooling'),
-    '/rollup/config': file({
+    ...file('/repo/rollup.config.js', {
       output: '/output/layout',
       bundleFile: '/output/bundle-file',
     }, {
@@ -806,7 +736,7 @@ export function rollup(name, { bundleDirectory = 'dist', strict = true } = {}) {
         return writeText('/repo/rollup.config.js', rollupConfig(output.runtimeFile, bundleFile, strict))
       },
     }),
-    '/rollup/bundler': command({ files: select('/rollup/config') }, {
+    '/rollup/bundler': command({}, {
       for: ['bundle'],
       run: () => ({ tool: 'rollup --config rollup.config.js' }),
     }),
@@ -816,11 +746,12 @@ export function rollup(name, { bundleDirectory = 'dist', strict = true } = {}) {
       exec: '/package-manager/exec',
       bundleFile: '/output/bundle-file',
       bundler: '/typescript/bundler',
+      config: '/file/bundle/rollup.config.js',
       base: '/build',
     }, {
-      render: (context, { ignore, exec, bundleFile, bundler, base }) => ({
+      render: (_context, { ignore, exec, bundleFile, bundler, config, base }) => ({
           FROM: base,
-          steps: [...context.files(bundler.files), ...runSteps(bundler.invocations, exec)],
+          steps: [...copyFiles({ config }), ...runSteps(bundler.invocations, exec)],
           IGNORE: ignore,
           EXPORT: { [`/repo/${bundleFile}`]: bundleFile },
       }),
@@ -830,7 +761,7 @@ export function rollup(name, { bundleDirectory = 'dist', strict = true } = {}) {
 
 export function typedoc(name, { title } = {}) {
   return scope(name, {
-    '/typedoc/config': file({
+    ...file('/repo/typedoc.json', {
       source: '/source/directory',
       entry: '/source/entry',
       name: '/package/name',
@@ -850,20 +781,21 @@ export function typedoc(name, { title } = {}) {
         })
       },
     }),
-    '/typedoc/config/hoisted': adapter('/typedoc/config'),
     '/typedoc/tooling': tooling({
       for: ['dev', 'docs'],
       packages: ['typedoc'],
     }),
     '/typedoc/package-json/dependencies': packageJsonDependencies('/typedoc/tooling'),
-    '/typedoc/documenter': command({ files: select('/typescript/tsconfig', '/typedoc/config') }, {
+    '/typedoc/documenter': command({}, {
       for: ['docs'],
       run: () => ({ tool: 'typedoc' }),
     }),
     '/typescript/documenter': adapter('/typedoc/documenter'),
     '/typescript/documenter/package-json/script': adapter('/typescript/documenter'),
     '/docs': sourceTarget({
+      intent: 'docs',
       command: '/typescript/documenter',
+      files: ['tsconfig.json', 'typedoc.json'],
       export: { '/repo/docs/': 'docs/' },
     }),
   })
