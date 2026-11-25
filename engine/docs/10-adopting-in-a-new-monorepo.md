@@ -1,125 +1,28 @@
 # Adopting Dagr in a monorepo
 
-Dagr runs from a pinned container image. A repository keeps a small launcher under `.dagr/` and
-defines packages wherever its domain model needs them.
-
-## Install the launcher
-
-Copy the starter bootstrap from this repository:
-
-```sh
-mkdir -p <your-repo>/.dagr
-cp -R <dagr-source>/engine/examples/starter/.dagr/. <your-repo>/.dagr/
-```
-
-Pin the runtime image in `.dagr/cli.sh`:
-
-```sh
-IMAGE="ghcr.io/caeus/dagr:<commit-sha>"
-```
-
-Then install the launcher once on the machine:
-
-```sh
-.dagr/install.sh
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-The host needs a POSIX-compatible shell, Docker with Buildx, and permission to reach the Docker
-daemon through `/var/run/docker.sock`.
-
-The launcher mounts that socket into the Dagr container. Docker socket access is effectively root
-access to the host, so use only trusted Dagr images and repository definitions.
-
-## Add the first package
-
-Choose a domain directory. No directory name is privileged:
+Install the launcher using [Getting started](01-getting-started.md). Begin by
+adding a `dagr.index.js` to one project:
 
 ```js
-// services/api/dagr.index.js
 export default {
-  ci: () => ({
-    build: {
-      deps: [],
-      run: () => ({
-        FROM: 'alpine:3.22',
+  '/build': {
+    deps: {},
+    run: () => ({
+      build: {
+        FROM: 'node:22-alpine',
         steps: [
           { WORKDIR: '/repo' },
           { COPY: { src: '.', dest: '/repo' } },
-          { RUN: './test.sh' },
+          { RUN: 'npm ci && npm run build' },
         ],
-        IGNORE: ['.git', 'out'],
-      }),
-    },
-  }),
+        IGNORE: ['node_modules', '.git'],
+      },
+    }),
+  },
 }
 ```
 
-Verify discovery, then run it:
-
-```sh
-dagr list
-dagr run //services/api:ci:build
-```
-
-`dagr list` recursively finds source packages but leaves mounts opaque. Direct runs load the named
-package and any dependencies they reach.
-
-## Grow from working targets
-
-Start with one package and one target. Add dependencies and shared helpers after duplication is
-visible. A common split is:
-
-```text
-install  dependency metadata and package installation
-build    source copy and compilation
-```
-
-Keeping dependency installation before frequently changed source usually improves cache reuse:
-
-```js
-build: {
-  deps: ['install'],
-  run: ({ images }) => ({
-    FROM: images.install,
-    steps: [
-      { COPY: { src: 'src', dest: '/repo/src' } },
-      { RUN: './build.sh' },
-    ],
-    IGNORE: ['out'],
-  }),
-}
-```
-
-Facet names and target names are repository choices. Dagr does not assign semantics to names such
-as `ci`, `dev`, `build`, or `release`.
-
-## Share build logic when useful
-
-Helpers can live anywhere under supported `dagr.*` filenames:
-
-```js
-import { component } from '//build/dagr.component.js'
-
-export default component({ image: 'alpine:3.22' })
-```
-
-For independently versioned build logic, add `dagr.mount.yaml` at the attachment point, define
-`identifyVolume` in the root `.dagr/config.js`, and select its image recipe in the root
-`.dagr/volumes.yaml`. Then import through its boundary.
-See [Filesystem composition](03-filesystem-composition.md) and
-[Build-file environment and imports](04-sandbox-and-imports.md#mount-boundaries).
-
-## Keep host and image concerns separate
-
-Dagr builds in Linux images. Generated artifacts can be exported to the host, but installed
-dependencies may contain Linux-specific binaries and should not be treated as a portable host
-installation.
-
-Use Dagr for reproducible build targets. A normal package-manager workspace can coexist with it for
-editor support or local development.
-
-## Upgrade deliberately
-
-Upgrade by changing the pinned Dagr image SHA in `.dagr/cli.sh`, then run the repository's normal
-Dagr checks. The pin makes runtime changes explicit and reviewable.
+Run `dagr run //services/api:/build`. Add prerequisites as named nodes when
+they are independently useful. Share graph-producing functions across projects;
+compose their records with ordinary object spread. Use file-producing builds to
+share generated configuration, and `EXPORT` only for intentional host materialization.

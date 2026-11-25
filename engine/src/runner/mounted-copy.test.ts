@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import type { Reporter } from '#report/reporter.js'
 import { FQT } from '#runner/index.js'
 import { runTarget, type TargetRunnerDeps } from '#runner/target-runner.js'
-import type { Run, TargetDef } from '#pkg/schema.js'
+import type { Run, NodeDef } from '#pkg/schema.js'
 
 const reporter: Reporter = {
   targetStarted: () => undefined,
@@ -19,9 +19,9 @@ describe('mounted COPY sources', () => {
     let buildContexts: Readonly<Record<string, string>> | undefined
     const resolved: string[] = []
 
-    const target: TargetDef = {
-      deps: [],
-      run: () => ({
+    const target: NodeDef = {
+      deps: {},
+      run: () => ({ build: {
         FROM: 'alpine',
         steps: [
           { COPY: { src: 'local.txt', dest: '/local.txt' } },
@@ -30,7 +30,7 @@ describe('mounted COPY sources', () => {
           { COPY: { from: 'other-image', src: 'tools//inside-image', dest: '/image' } },
         ],
         IGNORE: [],
-      }),
+      } }),
     }
     const deps: TargetRunnerDeps = {
       renderDockerfile: (run) => {
@@ -45,9 +45,9 @@ describe('mounted COPY sources', () => {
     }
 
     await runTarget(
-      FQT.parse('//packages/app:ci:build'),
+      FQT.parse('//packages/app:/ci/build'),
       target,
-      [],
+      {},
       '/repo/packages/app',
       deps,
       { os: 'linux', arch: 'x64' },

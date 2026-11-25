@@ -13,16 +13,16 @@ The repository layout belongs to the repository. `engine/`, `recipes/`, `apps/`,
 - `.git` is not searched.
 - Discovery continues below directories containing `dagr.index.js`, so nested source packages are
   listed independently.
-- A root `dagr.index.js` defines targets such as `//:ci:build` and does not hide packages below it.
+- A root `dagr.index.js` defines targets such as `//:/build` and does not hide packages below it.
 - A package name is rooted with `//`. For example, `services/api/dagr.index.js` defines package
-  `//services/api` and target `//services/api:ci:build`. A root `dagr.index.js` defines package `//`.
+  `//services/api` and target `//services/api:/build`. A root `dagr.index.js` defines package `//`.
 - Direct target loading uses the same package names as discovery. There is no separate `packages/`
   lookup convention.
 - A package's Docker build context is its own directory.
 - Dagr modules use root-relative `//` imports. Importable files must match `dagr.*.js`,
   `dagr.*.json`, `dagr.*.yaml`, or `dagr.*.toml`.
 
-Everything else is a project convention, including directory names, facet names, target names,
+Everything else is a project convention, including directory names, semantic node paths,
 recipe aliases, and the location of shared helpers.
 
 ## This repository
@@ -67,10 +67,10 @@ those directories by domain when that makes the repository easier to understand:
 This produces:
 
 ```text
-//engine:ci:build
-//recipes:ci:test
-//services/api:ci:build
-//services/web:ci:build
+//engine:/engine/build
+//recipes:/test
+//services/api:/build
+//services/web:/build
 ```
 
 `dagr list` currently stays within source directories and does not materialize requested volumes.

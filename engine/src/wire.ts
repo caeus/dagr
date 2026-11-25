@@ -160,7 +160,7 @@ export function defaultModule(
       RunCommandRunner
     ),
     showCommandRunner: toClass(
-      ['packageLoader', 'output', 'hostPlatform', 'currentPackage'],
+      ['packageLoader', 'output', 'currentPackage'],
       ShowCommandRunner
     ),
     commandRunner: toClass(

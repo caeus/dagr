@@ -32,6 +32,9 @@
         src: engine/dagr.engine.js
         dest: /src/engine/
     - COPY:
+        src: engine/dagr.bootstrap.json
+        dest: /src/engine/
+    - COPY:
         src: engine/recipes/
         dest: /src/engine/recipes/
     - WORKDIR: /src

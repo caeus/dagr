@@ -11,7 +11,6 @@ Build files can use standard JavaScript values and `Buffer`. Dagr also provides 
 import YAML from 'dagr:yaml'
 import TOML from 'dagr:toml'
 import Glob from 'dagr:glob'
-import RDK from 'dagr:rdk'
 ```
 
 YAML and TOML expose `stringify` through their default export and as a named export. Glob exposes
@@ -33,40 +32,6 @@ segments, `*` matches exactly one non-empty segment, and `**` matches zero or mo
 segments. Wildcards must occupy an entire segment. Empty patterns, empty pattern segments, and
 partial wildcard segments such as `foo*` or `***` are rejected by `Glob.of(...)` rather than
 assigned extra glob semantics.
-
-RDK is the native Recipe Development Kit used to compose synchronous calculations as immutable
-semantic-path graphs. Its default export exposes `graph`, `merge`, `value`, `input`, `one`, `many`,
-`derive`, and `construct`; each is also available as a named export.
-
-`input({ keys, patterns }, project)` is the fundamental graph-input declaration. Every entry in
-`keys` is an exact required dependency. Every entry in `patterns` is optional and may match zero,
-one, or many bindings. The projector receives a frozen object containing frozen path-keyed `keys`
-and `patterns` records, and its return value becomes the named input value passed to `derive()` or
-`construct()`:
-
-```js
-RDK.derive({
-  compiler: RDK.input({
-    keys: ['/typescript/compiler', '/typescript/tsconfig'],
-    patterns: ['/**/tsconfig/types'],
-  }, ({ keys, patterns }) => ({
-    command: keys['/typescript/compiler'],
-    config: keys['/typescript/tsconfig'],
-    types: Object.values(patterns),
-  })),
-}, ({ compiler }) => ...)
-```
-
-`one('/path')` is the convenience form for one required exact key. `many(...patterns)` is the
-convenience form whose projector returns the frozen path-keyed pattern record unchanged. A literal
-pattern such as `many('/path')` therefore remains optional exact injection. Pattern unions are
-deduplicated and preserve deterministic graph-key ordering.
-
-Derived bindings expose their declarations as `binding.inputs`, and factories receive one frozen
-named input object. `graph(...).compile(roots)` resolves the requested roots and every transitive key
-and pattern match, or every binding when roots are omitted. Compilation lazily derives a segment
-index when it first resolves a non-empty pattern set. Patterns with literal segments use the
-smallest indexed candidate set before applying the unchanged glob matcher.
 
 Build files cannot access the host environment, filesystem, network, processes, timers, CommonJS
 globals, or arbitrary Node modules. In particular, `process`, `require`, `fetch`, and `fs` are not
@@ -117,23 +82,21 @@ Shared build logic is ordinary Dagr JavaScript:
 
 ```js
 // build/dagr.node.js
-export function component({ image = 'alpine:3.22' } = {}) {
+export function component(name, { image = 'alpine:3.22' } = {}) {
   return {
-    ci: () => ({
-      build: {
-        deps: [],
-        run: () => ({ FROM: image, steps: [], IGNORE: ['out'] }),
-      },
-    }),
+    [`/${name}/build`]: {
+      deps: {},
+      run: () => ({ build: { FROM: image, steps: [], IGNORE: ['out'] } }),
+    },
   }
 }
 ```
 
 ```js
 // services/api/dagr.index.js
-import { component } from '//build/dagr.component.js'
+import { component } from '//build/dagr.node.js'
 
-export default component()
+export default component('api')
 ```
 
 The directory name `build` is only a repository convention.

@@ -32,10 +32,10 @@ This recursively scans the repository, skipping `.dagr` and `.git`. It does not 
 ## Run a target
 
 ```sh
-dagr run //services/api:ci:build
+dagr run //services/api:/build
 ```
 
-A target address contains its package path, facet, and target name. Dagr builds its transitive
+A node address contains its project filesystem path and semantic node path. Dagr builds its transitive
 dependencies first and reuses shared dependencies within the invocation.
 
 ## Run Dagr's checks
@@ -43,7 +43,7 @@ dependencies first and reuses shared dependencies within the invocation.
 In this repository:
 
 ```sh
-dagr run //engine:ci:typecheck //engine:ci:test
+dagr run //engine:/engine/typecheck //engine:/engine/test
 ```
 
 Continue with [Concepts](02-concepts.md) for the build model or

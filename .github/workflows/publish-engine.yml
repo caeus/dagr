@@ -37,8 +37,9 @@ jobs:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           for arch in amd64 arm64; do
-            DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run //engine:ci:image
-            docker tag engine-ci-image "$IMAGE:$RELEASE_SHA-$arch"
+            DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run //engine:/engine/image
+            TAG="dagr-$(printf '%s' '//engine:/engine/image' | sha256sum | cut -d ' ' -f 1)"
+            docker tag "$TAG" "$IMAGE:$RELEASE_SHA-$arch"
             docker push "$IMAGE:$RELEASE_SHA-$arch"
           done
 
@@ -57,17 +58,17 @@ jobs:
         env:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
-          sed -i "s|^PIN=\"ghcr.io/caeus/dagr:[^\"]*\"$|PIN=\"ghcr.io/caeus/dagr:$RELEASE_SHA\"|" .dagr/cli.sh
+
           sed -i "s|^IMAGE=\"ghcr.io/caeus/dagr:[^\"]*\"$|IMAGE=\"ghcr.io/caeus/dagr:$RELEASE_SHA\"|" engine/examples/starter/.dagr/cli.sh
-          grep -qx "PIN=\"ghcr.io/caeus/dagr:$RELEASE_SHA\"" .dagr/cli.sh
+
           grep -qx "IMAGE=\"ghcr.io/caeus/dagr:$RELEASE_SHA\"" engine/examples/starter/.dagr/cli.sh
 
-          if git diff --quiet -- .dagr/cli.sh engine/examples/starter/.dagr/cli.sh; then
+          if git diff --quiet -- engine/examples/starter/.dagr/cli.sh; then
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .dagr/cli.sh engine/examples/starter/.dagr/cli.sh
+          git add engine/examples/starter/.dagr/cli.sh
           git commit -m "chore: advance engine pins to $RELEASE_SHA"
           git push origin HEAD:main

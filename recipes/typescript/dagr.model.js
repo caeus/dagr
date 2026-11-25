@@ -1,4 +1,4 @@
-import rdk from 'dagr:rdk'
+import { value, derive } from '//dagr.nodes.js'
 import { invocationsFor } from '//dagr.contributions.js'
 
 export const DEVELOPMENT_INTENTS = Object.freeze([
@@ -12,45 +12,20 @@ export const present = entries => Object.fromEntries(
 
 export const unique = values => [...new Set(values.flat())]
 
-export function projectName(location, scope) {
-  if (!location.startsWith('//')) {
-    throw new Error(`Expected a logical package location, got ${JSON.stringify(location)}`)
-  }
-  const path = location.slice(2)
-  const relativePath = path.startsWith('packages/') ? path.slice('packages/'.length) : path
-  if (!relativePath) throw new Error(`Cannot infer a project name from ${location}`)
-  return `@${scope}/${relativePath.replaceAll('/', '-')}`
-}
-
-/**
- * Splits `//packages/core:ci` into the package it names and the facet within it. A local dependency
- * identifies a facet, so the package is derived from it rather than declared separately.
- */
-export function facetReference(reference) {
-  const boundary = reference.lastIndexOf(':')
-  const pkg = boundary === -1 ? '' : reference.slice(0, boundary)
-  const facet = boundary === -1 ? '' : reference.slice(boundary + 1)
-  if (!pkg.startsWith('//') || facet === '' || facet.includes('/')) {
-    throw new Error(
-      `Expected a local dependency facet as //package:facet, got ${JSON.stringify(reference)}`,
-    )
-  }
-  return Object.freeze({ pkg, facet })
-}
-
-/**
- * The facet is declared; choosing `pack` within it is still this recipe's decision, not the
- * dependant's.
- */
-export const localPackagesOf = (deps, scope) => Object.freeze(deps
-  .filter(dependency => 'facet' in dependency)
+/** Local package names and artifact coordinates are independent facts. */
+export const localPackagesOf = deps => Object.freeze(deps
+  .filter(dependency => 'target' in dependency)
   .map(dependency => {
-    const name = projectName(facetReference(dependency.facet).pkg, scope)
+    if (typeof dependency.name !== 'string' || !dependency.name ||
+        typeof dependency.target !== 'string' || !dependency.target.startsWith('//') ||
+        !dependency.target.includes(':/')) {
+      throw new Error('Local package needs name and //project:/node/path target')
+    }
     return Object.freeze({
-      name,
-      tarball: `${name.slice(name.indexOf('/') + 1)}.tgz`,
+      name: dependency.name,
+      tarball: `${dependency.name.slice(dependency.name.indexOf('/') + 1)}.tgz`,
       at: dependency.at,
-      target: `${dependency.facet}:pack`,
+      target: dependency.target,
     })
   }))
 
@@ -64,8 +39,8 @@ export function versionOf(versions, name) {
 }
 
 /** Projects one canonical binding into an integration or capability path. */
-export const adapter = path => rdk.derive(
-  { value: rdk.one(path) },
+export const adapter = path => derive(
+  { value: path },
   ({ value }) => value,
 )
 
@@ -87,7 +62,7 @@ export function tooling({
   if (!Array.isArray(builds) || builds.some(name => typeof name !== 'string' || name === '')) {
     throw new TypeError('tooling builds must be an array of package names')
   }
-  return rdk.value(Object.freeze({
+  return value(Object.freeze({
     for: Object.freeze([...intents]),
     packages: Object.freeze([...packages]),
     types: Object.freeze([...types]),
@@ -95,8 +70,8 @@ export function tooling({
   }))
 }
 
-const toolingProjection = (path, field) => rdk.derive(
-  { tooling: rdk.one(path) },
+const toolingProjection = (path, field) => derive(
+  { tooling: path },
   ({ tooling: contribution }) => Object.freeze({
     for: contribution.for,
     values: contribution[field],
@@ -143,7 +118,7 @@ export const scriptsFor = (contributions, script) => present(DEVELOPMENT_INTENTS
 }))
 
 export const copyLocalPackages = (localPackages, images, destination = '/repo') => localPackages.map(pkg => ({
-  COPY: { from: images[pkg.target], src: '/out', dest: destination },
+  COPY: { from: images[pkg.target].image, src: images[pkg.target].path, dest: destination },
 }))
 
 export const copySource = directory => ({ COPY: { src: directory, dest: `/repo/${directory}` } })

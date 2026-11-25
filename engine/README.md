@@ -2,136 +2,68 @@
 
 **Programmable monorepo builds using JavaScript and Docker.**
 
-Define the build graph in ordinary JavaScript. Run only the targets needed for the result you ask
-for, with prerequisites ordered, independent work concurrent, and unchanged work reused through
-Docker's layer cache.
-
-Most monorepo runners let you configure the graph. **dagr lets you calculate it.**
-
-[Try dagr](docs/01-getting-started.md) · [Why dagr?](docs/00-why-dagr.md)
-
-## One graph for the work that belongs together
-
-A monorepo has work that crosses package boundaries: install dependencies, generate code, lint,
-test, compile, package, and publish. Its ordering tends to get scattered across package scripts,
-shell scripts, and CI configuration.
-
-dagr gives that work one dependency graph. Ask for one result and dagr follows its transitive
-dependencies without running unrelated parts of the repository:
-
-```sh
-dagr run //services/api:ci:build
-```
-
-Run several targets together and shared dependencies are built once while independent branches run
-concurrently:
-
-```sh
-dagr run //services/api:ci:validate //services/api:ci:package //services/api:ci:test
-```
-
-## The graph is code
-
-A `dagr.index.js` file exports the targets for one package. Because it is JavaScript, a repository
-can generate repeated targets from one model instead of maintaining their expanded configuration:
+A Dagr index exports an ordinary record of nodes. Each node declares named dependencies
+and returns either a value or a build. Build outputs are values too: image references or
+image/path pairs.
 
 ```js
-const commands = {
-  format: './tools/check-format',
-  test: './tools/test',
-}
-
-const checks = Object.fromEntries(
-  Object.entries(commands).map(([name, command]) => [
-    name,
-    {
-      deps: ['prepare'],
-      run: ({ images }) => ({
-        FROM: images.prepare,
-        steps: [{ RUN: command }],
-        IGNORE: ['.git', 'out'],
-      }),
-    },
-  ]),
-)
-
 export default {
-  ci: () => ({
-    prepare: {
-      deps: [],
-      run: () => ({
+  '/app/name': {
+    deps: {},
+    run: () => ({ value: 'hello' }),
+  },
+  '/app/build': {
+    deps: { name: '/app/name' },
+    run: ({ name }) => ({
+      build: {
         FROM: 'alpine:3.22',
-        steps: [
-          { WORKDIR: '/repo' },
-          { COPY: { src: '.', dest: '/repo' } },
-        ],
-        IGNORE: ['.git', 'out'],
-      }),
-    },
-    ...checks,
-  }),
+        steps: [{ RUN: 'echo ' + JSON.stringify(name) }],
+        IGNORE: [],
+      },
+    }),
+  },
 }
 ```
-
-Loops, functions, imported helpers, and committed data can calculate the graph. Build definitions
-cannot inspect the host filesystem, network, processes, or environment, so the result comes from
-repository source rather than ambient machine state.
-
-## Familiar execution, repository-owned concepts
-
-Target recipes use Dockerfile concepts your team probably already knows: `FROM`, `RUN`, `COPY`,
-`WORKDIR`, `ENTRYPOINT`, and `CMD`. Every completed target is a Docker image that another target can
-continue from or copy files from.
-
-The commands inside those recipes remain the repository's existing tools: `npm`, `cargo`,
-`go build`, `make`, or anything else that runs in a container. dagr coordinates them. It does not
-replace them with its own compiler, test runner, package manager, release system, or language
-plugins.
-
-The repository defines its own packages, facets, targets, and higher-level abstractions. dagr
-provides the small target format and graph runner. Docker provides portable environments,
-isolation, file composition, and persistent caching.
-
-## Inspect before running
 
 ```sh
-dagr list                              # list source targets
-dagr pkg ls                            # list packages under the current directory
-dagr show //services/api:ci:build      # render a target without building it
+dagr run //packages/app:/app/build
+dagr list
+dagr show //packages/app:/app/build
 ```
 
-Docker output stays quiet unless a build fails. Pass `--verbose` to stream it.
-
-## Try dagr
-
-You need Docker with Buildx, access to the Docker socket, and a POSIX-compatible shell. A consuming
-repository pins its dagr runtime beside its build definitions so upgrades are explicit source
-changes.
-
-Follow [Getting started](docs/01-getting-started.md) for the first run or
-[Adopting dagr in a new monorepo](docs/10-adopting-in-a-new-monorepo.md) to add it to a repository.
+Node paths are semantic, independent of project filesystem paths. Compose records with
+ordinary JavaScript object spread; the engine evaluates only the requested nodes and their
+dependencies. Docker handles persistent build caching.
 
 ## Documentation
 
-- [Why dagr?](docs/00-why-dagr.md) explains the design choices, fit, and tradeoffs.
-- [Concepts](docs/02-concepts.md) introduces packages, facets, targets, results, and caching.
-- [Authoring `dagr.index.js`](docs/03-authoring-dagr-index-js.md) defines the target and recipe
-  format.
-- [CLI reference](docs/06-cli.md) covers commands, output, and exit status.
-
-## AI agents
-
-Dagr publishes an [Agent Skill](../.agents/skills/dagr/) with on-demand instructions for authoring,
-debugging, and developing Dagr, plus an [`llms.txt`](docs/llms.txt) index of the canonical docs.
-Compatible agents can install or load the skill instead of relying on model training data about
-Dagr.
+- [Getting started](docs/01-getting-started.md)
+- [Concepts](docs/02-concepts.md)
+- [Authoring indexes](docs/03-authoring-dagr-index-js.md)
+- [Filesystem composition](docs/03-filesystem-composition.md)
+- [Sandbox and imports](docs/04-sandbox-and-imports.md)
+- [Dependencies and exports](docs/05-deps-and-exports.md)
+- [CLI](docs/06-cli.md)
+- [Conventions](docs/07-conventions-and-layout.md)
+- [Internals](docs/08-internals.md)
+- [Docker-in-Docker](docs/09-docker-in-docker.md)
+- [Adopting Dagr](docs/10-adopting-in-a-new-monorepo.md)
+- [Troubleshooting](docs/11-troubleshooting.md)
 
 ## Development
 
+The repository launcher bootstraps the current engine directly from source. Use Docker
+and run from the repository root:
+
 ```sh
-dagr run //engine:ci:typecheck //engine:ci:test
+sh .dagr/cli.sh run //engine:/engine/typecheck //engine:/engine/test
+sh .dagr/cli.sh run //recipes:/composition-test //recipes:/test //harness:/test
+DOGFEED=true sh .dagr/cli.sh list
 ```
+
+The TypeScript recipe is an ordinary collection of graph-producing features.
+See [recipes/typescript](../recipes/typescript/README.md).
 
 ## License
 
-See [LICENSE](../LICENSE).
+[MIT](../LICENSE).

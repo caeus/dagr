@@ -43,8 +43,9 @@ jobs:
           TREE_SHA: ${{ steps.recipe.outputs.tree_sha }}
         run: |
           for arch in amd64 arm64; do
-            DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run "//recipes:ci:image-$RECIPE"
-            printf 'FROM %s\n' "recipes-ci-image-$RECIPE" | docker build \
+            DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run "//recipes:/image-$RECIPE"
+            TAG="dagr-$(printf '%s' "//recipes:/image-$RECIPE" | sha256sum | cut -d ' ' -f 1)"
+            printf 'FROM %s\n' "$TAG" | docker build \
               --platform "linux/$arch" \
               --label "org.opencontainers.image.source=$SOURCE" \
               --tag "$IMAGE:$TREE_SHA-$arch" \

@@ -1,4 +1,4 @@
-import rdk from 'dagr:rdk'
+import { derive } from '//dagr.nodes.js'
 
 const contributionValues = contributions => Reflect.ownKeys(contributions)
   .map(name => contributions[name])
@@ -11,59 +11,35 @@ const normalizeFor = (kind, intents) => {
   return Object.freeze([...new Set(intents)])
 }
 
-const normalizeSteps = rendered => {
-  const steps = (Array.isArray(rendered) ? rendered : [rendered]).flat(Infinity)
-  if (steps.some(step => step === null || typeof step !== 'object' || Array.isArray(step))) {
-    throw new TypeError('file contribution render must return a Dagr step or an array of steps')
-  }
-  return steps
+const normalizeSteps = rendered => (Array.isArray(rendered) ? rendered : [rendered]).flat(Infinity)
+
+/** Generate a file in its own image. Each intent has an independently addressable node. */
+export function file(path, deps, { for: intents, key = path.slice('/repo/'.length), render } = {}) {
+  if (!path.startsWith('/repo/') || typeof render !== 'function')
+    throw new TypeError('file needs an absolute /repo path and a renderer')
+  return Object.fromEntries(normalizeFor('file', intents).map(intent => [
+    `/file/${intent}/${key}`, {
+      deps,
+      run: (args, host) => ({
+        build: {
+          FROM: 'alpine:3.22',
+          steps: [
+            { WORKDIR: path.slice(0, path.lastIndexOf('/')) },
+            ...normalizeSteps(render({ intent, host: intent === 'dev' ? host : undefined }, args)),
+          ],
+          IGNORE: [],
+          path,
+        },
+      }),
+    },
+  ]))
 }
 
-const matches = (contribution, context) => (
-  contribution.for === undefined || contribution.for.includes(context.intent)
-)
-
-const normalizeOrder = (kind, order = 0) => {
-  if (typeof order !== 'number' || !Number.isFinite(order)) {
-    throw new TypeError(`${kind} contribution order must be a finite number`)
-  }
-  return order
-}
-
-const deriveContribution = (kind, deps, factory) => {
-  if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
-    throw new TypeError(`${kind} contribution dependencies must be an object`)
-  }
-  return rdk.derive(deps, factory)
-}
-
-/**
- * A graph binding whose value renders one or more steps that materialize files. Files are the
- * context-aware kind: what a tsconfig or a manifest contains genuinely differs per intent.
- */
-export const file = (deps, options = {}) => {
-  if (typeof options.render !== 'function') throw new TypeError('file contribution needs render')
-  const intents = normalizeFor('file', options.for)
-  const order = normalizeOrder('file', options.order)
-  return deriveContribution(
-    'file',
-    deps,
-    dependencies => Object.freeze({
-      for: intents,
-      order,
-      render: context => normalizeSteps(options.render(context, dependencies)),
-    }),
-  )
-}
-
-/** Every file contribution applying to a context, rendered in contribution order. */
-export const filesFor = (contributions, context) => contributionValues(contributions)
-  .filter(contribution => matches(contribution, context))
-  .sort((left, right) => left.order - right.order)
-  .flatMap(contribution => contribution.render(context))
+export const copyFiles = files => Object.values(files).map(file => ({
+  COPY: { from: file.image, src: file.path, dest: file.path },
+}))
 
 const INVOCATION_KINDS = Object.freeze(['tool', 'shell'])
-const EMPTY_FILES = Object.freeze({})
 
 /**
  * An invocation names what to run and nothing about where: `tool` resolves from the package's
@@ -84,37 +60,18 @@ const normalizeInvocations = rendered => {
   }))
 }
 
-/**
- * A graph binding declaring what an intent runs. An input named `files` is an ordinary dependency
- * with one extra meaning: an exact-path `many()` naming the canonical files that invocation needs, so
- * a target selecting the capability materializes it as a unit.
- */
-export const command = (deps, options = {}) => {
-  if (typeof options.run !== 'function') throw new TypeError('command contribution needs run')
-  if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
-    throw new TypeError('command contribution dependencies must be an object')
-  }
-  if (deps.files !== undefined && (
-    !Array.isArray(deps.files.selectors)
-    || deps.files.selectors.some(path => typeof path !== 'string' || path.includes('*'))
-  )) {
-    throw new TypeError('command contribution files must use many() with exact semantic paths')
-  }
+/** Pure command data, independent from the build and its generated files. */
+export function command(deps, options = {}) {
+  if (typeof options.run !== 'function') throw new TypeError('command needs run')
   const intents = normalizeFor('command', options.for)
-  if (intents === undefined) {
-    throw new TypeError('command contribution needs for, the intents whose run it is')
-  }
-  const order = normalizeOrder('command', options.order)
-  return deriveContribution(
-    'command',
-    deps,
-    dependencies => Object.freeze({
-      for: intents,
-      order,
-      files: dependencies.files ?? EMPTY_FILES,
-      invocations: normalizeInvocations(options.run(dependencies)),
-    }),
-  )
+  if (intents === undefined) throw new TypeError('command needs for')
+  const order = options.order ?? 0
+  if (!Number.isFinite(order)) throw new TypeError('command order must be finite')
+  return derive(deps, dependencies => Object.freeze({
+    for: intents,
+    order,
+    invocations: normalizeInvocations(options.run(dependencies)),
+  }))
 }
 
 /** Every invocation an intent runs, in contributed order. */
@@ -123,114 +80,11 @@ export const invocationsFor = (contributions, intent) => contributionValues(cont
   .sort((left, right) => left.order - right.order)
   .flatMap(contribution => contribution.invocations)
 
-export const contextFor = context => {
-  const base = Object.freeze({
-    intent: context.intent,
-    facet: context.facet,
-    host: context.host,
-  })
-
-  const withContext = overrides => Object.freeze({
-    ...base,
-    ...(overrides ?? {}),
-  })
-
-  return Object.freeze({
-    ...base,
-    files: (files, overrides) => filesFor(files, withContext(overrides)),
-  })
-}
-
-/**
- * A target binding. Graph dependencies are injected exactly by name beside the context. Its
- * `/target/<facet>/<name>` path supplies the Dagr facet and target name.
- */
-export function target(deps, {
-  intent,
-  render,
-} = {}) {
-  if (deps === null || typeof deps !== 'object' || Array.isArray(deps)) {
-    throw new TypeError('target contribution dependencies must be an object')
-  }
-  if (intent !== undefined && (typeof intent !== 'string' || intent === '')) {
-    throw new Error('target contribution intent must be a non-empty string')
-  }
-  if (typeof render !== 'function') throw new Error('target contribution needs render')
-
-  return rdk.derive(deps, dependencies => {
-    const named = Object.freeze({ ...dependencies })
-    return Object.freeze({
-      materialize(name, facet) {
-        const context = contextFor({ intent: intent ?? name, facet, host: undefined })
-        const rendered = render(context, named)
-        if (rendered === null || typeof rendered !== 'object' || Array.isArray(rendered)) {
-          throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} render must return a Dagr target`)
-        }
-        if (!Array.isArray(rendered.deps)) {
-          throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs deps`)
-        }
-        if (typeof rendered.run !== 'function') {
-          throw new TypeError(`target ${JSON.stringify(`${facet}:${name}`)} needs run`)
-        }
-        return Object.freeze({
-          name,
-          deps: Object.freeze([...rendered.deps]),
-          run: rendered.run,
-        })
-      },
-    })
-  })
-}
-
-const targetCoordinates = path => {
-  const [, kind, facet, name, ...rest] = path.split('/')
-  if (kind !== 'target' || !facet || !name || rest.length !== 0) {
-    throw new Error(`Target binding ${JSON.stringify(path)} must have the form "/target/<facet>/<name>"`)
-  }
-  return { facet, name }
-}
-
-/**
- * Dagr resolves a bare `target` against the depending target's own facet and a `facet:target` pair
- * against its package, so both name a sibling this index must own. A `package:facet:target` triple
- * names someone else's target and cannot be checked here.
- */
-const localRef = (dependency, facet) => {
-  if (typeof dependency !== 'string' || dependency.includes('/')) return undefined
-  const parts = dependency.split(':')
-  if (parts.length === 1) return [facet, parts[0]]
-  if (parts.length === 2) return parts
-  return undefined
-}
-
-const validateLocalRefs = facets => {
-  for (const [facet, targets] of Object.entries(facets)) {
-    for (const [name, target] of Object.entries(targets)) {
-      for (const dependency of target.deps) {
-        const sibling = localRef(dependency, facet)
-        if (sibling === undefined) continue
-        if (facets[sibling[0]]?.[sibling[1]] === undefined) {
-          throw new Error(
-            `target ${JSON.stringify(`${facet}:${name}`)} depends on ${JSON.stringify(dependency)}, which no contribution owns`,
-          )
-        }
-      }
-    }
+/** An ordinary build node. Intent is recipe data, never inferred by the engine. */
+export function target(deps, { intent, render } = {}) {
+  if (typeof render !== 'function') throw new TypeError('target needs render')
+  return {
+    deps,
+    run: (args, host) => ({ build: render({ intent, host: intent === 'dev' ? host : undefined }, args) }),
   }
 }
-
-/** The deliberately boring final calculation: materialize target paths, group, and validate refs. */
-export const index = () => rdk.graph({
-  '/dagr/index': rdk.derive({ targets: rdk.many('/target/**') }, ({ targets }) => {
-    const facets = {}
-    for (const path of Object.keys(targets)) {
-      const { facet, name } = targetCoordinates(path)
-      const facetTargets = facets[facet] ??= {}
-      facetTargets[name] = targets[path].materialize(name, facet)
-    }
-    validateLocalRefs(facets)
-    return facets
-  }),
-})
-
-export default Object.freeze({ file, filesFor, command, target })

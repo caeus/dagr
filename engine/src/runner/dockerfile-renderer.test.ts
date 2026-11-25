@@ -14,12 +14,12 @@ describe('renderDockerfile', () => {
 
   it('renders COPY from host', () => {
     const result = renderDockerfile({ FROM: 'alpine', steps: [{ COPY: { src: '.', dest: '/app' } }], IGNORE: [] })
-    assert.match(result, /^COPY \. \/app$/m)
+    assert.equal(result, 'FROM alpine\nCOPY [".","/app"]\n')
   })
 
   it('renders COPY --from', () => {
     const result = renderDockerfile({ FROM: 'alpine', steps: [{ COPY: { from: 'sha256:abc', src: '/out', dest: '/dest' } }], IGNORE: [] })
-    assert.match(result, /^COPY --from=sha256:abc \/out \/dest$/m)
+    assert.equal(result, 'FROM alpine\nCOPY --from=sha256:abc ["/out","/dest"]\n')
   })
 
   it('renders WORKDIR', () => {

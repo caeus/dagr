@@ -1,80 +1,19 @@
 # Dagr recipes
 
-`recipes/` contains independently consumable recipes used to calculate Dagr build configuration and targets.
+Reusable recipes are ordinary JavaScript functions that produce namespaced node records.
+The [TypeScript recipe](typescript/README.md) provides product, tooling, package-manager
+and configuration-file nodes. Compose features using object spread.
 
-## Recipes
-
-| Recipe | Role |
-| --- | --- |
-| [`typescript`](typescript/) | Composable TypeScript recipe that calculates generated configuration and Dagr targets |
-
-The TypeScript recipe uses the engine-native `dagr:rdk` library. Features own canonical facts,
-calculations, rendered outputs, and executable capabilities at absolute semantic paths. Additional
-bindings project those values into structural integration protocols. Derived bindings inject one
-named input object. `rdk.input({ keys, patterns }, project)` is the fundamental input form: exact
-`keys` are required, `patterns` are optional plural dependencies, and the projector defines the
-value exposed under that input name. `rdk.one('/path')` is the required singular convenience form;
-`rdk.many('/path')` keeps optional path-keyed collection behavior, while wildcard patterns resolve a
-genuinely open aggregate.
-
-## Boundaries
-
-Each top-level recipe directory is independently mountable and publishable. Everything needed at
-runtime lives inside that recipe directory except Dagr's native libraries, including `dagr:rdk`.
-Repository-only tests live in [`tests/`](tests/).
-
-Build recipes expose `dagr.recipe.js`. RDK is imported directly from `dagr:rdk`; it is not a
-separately mounted recipe.
-
-A recipe is a builder over a reusable feature graph. Features merge through normal RDK composition;
-calling the recipe adds one package declaration and compiles its `/dagr/index` binding. No graph is
-copied per intent, and paths replace separate contribution or facet registries.
-
-Consumers choose their own mount aliases. A mounted TypeScript recipe might therefore be imported as:
-
-```js
-import typescript from '//recipes/ts//dagr.recipe.js'
-```
-
-The alias is local to the consuming repository and is not part of the recipe identity.
-
-## Publication
-
-The repository builds the immutable TypeScript recipe filesystem image:
-
-- `ghcr.io/caeus/dagr-ts-recipes`
-
-Published images finish with `WORKDIR /recipe`, allowing Dagr to materialize the recipe contents
-directly. Consumers should pin immutable tree-SHA versions for reproducible builds.
+The engine mounts the recipe independently of its own source. Keep reusable features
+free of consumer-specific assumptions. The root repository owns mount implementations.
 
 ## Development
 
-Run the recipe test suite with:
-
 ```sh
-dagr run //recipes:ci:test
+dagr run //recipes:/composition-test //recipes:/test //recipes:/boundaries
+dagr run //recipes:/image-typescript
+dagr run //harness:/test
 ```
 
-That target's context is `recipes/` alone, which proves the recipe works without its consumers
-present. The tests run while the graph expands, so nothing stands in for the engine: `dagr:rdk` and
-`dagr:yaml` are the builtins it serves. Tests that need a second package, the recipe plus a
-composition that mounts it, run from the harness instead:
-
-```sh
-dagr run //harness:ci:test
-```
-
-Scans that need a real filesystem stay Node tests:
-
-```sh
-dagr run //recipes:ci:boundaries
-```
-
-Build the recipe image with:
-
-```sh
-dagr run //recipes:ci:image-typescript
-```
-
-For authoring conventions and the RDK calculation model, see the
-[`dagr-recipes` Agent Skill](../.agents/skills/dagr-recipes/SKILL.md).
+The generated-file tests consume real image/path references through Dagr, then inspect
+the copied files inside a Docker image. The harness also checks the real engine composition.

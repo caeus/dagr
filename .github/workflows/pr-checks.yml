@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,24 +13,26 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Run dagr checks
+      - name: Build and verify the unified graph
         run: |
           sh .dagr/cli.sh run \
-            //engine:ci:build \
-            //engine:ci:typecheck \
-            //engine:ci:test \
-            //engine:ci:bundlecheck \
-            //engine:ci:image \
-            //recipes:ci:test \
-            //recipes:ci:boundaries \
-            //recipes:ci:image-typescript \
-            //harness:ci:test
+            //engine:/engine/build \
+            //engine:/engine/typecheck \
+            //engine:/engine/test \
+            //engine:/engine/bundlecheck \
+            //engine:/engine/image \
+            //recipes:/test \
+            //recipes:/composition-test \
+            //recipes:/boundaries \
+            //recipes:/image-typescript \
+            //harness:/test \
+            //engine/examples/starter:/hello
 
       - name: Smoke-test self-built image
         run: |
+          TAG="dagr-$(printf '%s' '//engine:/engine/image' | sha256sum | cut -d ' ' -f 1)"
           LIST_OUTPUT="$(docker run --rm \
             -v "$PWD:/repo" \
             -v /var/run/docker.sock:/var/run/docker.sock \
@@ -40,7 +43,7 @@ jobs:
             -e HOST_OS=linux \
             -e HOST_ARCH=x64 \
             -e HOST_LIBC=glibc \
-            engine-ci-image list)"
+            "$TAG" list)"
           printf '%s\n' "$LIST_OUTPUT"
-          printf '%s\n' "$LIST_OUTPUT" | grep -q '^//engine:'
-          printf '%s\n' "$LIST_OUTPUT" | grep -q '^//recipes:'
+          printf '%s\n' "$LIST_OUTPUT" | grep -q '^//engine:/engine/build'
+          printf '%s\n' "$LIST_OUTPUT" | grep -q '^//recipes:/test'

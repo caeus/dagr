@@ -1,210 +1,51 @@
 # Concepts
 
-dagr is a programmable build system for monorepos. Normal JavaScript defines the repository's
-dependency graph, and Docker images represent executable targets and reusable results.
+A repository contains projects at filesystem paths. A project is a directory containing
+`dagr.index.js`. Its default export is a record of nodes keyed by absolute semantic paths.
+There is no required relationship between a node path and the project's directories.
 
-You ask dagr for one or more targets. dagr calculates the reachable graph, runs prerequisites first, runs independent branches concurrently, and reuses unchanged work.
-
-Each target produces an image, so downstream targets can use completed work directly while Docker
-provides isolation and caching.
-
-## The four nouns
+A fully qualified node address combines the two independent coordinates:
 
 ```text
-package             a directory containing a dagr.index.js
-  └── facet         a named group of targets
-        └── target  a unit of work
+//packages/web:/app/file/build/package.json
 ```
 
-- **Package** - a directory with a `dagr.index.js` file. Its name starts at the repository root,
-  such as `//services/api` or `//libraries/common`. The root package is `//`.
-- **Facet** - a function returning a named group of targets. dagr assigns no meaning to facet names. `ci` is a convention, not a keyword. Because a facet is a function, dagr expands only the facet it needs. A static record of targets is the older form and still loads, but cannot be lazy. Facet and target names use portable filename characters: `[A-Za-z0-9][A-Za-z0-9._-]*`.
-- **Target** - a `{ deps, run }` pair. It declares which other targets it needs and how to perform one unit of work.
-- **FQT** (fully-qualified target) - the address of a target, written `//package:facet:target`, for example `//services/api:ci:build`. The leading `//` anchors the address at the repository namespace root.
+`//packages/web` is the project. `/app/file/build/package.json` is the node.
 
-For example:
+## One graph
 
-```sh
-dagr run //services/api:ci:build
-```
-
-asks dagr for exactly one result. dagr follows that target's dependencies and ignores unrelated work elsewhere in the repository.
-
-## The graph is code
-
-A `dagr.index.js` exports the build model for one package.
-
-Because it is JavaScript, the graph does not need to be written out literally. Targets can be generated from loops, functions, imported helpers, or richer repository-specific models.
-
-```js
-const commands = {
-  format: './tools/check-format',
-  test: './tools/test',
-}
-
-const checks = Object.fromEntries(
-  Object.entries(commands).map(([name, command]) => [
-    name,
-    {
-      deps: [],
-      run: () => ({
-        FROM: 'alpine:3.22',
-        steps: [
-          { WORKDIR: '/repo' },
-          { COPY: { src: '.', dest: '/repo' } },
-          { RUN: command },
-        ],
-        IGNORE: ['.git', 'out'],
-      }),
-    },
-  ]),
-)
-
-export default {
-  ci: () => ({
-    ...checks,
-  }),
-}
-```
-
-Here two targets are calculated from one small model. A repository can define helpers that expand
-its own concepts into concrete Dagr targets.
-
-Dagr does not prescribe languages, frameworks, package managers, or repository shapes. The
-repository owns that model.
-
-## Dependencies define both order and composition
-
-A target's `deps` define edges in the graph.
-
-If target `B` depends on target `A`, dagr guarantees that `A` completes before `B` runs. `B` also receives the completed dependency results through `ctx.images`.
-
-A dependency can therefore be used only for ordering, or it can become an input to the next target:
-
-```js
-run: ({ images }) => ({
-  FROM: images.a,
-  steps: [{ RUN: './build.sh' }],
-})
-```
-
-or files can be copied from it into another environment:
-
-```js
-run: ({ images }) => ({
-  FROM: 'alpine:3.22',
-  steps: [
-    {
-      COPY: {
-        from: images.a,
-        src: '/out/artifact',
-        dest: '/artifact',
-      },
-    },
-  ],
-})
-```
-
-This is where Docker becomes useful to the model: dagr can make one target's completed state directly available to another without a separate artifact protocol.
-
-## Target execution
-
-A target's `run` function returns a short Dockerfile-like recipe:
+Each node has named dependency references and a `run(args)` function. The engine
+resolves dependency values before calling the function. An exact dependency yields one
+value; a wildcard or array of selectors yields a record of matching node paths and values.
 
 ```js
 {
-  FROM,
-  steps,
-  IGNORE,
-  EXPORT?,
+  deps: { config: '/app/config', plugins: '/app/plugin/*' },
+  run: ({ config, plugins }) => ({ value: { config, plugins } })
 }
 ```
 
-The completed target is a Docker image. Dagr uses it to:
+Values may be arbitrary JavaScript values. A build returns an image reference, or an
+image/path pair if the recipe declares a path. Both are passed to consumers as ordinary
+dependency values.
 
-- continue one target from another;
-- copy files between targets;
-- isolate build environments;
-- reuse Docker's persistent layer cache.
+## Composition
 
-If files need to appear on the host, the directly requested target can declare `EXPORT`:
+Functions return ordinary node records. Compose them with object spread. Later records
+replace earlier definitions with the same semantic path. Wildcards resolve against the
+final merged index, not against an individual feature.
 
-```js
-run: () => ({
-  FROM: 'alpine:3.22',
-  steps: [
-    { COPY: { src: '.', dest: '/repo' } },
-    { RUN: 'cd /repo && ./build.sh' },
-  ],
-  IGNORE: ['.git', 'out'],
-  EXPORT: { '/repo/dist': 'dist' },
-})
-```
+## Execution and caching
 
-Without `EXPORT`, the result can stay internal to the build graph.
+The evaluator follows dependencies, detects cycles, and shares the same in-flight result
+for a node within one invocation. Independent nodes can run concurrently. Docker owns
+persistent image/layer caching. Definitions should be deterministic.
 
-## Mounted package trees
+## Files and mounts
 
-A `dagr.mount.yaml` requests a volume at the directory containing it:
+A generated file lives inside its own image and can be copied into another build using
+its image/path reference. Host materialization is explicit through `EXPORT`.
 
-```yaml
-# recipes/tools/dagr.mount.yaml
-repo: github.com/acme/dagr-tools
-version: "^3"
-```
-
-The root monorepo's `.dagr/config.js` maps that request to a global volume ID. Its
-`.dagr/volumes.yaml` maps the ID to an image recipe. Mounted repositories can request a volume,
-but only the root selects its identity and implementation.
-
-If that volume's final `WORKDIR` contains `c/dagr.index.js`, `//` marks the mount boundary in its package address:
-
-```text
-//recipes/tools//c:ci:pack
-```
-
-`dagr.index.js` remains an ordinary target definition and may coexist with `dagr.mount.yaml` at
-the same attachment point.
-
-A mount is materialized only when a requested target or import crosses its boundary. `dagr list`
-leaves mounts opaque.
-
-The boundary is part of package identity. `//recipes/tools/c` names a source package, while
-`//recipes/tools//c` crosses the mount declared at `//recipes/tools`.
-
-A package at the mounted `WORKDIR` root is addressed as:
-
-```text
-//recipes/tools//:facet:target
-```
-
-See [Filesystem composition](03-filesystem-composition.md) for the complete request, identity,
-implementation, and lazy-resolution model.
-
-## Caching
-
-There are two distinct kinds of reuse.
-
-### Persistent reuse
-
-Docker's layer cache handles reuse between dagr invocations.
-
-If a target's rendered Dockerfile and build context are unchanged, `docker buildx build` can reuse the existing layers. This is why recipe ordering matters: stable work such as dependency installation should generally happen before volatile work such as copying source code.
-
-Dagr deliberately does not add another persistent content-hash cache, fingerprint file, or remote artifact cache on top.
-
-### Per-run reuse
-
-Within one `dagr run`, a shared prerequisite is built once even when several requested targets
-depend on it.
-
-## Deterministic definitions
-
-`dagr.index.js` files cannot read the host filesystem, network, processes, or environment.
-
-Build definitions can still use JavaScript, imported helpers, committed data, templates, loops, and dagr's YAML and TOML stringifiers. The intention is that the graph is calculated from committed source rather than ambient machine state.
-
-Definitions should therefore behave as pure functions of committed source. Root-owned volume
-implementations should pin external inputs when their contents affect reproducibility.
-
-See [Build-file environment and imports](04-sandbox-and-imports.md) for the available APIs.
+Filesystem composition is independent of semantic graph composition. A mounted project
+uses a double-slash boundary, for example `//tools//packages/core:/build`.
+See [Filesystem composition](03-filesystem-composition.md).
