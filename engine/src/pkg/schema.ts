@@ -37,19 +37,13 @@ const ImageRecipeObject = z.object({
 export const ImageRecipe = ImageRecipeObject.readonly();
 export interface ImageRecipe extends z.infer<typeof ImageRecipe> {}
 
-// Generated content is a build input, not an extraction to the host.
 export const FilePath = z.string().refine(path =>
   path.startsWith('/') && path !== '/' && !path.endsWith('/') &&
   !path.includes('\0') && posix.normalize(path) === path,
   "expected a normalized absolute file path inside an image");
 export type FileRef = Readonly<{ image: string; path: string }>;
 
-export const Write = z.strictObject({
-  WRITE: z.strictObject({ path: FilePath, content: z.string() }).readonly(),
-}).readonly();
-
 export const Run = ImageRecipeObject.extend({
-  steps: z.array(z.union([Step, Write])).readonly(),
   path: FilePath.optional(),
   EXPORT: z.record(z.string(), z.string()).readonly().optional(),
 })

@@ -2,9 +2,6 @@ import { Result, type Run, type HostPlatform, type NodeDef } from '#pkg/schema.j
 import type { ResolvedCopySource } from '#pkg/loader.js'
 import type { Reporter } from '#report/reporter.js'
 import { createHash } from 'node:crypto'
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import type { BuildResult } from '#runner/docker-builder.js'
 import type { FQT, TargetResult } from '#runner/index.js'
 
@@ -38,7 +35,6 @@ export async function runTarget(
   const startedAt = Date.now()
   deps.reporter.targetStarted(fqt.toString())
 
-  let generated: string | undefined
   try {
     const parsed = Result.safeParse(target.run(args, platform))
     if (!parsed.success) throw new Error(`Invalid result for ${fqt}: ${parsed.error.message}`)
@@ -47,10 +43,7 @@ export async function runTarget(
       return { fqt, value: parsed.data.value }
     }
     const runDef = parsed.data.build
-    if (runDef.steps.some(step => 'WRITE' in step)) {
-      generated = await mkdtemp(join(tmpdir(), 'dagr-generated-'))
-    }
-    const resolved = await resolveCopies(runDef, resolveCopySource, generated)
+    const resolved = await resolveMountedCopies(runDef, resolveCopySource)
 
     const dockerfileContent = deps.renderDockerfile(resolved.run)
     const { tag: imageTag, digest: imageDigest } = await deps.buildDockerImage(
@@ -72,30 +65,18 @@ export async function runTarget(
   } catch (error) {
     deps.reporter.targetFailed(fqt.toString(), Date.now() - startedAt)
     throw error
-  } finally {
-    if (generated !== undefined) await rm(generated, { recursive: true, force: true })
   }
 }
 
-async function resolveCopies(
+async function resolveMountedCopies(
   run: Run,
   resolveCopySource: (source: string) => Promise<ResolvedCopySource>,
-  generated: string | undefined,
 ): Promise<{ readonly run: Run; readonly buildContexts: Readonly<Record<string, string>> }> {
   const steps: Run['steps'][number][] = []
   const buildContexts: Record<string, string> = {}
   const names = new Map<string, string>()
 
-  let nextFile = 0
-  if (generated !== undefined) buildContexts.dagr_generated = generated
   for (const step of run.steps) {
-    if ('WRITE' in step) {
-      if (generated === undefined) throw new Error('Missing generated content context')
-      const name = String(nextFile++)
-      await writeFile(join(generated, name), step.WRITE.content, 'utf8')
-      steps.push({ COPY: { from: 'dagr_generated', src: name, dest: step.WRITE.path } })
-      continue
-    }
     if (!('COPY' in step) || step.COPY.from || !step.COPY.src.includes('//')) {
       steps.push(step)
       continue

@@ -7,11 +7,8 @@ export default {
     deps: { manifest: '/package/manifest' },
     run: ({ manifest }) => ({
       build: {
-        FROM: 'scratch',
-        steps: [{ WRITE: {
-          path: '/package.json',
-          content: JSON.stringify(manifest, null, 2) + '\n',
-        } }],
+        FROM: 'alpine:3.22',
+        steps: [{ RUN: `echo "${Buffer.from(JSON.stringify(manifest, null, 2) + '\n').toString('base64')}" | base64 -d > /package.json` }],
         IGNORE: [],
         path: '/package.json',
       },
