@@ -15,7 +15,7 @@ import { nodeBase, nodeTest } from '//engine/recipes/dagr.node-features.js'
  */
 export const nodeCli = ({ versions } = {}) => recipe([
   typescript({
-    base: 'ci:node-base',
+    base: '/target/ci/node-base',
     scope: 'internal',
     versions,
     outputDirectory: 'build',

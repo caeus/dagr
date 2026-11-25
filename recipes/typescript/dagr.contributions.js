@@ -147,7 +147,8 @@ export function target(deps, { intent, render } = {}) {
   return define(deps, (args, host, path) => {
     const segments = path.split('/')
     return { build: render(contextFor({
-      intent: intent ?? segments.at(-1), facet: segments.at(-2), host,
+      intent: intent ?? segments.at(-1), facet: segments.at(-2),
+      host: segments.at(-2) === 'dev' ? host : undefined,
     }), args) }
   })
 }

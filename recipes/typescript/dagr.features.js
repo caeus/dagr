@@ -113,7 +113,7 @@ const packageFacts = derive(
   facts => Object.freeze({ ...facts }),
 )
 
-const packageJson = file(
+const packageJson = (intent, install) => target(
   {
     facts: '/package/facts',
     dependencies: select('/**/package-json/dependencies'),
@@ -123,14 +123,16 @@ const packageJson = file(
     scripts: '/package/scripts',
   },
   {
-    for: [...DEVELOPMENT_INTENTS, ...DISTRIBUTION_INTENTS],
+    intent,
     render(context, { facts, dependencies, configuredVersions, installManifest, localPackages, scripts }) {
       const packages = packagesFor(dependencies, context, configuredVersions)
       const manifest = packageManifest(context, facts, { packages }, configuredVersions, scripts)
-      return writeJson(
-        '/repo/package.json',
-        context.install ? installManifest(manifest, localPackages, context) : manifest,
-      )
+      return {
+        FROM: 'alpine:3.22',
+        steps: [writeJson('/package.json', install ? installManifest(manifest, localPackages, context) : manifest)],
+        IGNORE: [],
+        path: '/package.json',
+      }
     },
   },
 )
@@ -192,6 +194,10 @@ const tsconfig = file(
   },
 )
 
+const copyManifest = manifest => ({
+  COPY: { from: manifest.image, src: manifest.path, dest: '/repo/package.json' },
+})
+
 /**
  * A target that builds the package from its own sources: local tarballs, the source tree,
  * its exact file dependencies, then one exact command capability. Installation is structural
@@ -212,8 +218,9 @@ export const sourceTarget = ({
     throw new TypeError(`sourceTarget files must be exact semantic paths: ${nonExact.join(', ')}`)
   }
 
-  return target(
+  return (keys, path) => target(
     {
+      manifest: `/file/package.json/${intent ?? path.split('/').at(-1)}`,
       base: '/image/base',
       ignore: '/source/ignore',
       source: '/source/directory',
@@ -222,7 +229,6 @@ export const sourceTarget = ({
       exec: '/package-manager/exec',
       install: '/package-manager/install',
       files: select(
-        '/typescript/package-json',
         '/package-manager/config',
         ...files,
       ),
@@ -233,7 +239,7 @@ export const sourceTarget = ({
       intent,
       render(context, values) {
         const {
-          base, ignore, source, localPackages, localImages, exec, install, files: targetFiles,
+          manifest, base, ignore, source, localPackages, localImages, exec, install, files: targetFiles,
           command: selected, buildAssets = [],
         } = values
         return {
@@ -243,6 +249,7 @@ export const sourceTarget = ({
               copySource(source),
               ...copyAssets(buildAssets),
               { WORKDIR: '/repo' },
+              copyManifest(manifest),
               ...context.files({ ...targetFiles, ...(selected?.files ?? {}) }, { install: true }),
               { RUN: install() },
               ...(selected === undefined ? [] : runSteps(selected.invocations, exec)),
@@ -252,7 +259,7 @@ export const sourceTarget = ({
         }
       },
     },
-  )
+  )(keys, path)
 }
 
 /** Materializes every structurally hoisted file contribution onto the host. */
@@ -264,16 +271,18 @@ export function hoister() {
         ignore: '/source/ignore',
         localPackages: '/package/local-dependencies',
         localImages: '/package/local-images',
+        manifest: '/file/package.json/dev',
         hoisted: select('/**/hoisted', '/**/hoisted/*'),
       },
       {
         intent: 'dev',
-        render(context, { base, ignore, localPackages, localImages, hoisted }) {
+        render(context, { manifest, base, ignore, localPackages, localImages, hoisted }) {
           return {
               FROM: base,
               steps: [
                 ...copyLocalPackages(localPackages, localImages),
                 { WORKDIR: '/repo' },
+                copyManifest(manifest),
                 ...filesFor(hoisted, {
                   intent: context.intent,
                   facet: context.facet,
@@ -290,7 +299,7 @@ export function hoister() {
   })
 }
 
-/** Common facts and the two universal generated files. All values are ordinary RDK nodes. */
+/** Common facts and the two universal generated files. All values are ordinary Dagr nodes. */
 export function typescript({
   base,
   scope = 'internal',
@@ -346,8 +355,14 @@ export function typescript({
       ({ commands, script }) => scriptsFor(commands, script),
     ),
     '/package/facts': packageFacts,
-    '/typescript/package-json': packageJson,
-    '/typescript/package-json/hoisted': adapter('/typescript/package-json'),
+    ...Object.fromEntries([
+      ...DEVELOPMENT_INTENTS.map(intent => [
+        `/file/package.json/${intent}`, packageJson(intent, true),
+      ]),
+      ...DISTRIBUTION_INTENTS.map(intent => [
+        `/file/package.json/${intent}`, packageJson(intent, false),
+      ]),
+    ]),
     '/typescript/tsconfig': tsconfig,
     '/typescript/tsconfig/hoisted': adapter('/typescript/tsconfig'),
   })
@@ -407,16 +422,16 @@ export function library({
         base: '/target/ci/build',
         pack: '/package-manager/pack',
         slug: '/package/slug',
-        files: select('/typescript/package-json'),
+        manifest: '/file/package.json/pack',
       },
       {
-        render(context, { ignore, localPackages, localImages, base, pack, slug, files }) {
+        render(context, { ignore, localPackages, localImages, base, pack, slug, manifest }) {
           return {
               FROM: base,
               steps: [
                 ...copyLocalPackages(localPackages, localImages, '/out'),
                 { WORKDIR: '/repo' },
-                ...context.files(files, { install: false }),
+                copyManifest(manifest),
                 { RUN: pack(slug) },
               ],
               IGNORE: ignore,
@@ -442,7 +457,7 @@ export function library({
               steps: [
                 ...copyLocalPackages(localPackages, localImages, '/out'),
                 { WORKDIR: '/repo' },
-                ...context.files(files, { install: false }),
+                copyManifest(manifest),
                 { RUN: pack(slug) },
               ],
               IGNORE: ignore,

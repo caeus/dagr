@@ -1,73 +1,30 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { FacetDef, IndexDef, MountImplementation, Name, PackageDef, Run, Volumes } from '#pkg/schema.js'
+import { IndexDef, MountImplementation, PackageDef, Result, Run, Volumes } from '#pkg/schema.js'
 
-const target = { deps: [], run: () => ({ FROM: 'scratch', steps: [], IGNORE: [] }) }
-
-describe('Name', () => {
-  it('accepts portable shell-safe names', () => {
-    for (const name of ['ci', 'CI', 'node24', 'node-pnpm', 'type_check', 'release.v2']) {
-      assert.equal(Name.parse(name), name)
-    }
-  })
-
-  it('rejects separators, shell syntax, whitespace, and unsafe leading characters', () => {
-    for (const name of [
-      '',
-      '/',
-      'ci:build',
-      'ci/build',
-      'ci\\build',
-      'ci;build',
-      'ci build',
-      'ci\nbuild',
-      '$ci',
-      '*',
-      '.hidden',
-      '-flag',
-      '_private',
-    ]) {
-      assert.equal(Name.safeParse(name).success, false, name)
-    }
-  })
-})
-
-describe('PackageDef facets', () => {
-  it('applies Name to facet keys', () => {
-    assert.equal(PackageDef.safeParse({ 'ci;rm': () => ({ build: target }) }).success, false)
-  })
-
-  it('accepts a static record of targets as the older form', () => {
-    assert.equal(PackageDef.safeParse({ ci: { build: target } }).success, true)
-  })
-
-  it('rejects a facet that is neither a function nor a record of targets', () => {
-    assert.equal(PackageDef.safeParse({ ci: 'build' }).success, false)
-    assert.equal(PackageDef.safeParse({ ci: { build: { deps: [] } } }).success, false)
-  })
-
-  it('accepts a facet without expanding it', () => {
-    let expansions = 0
-    const parsed = PackageDef.parse({
-      ci: () => {
-        expansions++
-        return { build: target }
+describe('node graph', () => {
+  it('accepts absolute semantic paths and named dependencies', () => {
+    const graph = {
+      '/config/name': { deps: {}, run: () => ({ value: 'app' }) },
+      '/file/manifest': {
+        deps: { name: '/config/name', external: '//other:/value' },
+        run: (args: unknown) => ({ value: args }),
       },
-    })
-
-    assert.equal(typeof parsed['ci'], 'function')
-    assert.equal(expansions, 0, 'parsing a package must not expand its facets')
-  })
-})
-
-describe('FacetDef expansion', () => {
-  it('applies Name to target keys', () => {
-    assert.equal(FacetDef.safeParse({ 'build/run': target }).success, false)
+    }
+    assert.equal(PackageDef.safeParse(graph).success, true)
   })
 
-  it('preserves additional target fields', () => {
-    const definition = { ...target, name: 'build' }
-    assert.deepEqual(FacetDef.parse({ build: definition }), { build: definition })
+  it('rejects old facets and positional dependencies', () => {
+    assert.equal(PackageDef.safeParse({ ci: {} }).success, false)
+    assert.equal(PackageDef.safeParse({ '/ci/test': { deps: [], run() {} } }).success, false)
+  })
+
+  it('accepts only wrapped values or builds', () => {
+    assert.equal(Result.safeParse({ value: undefined }).success, true)
+    assert.equal(Result.safeParse({ value: false }).success, true)
+    assert.equal(Result.safeParse(false).success, false)
+    assert.equal(Result.safeParse({ value: 1, build: {} }).success, false)
+    assert.equal(Result.safeParse({ build: { FROM: 'scratch', steps: [], IGNORE: [] } }).success, true)
   })
 })
 
