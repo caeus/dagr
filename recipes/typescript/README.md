@@ -5,7 +5,7 @@ Compose features with object spread. There is no separate graph evaluator or com
 
 ```js
 import {
-  typescript, library, pnpm, vitest, eslint, prettier, hoister, value,
+  typescript, library, pnpm, vitest, eslint, prettier, hoister,
 } from '//recipes/ts//dagr.recipe.js'
 
 export default {
@@ -19,7 +19,14 @@ export default {
   ...prettier('app'),
   ...eslint('app', { prettier: true }),
   ...hoister('app'),
-  '/app/node-base': value('node:22-alpine'),
+  '/app/node-base': {
+    deps: {},
+    run: () => ({ build: {
+      FROM: 'node:22-alpine',
+      steps: [{ RUN: 'corepack enable && corepack prepare pnpm@11.20.0 --activate' }],
+      IGNORE: [],
+    } }),
+  },
 }
 ```
 
