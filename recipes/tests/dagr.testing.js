@@ -1,7 +1,7 @@
 /**
  * A test runner that runs inside a Dagr index.
  *
- * The point is fidelity. A test loaded by the engine gets the real `dagr:rdk`, the real `dagr:yaml`,
+ * The point is fidelity. A test loaded by the engine gets the real `dagr:yaml`,
  * and the real module resolution, so it exercises what ships instead of a stand-in. The price is that
  * the sandbox has no `node:test` and no `node:assert`, so both are hand-woven here — a few dozen lines
  * of collector and comparison, in exchange for deleting every simulation of the engine.
