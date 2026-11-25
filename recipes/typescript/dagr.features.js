@@ -1,5 +1,5 @@
 import bundledVersions from '//dagr.versions.yaml'
-import { value, derive, select } from '//dagr.nodes.js'
+import { value, derive, select, scope, packageNodes } from '//dagr.nodes.js'
 import { command, file, filesFor, target } from '//dagr.contributions.js'
 import { writeJson, writeText } from '//dagr.file-utils.js'
 import { RECOMMENDED_IGNORE } from '//dagr.dockerignore.js'
@@ -218,7 +218,7 @@ export const sourceTarget = ({
     throw new TypeError(`sourceTarget files must be exact semantic paths: ${nonExact.join(', ')}`)
   }
 
-  return (keys, path) => target(
+  return path => target(
     {
       manifest: `/file/package.json/${intent ?? path.split('/').at(-1)}`,
       base: '/image/base',
@@ -259,13 +259,13 @@ export const sourceTarget = ({
         }
       },
     },
-  )(keys, path)
+  )(path)
 }
 
 /** Materializes every structurally hoisted file contribution onto the host. */
-export function hoister() {
-  return ({
-    '/target/dev/hoist': target(
+export function hoister(name) {
+  return scope(name, {
+    '/dev/hoist': target(
       {
         base: '/image/base',
         ignore: '/source/ignore',
@@ -300,9 +300,13 @@ export function hoister() {
 }
 
 /** Common facts and the two universal generated files. All values are ordinary Dagr nodes. */
-export function typescript({
-  base,
-  scope = 'internal',
+export function typescript(name, {
+  base = '/node-base',
+  location = `//${name}`,
+  version = '0.1.0',
+  deps = [],
+  metadata = {},
+  scope: packageScope = 'internal',
   versions = {},
   sourceDirectory = 'src',
   entryFile = 'index.ts',
@@ -311,10 +315,11 @@ export function typescript({
   ignore = RECOMMENDED_IGNORE,
 } = {}) {
   if (!base) throw new Error('typescript() requires a base target')
-  return ({
+  return scope(name, {
+    ...packageNodes({ location, version, deps, metadata }),
     '/image/base': derive({ image: base }, ({ image }) => image),
     '/source/ignore': value(ignore),
-    '/package/scope': value(scope),
+    '/package/scope': value(packageScope),
     '/version/catalog': value(Object.freeze({ ...bundledVersions.deps, ...versions })),
     '/source/directory': value(sourceDirectory),
     '/source/entry': value(entryFile),
@@ -374,7 +379,7 @@ const typescriptPackages = runtime => [
   ...(runtime === 'node' ? ['@types/node'] : []),
 ]
 
-export function library({
+export function library(name, {
   runtime = 'portable',
   language = runtime === 'node' ? 'ES2023' : 'ES2022',
   sourceMaps = false,
@@ -385,7 +390,7 @@ export function library({
   }
   const packages = typescriptPackages(runtime)
   const types = runtime === 'node' ? ['node'] : []
-  return ({
+  return scope(name, {
     '/product/kind': value('library'),
     '/runtime/kind': value(runtime),
     '/typescript/language-target': value(language),
@@ -412,14 +417,14 @@ export function library({
       run: () => ({ tool: 'tsc' }),
     }),
     '/typescript/compiler/package-json/script': adapter('/typescript/compiler'),
-    '/target/ci/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
-    '/target/ci/build': sourceTarget({ command: '/typescript/compiler', assets: true }),
-    '/target/ci/pack': target(
+    '/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
+    '/build': sourceTarget({ command: '/typescript/compiler', assets: true }),
+    '/pack': target(
       {
         ignore: '/source/ignore',
         localPackages: '/package/local-dependencies',
         localImages: '/package/local-images',
-        base: '/target/ci/build',
+        base: '/build',
         pack: '/package-manager/pack',
         slug: '/package/slug',
         manifest: '/file/package.json/pack',
@@ -439,19 +444,19 @@ export function library({
         },
       },
     ),
-    '/target/publish/pack': target(
+    '/publish/pack': target(
       {
         ignore: '/source/ignore',
         localPackages: '/package/local-dependencies',
         localImages: '/package/local-images',
-        base: '/target/ci/build',
+        base: '/build',
         pack: '/package-manager/pack',
         slug: '/package/slug',
-        files: select('/typescript/package-json'),
+        manifest: '/file/package.json/publish',
       },
       {
         intent: 'publish',
-        render(context, { ignore, localPackages, localImages, base, pack, slug, files }) {
+        render(context, { ignore, localPackages, localImages, base, pack, slug, manifest }) {
           return {
               FROM: base,
               steps: [
@@ -468,9 +473,9 @@ export function library({
   })
 }
 
-export function cloudflareWorker({ language = 'ES2022' } = {}) {
+export function cloudflareWorker(name, { language = 'ES2022' } = {}) {
   const packages = [...typescriptPackages('portable'), '@cloudflare/workers-types', 'wrangler']
-  return ({
+  return scope(name, {
     '/product/kind': value('worker'),
     '/runtime/kind': value('cloudflare-worker'),
     '/typescript/language-target': value(language),
@@ -499,7 +504,7 @@ export function cloudflareWorker({ language = 'ES2022' } = {}) {
       run: () => ({ tool: 'tsc --noEmit' }),
     }),
     '/typescript/typechecker/package-json/script': adapter('/typescript/typechecker'),
-    '/target/ci/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
+    '/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
   })
 }
 
@@ -515,9 +520,9 @@ const viteRuntimePackages = Object.freeze([
   'tailwindcss',
 ])
 
-export function viteReact({ language = 'ES2020' } = {}) {
+export function viteReact(name, { language = 'ES2020' } = {}) {
   const packages = [...typescriptPackages('node'), 'vite']
-  return ({
+  return scope(name, {
     '/product/kind': value('web'),
     '/runtime/kind': value('browser'),
     '/typescript/language-target': value(language),
@@ -568,19 +573,19 @@ export default defineConfig({
     }),
     '/typescript/compiler': adapter('/vite/compiler'),
     '/typescript/compiler/package-json/script': adapter('/typescript/compiler'),
-    '/target/ci/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
-    '/target/ci/build': sourceTarget({ command: '/typescript/compiler', assets: true }),
+    '/typecheck': sourceTarget({ command: '/typescript/typechecker' }),
+    '/build': sourceTarget({ command: '/typescript/compiler', assets: true }),
   })
 }
 
-export function prettier({
+export function prettier(name, {
   semi = false,
   tabWidth = 2,
   singleQuote = true,
   printWidth = 100,
   trailingComma = 'none',
 } = {}) {
-  return ({
+  return scope(name, {
     '/prettier/tooling': tooling({
       for: ['dev'],
       packages: ['prettier'],
@@ -601,8 +606,8 @@ export function prettier({
   })
 }
 
-export function biome({ formatter = true, linter = true } = {}) {
-  return ({
+export function biome(name, { formatter = true, linter = true } = {}) {
+  return scope(name, {
     '/biome/config': file({}, {
       for: ['dev', 'lint'],
       render: () => writeJson('/repo/biome.json', {
@@ -623,16 +628,16 @@ export function biome({ formatter = true, linter = true } = {}) {
       }),
       '/typescript/linter': adapter('/biome/linter'),
       '/typescript/linter/package-json/script': adapter('/typescript/linter'),
-      '/target/ci/lint': sourceTarget({ command: '/typescript/linter' }),
+      '/lint': sourceTarget({ command: '/typescript/linter' }),
     } : {}),
   })
 }
 
-export function vitest({ environment = 'node', globals = false, typecheck = false } = {}) {
+export function vitest(name, { environment = 'node', globals = false, typecheck = false } = {}) {
   const configDeps = environment === 'jsdom'
     ? { viteConfig: '/vite/config' }
     : {}
-  return ({
+  return scope(name, {
     '/vitest/config': file(configDeps, {
       for: ['dev', 'test'],
       render() {
@@ -680,11 +685,11 @@ export default defineConfig({ test: {
     }),
     '/typescript/tester': adapter('/vitest/tester'),
     '/typescript/tester/package-json/script': adapter('/typescript/tester'),
-    '/target/ci/test': sourceTarget({ command: '/typescript/tester' }),
+    '/test': sourceTarget({ command: '/typescript/tester' }),
   })
 }
 
-export function eslint({ prettier: enforceFormatting = false, explicitReturnTypes = false } = {}) {
+export function eslint(name, { prettier: enforceFormatting = false, explicitReturnTypes = false } = {}) {
   const packages = [
     '@eslint/js',
     '@typescript-eslint/eslint-plugin',
@@ -692,7 +697,7 @@ export function eslint({ prettier: enforceFormatting = false, explicitReturnType
     'eslint',
     ...(enforceFormatting ? ['eslint-plugin-prettier', 'prettier'] : []),
   ]
-  return ({
+  return scope(name, {
     '/eslint/config': file({ source: '/source/directory' }, {
       for: ['dev', 'lint'],
       render(_context, { source }) {
@@ -745,7 +750,7 @@ ${enforceFormatting ? "import prettier from 'eslint-plugin-prettier'\n" : ''}exp
     }),
     '/typescript/linter': adapter('/eslint/linter'),
     '/typescript/linter/package-json/script': adapter('/typescript/linter'),
-    '/target/ci/lint': sourceTarget({ command: '/typescript/linter' }),
+    '/lint': sourceTarget({ command: '/typescript/linter' }),
   })
 }
 
@@ -778,8 +783,8 @@ export default {
  * Bundles a compiled library into one JavaScript file, treating node builtins as external. Its own
  * `bundle` intent keeps the config and the bundler out of the compile target that feeds it.
  */
-export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
-  return ({
+export function rollup(name, { bundleDirectory = 'dist', strict = true } = {}) {
+  return scope(name, {
     '/output/bundle-directory': value(bundleDirectory),
     '/output/bundle-file': derive(
       { directory: '/output/bundle-directory', slug: '/package/slug' },
@@ -806,12 +811,12 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
       run: () => ({ tool: 'rollup --config rollup.config.js' }),
     }),
     '/typescript/bundler': adapter('/rollup/bundler'),
-    '/target/ci/bundle': target({
+    '/bundle': target({
       ignore: '/source/ignore',
       exec: '/package-manager/exec',
       bundleFile: '/output/bundle-file',
       bundler: '/typescript/bundler',
-      base: '/target/ci/build',
+      base: '/build',
     }, {
       render: (context, { ignore, exec, bundleFile, bundler, base }) => ({
           FROM: base,
@@ -823,8 +828,8 @@ export function rollup({ bundleDirectory = 'dist', strict = true } = {}) {
   })
 }
 
-export function typedoc({ title } = {}) {
-  return ({
+export function typedoc(name, { title } = {}) {
+  return scope(name, {
     '/typedoc/config': file({
       source: '/source/directory',
       entry: '/source/entry',
@@ -857,7 +862,7 @@ export function typedoc({ title } = {}) {
     }),
     '/typescript/documenter': adapter('/typedoc/documenter'),
     '/typescript/documenter/package-json/script': adapter('/typescript/documenter'),
-    '/target/ci/docs': sourceTarget({
+    '/docs': sourceTarget({
       command: '/typescript/documenter',
       export: { '/repo/docs/': 'docs/' },
     }),

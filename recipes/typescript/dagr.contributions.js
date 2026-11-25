@@ -144,7 +144,7 @@ export const contextFor = context => {
 /** A build declaration. Intent is a recipe convention, not an engine concept. */
 export function target(deps, { intent, render } = {}) {
   if (typeof render !== 'function') throw new TypeError('target needs render')
-  return define(deps, (args, host, path) => {
+  return path => define(deps, (args, host) => {
     const segments = path.split('/')
     return { build: render(contextFor({
       intent: intent ?? segments.at(-1), facet: segments.at(-2),

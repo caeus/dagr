@@ -1,4 +1,4 @@
-import { derive, value, target } from '//engine/recipes/typescript//dagr.recipe.js'
+import { derive, value, target, scope } from '//engine/recipes/typescript//dagr.recipe.js'
 import { nodeCli } from '//engine/recipes/dagr.node-cli.js'
 
 const SMOKE_RUN = 'mkdir -p /tmp/dagr-smoke/packages'
@@ -15,7 +15,7 @@ const versions = {
   zod: '4.4.3',
 }
 
-const dagr = ({
+const dagr = name => scope(name, {
   '/package/name': value('@caeus/dagr'),
 
   // A bundled CLI publishes one JavaScript file, so type declarations are dead weight.
@@ -30,7 +30,7 @@ const dagr = ({
     }),
   ),
 
-  '/target/ci/bundlecheck': target({ ignore: '/source/ignore', bundle: '/target/ci/bundle' }, {
+  '/bundlecheck': target({ ignore: '/source/ignore', bundle: '/bundle' }, {
     render: (_context, { ignore, bundle }) => ({
         FROM: bundle,
         steps: [{ RUN: SMOKE_RUN }],
@@ -38,7 +38,7 @@ const dagr = ({
     }),
   }),
 
-  '/target/ci/image': target({ checked: '/target/ci/bundlecheck' }, {
+  '/image': target({ checked: '/bundlecheck' }, {
     render: (_context, { checked }) => ({
         FROM: 'node:22-alpine',
         steps: [
@@ -54,4 +54,7 @@ const dagr = ({
 })
 
 /** The composition this repository builds its engine with. */
-export const engine = nodeCli({ versions }).with(dagr)
+export const engine = declaration => ({
+  ...nodeCli('engine', { ...declaration, versions }),
+  ...dagr('engine'),
+})

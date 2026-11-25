@@ -1,59 +1,39 @@
-import Glob from 'dagr:glob'
-
 export const value = data => ({ deps: {}, run: () => ({ value: data }) })
 export const select = (...patterns) => Object.freeze(patterns)
-export const derive = (deps, calculate) => define(deps, (args, host) => ({
-  value: calculate(args, host),
-}))
+export const derive = (deps, calculate) => ({
+  deps,
+  run: (args, host) => ({ value: calculate(args, host) }),
+})
+export const define = (deps, run) => ({ deps, run })
 
-// Select names, never evaluate values. Only named exact edges reach the engine.
-export const define = (inputs, run) => (keys, path) => {
-  const entries = []
-  const groups = []
-  const singles = []
-  const add = (id, ref) => {
-    if (entries.some(([key]) => key === id)) throw new Error(`Duplicate dependency name ${id} on ${path}`)
-    entries.push([id, ref])
-  }
-  for (const [name, input] of Object.entries(inputs)) {
-    if (typeof input === 'string') {
-      add(name, input)
-      singles.push(name)
-      continue
-    }
-    if (!Array.isArray(input)) throw new TypeError(`Invalid dependency ${name} on ${path}`)
-    const selected = new Set()
-    for (const pattern of input) {
-      if (!pattern.includes('*')) {
-        if (!keys.includes(pattern)) throw new Error(`Missing dependency ${pattern} on ${path}`)
-        selected.add(pattern)
-      } else {
-        const matches = Glob.of(pattern.slice(1))
-        for (const key of keys) if (matches(key.slice(1))) selected.add(key)
-      }
-    }
-    const group = [...selected].map(ref => {
-      const id = `${name}:${ref}`
-      add(id, ref)
-      return [ref, id]
-    })
-    groups.push([name, group])
-  }
-  return {
-    deps: Object.fromEntries(entries),
-    run: (args, host) => run(Object.fromEntries([
-      ...singles.map(name => [name, args[name]]),
-      ...groups.map(([name, group]) => [
-        name, Object.fromEntries(group.map(([ref, id]) => [ref, args[id]])),
-      ]),
-    ]), host, path),
-  }
+/** Prefix definitions and internal dependencies. Fully qualified references stay absolute.
+ * No inspection of other graphs or evaluation of dependency values.
+ */
+export function scope(name, definitions) {
+  if (typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name))
+    throw new Error('Expected a namespace name')
+  const prefix = ref => ref.startsWith('//') ? ref : `/${name}${ref}`
+  return Object.fromEntries(Object.entries(definitions).map(([path, declaration]) => {
+    const node = typeof declaration === 'function' ? declaration(path) : declaration
+    return [prefix(path), {
+      deps: Object.fromEntries(Object.entries(node.deps).map(([id, dep]) => [
+        id, Array.isArray(dep) ? dep.map(prefix) : prefix(dep),
+      ])),
+      run: node.run,
+    }]
+  }))
 }
 
-export const compose = (...features) => {
-  const graph = Object.assign({}, ...features)
-  const keys = Object.keys(graph)
-  return Object.fromEntries(Object.entries(graph).map(([path, declaration]) => [
-    path, typeof declaration === 'function' ? declaration(keys, path) : declaration,
-  ]))
+export function packageNodes({ location, version = '0.1.0', deps = [], metadata = {} }) {
+  if (!location) throw new Error('A package declaration requires a location')
+  return {
+    '/package/location': value(location),
+    '/package/version': value(version),
+    '/package/dependencies': value(Object.freeze([...deps])),
+    '/package/metadata': value(Object.freeze({ ...metadata })),
+    '/package/local-images': {
+      deps: Object.fromEntries(deps.filter(dep => 'target' in dep).map(dep => [dep.target, dep.target])),
+      run: args => ({ value: args }),
+    },
+  }
 }

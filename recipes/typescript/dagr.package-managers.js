@@ -1,4 +1,4 @@
-import { value, derive, select } from '//dagr.nodes.js'
+import { value, derive, select, scope } from '//dagr.nodes.js'
 import { file } from '//dagr.contributions.js'
 import { DEVELOPMENT_INTENTS, adapter, buildsFor } from '//dagr.model.js'
 import { writeYaml } from '//dagr.file-utils.js'
@@ -14,7 +14,7 @@ export const fileTarballs = (manifest, localPackages, _context) => localPackages
 const packDestination = command => slug =>
   `mkdir -p /tmp/pack /out && ${command} --pack-destination /tmp/pack && mv /tmp/pack/*.tgz /out/${slug}.tgz`
 
-export const npm = () => ({
+export const npm = name => scope(name, {
   '/package-manager/install-manifest': value(fileTarballs),
   '/package-manager/exec': value(invocation => `npm exec -- ${invocation}`),
   '/package-manager/script': value(invocation => invocation),
@@ -27,7 +27,7 @@ export const npm = () => ({
   '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })
 
-export const pnpm = () => ({
+export const pnpm = name => scope(name, {
   '/package-manager/install-manifest': value(fileTarballs),
   '/package-manager/exec': value(invocation => `pnpm exec ${invocation}`),
   '/package-manager/script': value(invocation => invocation),
@@ -49,7 +49,7 @@ export const pnpm = () => ({
   '/package-manager/config/hoisted': adapter('/package-manager/config'),
 })
 
-export const yarn = () => ({
+export const yarn = name => scope(name, {
   '/package-manager/install-manifest': derive(
     { builds: select('/**/package-manager/builds') },
     ({ builds }) => (manifest, localPackages, context) => {
