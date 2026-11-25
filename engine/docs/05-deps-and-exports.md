@@ -1,121 +1,40 @@
 # Dependencies and `EXPORT`
 
-## Reference shorthands
+## References
 
-A target reference is a `:`-separated string with one, two, or three segments. Missing
-segments are filled from the target's context:
+An exact reference is either an absolute semantic path in the current project or a fully
+qualified project address and semantic path, separated by a colon.
 
-| Written | Segments | Resolves to |
-| --- | --- | --- |
-| `//services/api:ci:build` | 3 | Exactly that. Always unambiguous. |
-| `./api:ci:build` | 3 | `<current package>/api:ci:build` |
-| `.:ci:build` | 3 | `<current package>:ci:build` |
-| `ci:build` | 2 | `<current package>:ci:build` |
-| `build` | 1 | `<current package>:<current facet>:build` |
+| Reference | Meaning |
+| --- | --- |
+| `/app/build` | Node in the current project |
+| `//packages/core:/lib/pack` | Node in another project |
+| `//:/config` | Node in the root project |
+| `//tools//pkg:/pack` | Node across a mount boundary |
 
-`//` anchors an address at the repository root; `./` anchors it at the current package. A relative
-address may descend several levels (`./web/admin:ci:test`) but may not contain `..`, and it may not
-cross a mount boundary — reach a mounted package with the `//` form.
-
-Inside a `deps` array, "context" is the package **and** facet of the target doing the
-depending. So all three forms work in `deps`:
+## Named and plural dependencies
 
 ```js
-export default {
-  ci: () => ({
-    install: { deps: [], run: ... },
-    build:   { deps: ['install'], run: ... },                      // same package, same facet
-    docs:    { deps: ['release:bundle'], run: ... },               // same package, other facet
-    deploy:  { deps: ['//services/api:ci:build'], run: ... },       // another package
-  }),
+deps: {
+  manifest: '/app/file/build/package.json',
+  files: ['/app/file/build/package-manager/**', '/app/file/build/tsconfig.json'],
+  library: '//packages/core:/lib/pack',
 }
 ```
 
-On the command line, "current package" means the package of the working directory, and at the
-repository root it means the root package. `facet:target` may be used from that package's
-directory; a bare target name is not accepted:
+Exact string references yield the unwrapped dependency value. A wildcard string or an
+array yields a record. Local entries are keyed by semantic path; external entries by
+fully qualified node address. `*` matches one segment, `**` zero or more. Matches are
+deduplicated. A wildcard may match nothing; an exact reference must exist.
+All selections resolve against the final graph.
 
-```sh
-cd services/api
-dagr run ci:build
-```
-
-From anywhere else, address the package with either anchor. `dagr pkg ls` prints the relative
-names available from the working directory:
-
-```sh
-cd services
-dagr run ./api:ci:build          # relative to the working directory
-dagr run //services/api:ci:build # same target, from the repository root
-```
-
-A root-package target uses `//:facet:target`:
-
-```sh
-cd <repo root>
-dagr run //:ci:deploy
-```
-
-## The `images` map
-
-`run` receives `ctx.images`, keyed by the dep strings **exactly as written in `deps`** — not
-by their expanded FQTs. This trips people up constantly:
-
-```js
-{
-  deps: ['install', '//libraries/common:ci:pack'],
-  run: ({ images }) => ({
-    FROM: images['install'],                          // ✓ the literal string from deps
-    steps: [{ COPY: { from: images['//libraries/common:ci:pack'], src: '/out/x.tgz', dest: '/x.tgz' } }],
-  })
-}
-```
-
-```js
-images['//services/api:ci:install'] // undefined: the dependency was declared as 'install'
-```
-
-The values are Dagr-generated image tags. A dep you declare but never read is still built;
-declaring it is what schedules it.
-
-Two practical habits follow. If you build dep strings programmatically, keep the same
-expression for both the `deps` entry and the lookup:
-
-```js
-const BASE = '//foundation:ci:toolchain'
-
-return {
-  install: {
-    deps: [BASE],
-    run: ({ images }) => ({ FROM: images[BASE], steps: [...] }),
-  },
-}
-```
-
-And if you generate a list of deps, generate the lookups the same way:
-
-```js
-const packTargets = localDeps.map(d => `//libraries/${d.local}:ci:pack`)
-// ...
-deps: [...packTargets, BASE],
-run: ({ images }) => ({
-  FROM: images[BASE],
-  steps: localDeps.map(d => ({
-    COPY: { from: images[`//libraries/${d.local}:ci:pack`], src: `/out/${d.local}.tgz`, dest: `/repo/${d.local}.tgz` },
-  })),
-}),
-```
+A build with `path` yields `{ image, path }`. Use those fields in a subsequent
+`COPY`. A build without `path` yields an image tag, usable as `FROM`.
 
 ## Cycles
 
-Cycles are detected while walking the graph and reported with the full path:
-
-```
-Circular dependency: //pkg:ci:a -> //pkg:ci:b -> //pkg:ci:a
-```
-
-The check happens at run time, not load time, so `dagr list` will happily print a cyclic graph
-(with a truncated topological order). `dagr run` is what catches it.
+The engine rejects dependency cycles, including cycles between concurrently requested
+roots. Shared dependencies are evaluated once per invocation.
 
 ## `EXPORT`
 
@@ -185,15 +104,15 @@ EXPORT: { '/repo/dist': './' } // replaces just <pkg>/dist — safe, the root is
 
 This is the most important rule about `EXPORT` and it is deliberate.
 
-When you run `dagr run //services/api:ci:build`, Dagr builds every transitive dependency, but
-it only materializes the `EXPORT` map of `//services/api:ci:build` itself. If
-`//services/api:ci:install` also declares an `EXPORT`, nothing is written for it.
+When you run `dagr run //services/api:/build`, Dagr builds every transitive dependency, but
+it only materializes the `EXPORT` map of `//services/api:/build` itself. If
+`//services/api:/install` also declares an `EXPORT`, nothing is written for it.
 
 So `EXPORT` on an intermediate target is not a side effect that fires whenever the target gets
 built. To receive an intermediate target's declared files, run it directly:
 
 ```sh
-dagr run //services/api:ci:install
+dagr run //services/api:/install
 ```
 
 Without this rule, building anything would spray files across your working tree.

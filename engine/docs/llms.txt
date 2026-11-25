@@ -7,7 +7,7 @@
 - [Overview](https://caeus.github.io/dagr/): Product overview, core model, examples, inspection commands, and development entry points.
 - [Why Dagr?](https://caeus.github.io/dagr/00-why-dagr/): Design goals, fit, tradeoffs, and why the graph is programmable.
 - [Getting started](https://caeus.github.io/dagr/01-getting-started/): First setup and first target.
-- [Concepts](https://caeus.github.io/dagr/02-concepts/): Packages, facets, targets, fully-qualified target addresses, execution, mounts, caching, and determinism.
+- [Concepts](https://caeus.github.io/dagr/02-concepts/): Projects, nodes, named dependencies, fully-qualified node addresses, execution, mounts, caching, and determinism.
 
 ## Authoring
 

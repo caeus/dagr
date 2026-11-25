@@ -114,14 +114,14 @@ Dagr keeps filesystem-oriented `//` addressing. It does not add repository prefi
 namespaces:
 
 ```text
-//vendor/foo//packages/core:ci:test
+//vendor/foo//packages/core:/test
 ```
 
 The first `//` is the invocation root. The second crosses the mount at `vendor/foo`. Every further
 mount boundary adds another `//`:
 
 ```text
-//a//b//c//pkg:ci:test
+//a//b//c//pkg:/test
 ```
 
 The same syntax applies to imports and mounted `COPY` sources:
@@ -145,7 +145,7 @@ vendor/foo/
 └── dagr.mount.yaml
 ```
 
-`//vendor/foo:ci:test` addresses the local target definition. `//vendor/foo//:ci:test` crosses the
+`//vendor/foo:/test` addresses the local node definition. `//vendor/foo//:/test` crosses the
 mount and addresses a target at the volume root. Neither file defines or overrides the other.
 
 ## Failures

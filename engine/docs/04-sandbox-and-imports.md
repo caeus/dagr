@@ -11,7 +11,6 @@ Build files can use standard JavaScript values and `Buffer`. Dagr also provides 
 import YAML from 'dagr:yaml'
 import TOML from 'dagr:toml'
 import Glob from 'dagr:glob'
-import RDK from 'dagr:rdk'
 ```
 
 YAML and TOML expose `stringify` through their default export and as a named export. Glob exposes

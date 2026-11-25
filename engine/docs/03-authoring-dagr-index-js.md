@@ -1,101 +1,58 @@
 # Authoring `dagr.index.js`
 
-A `dagr.index.js` file is an ES module whose **default export** describes one package's facets and
-targets. Filesystem composition is separate and uses `dagr.mount.yaml`.
-
-## The shape
+The default export of a project index is a plain record keyed by absolute semantic node paths.
 
 ```js
 export default {
-  <facetName>: () => ({
-    <targetName>: {
-      deps: [ /* target references, strings */ ],
-      run: ({ images, host }) => ({
-        FROM: '<image ref>',
-        steps: [ /* Step objects */ ],
-        IGNORE: [ /* .dockerignore entries */ ],
-        EXPORT: { '<abs path in image>': '<path relative to package dir>' },  // optional
-      }),
-    },
-  }),
+  '/app/config': {
+    deps: {},
+    run: () => ({ value: { name: 'app' } }),
+  },
+  '/app/file/package.json': {
+    deps: { config: '/app/config' },
+    run: ({ config }) => ({
+      build: {
+        FROM: 'alpine:3.22',
+        steps: [
+          { WORKDIR: '/repo' },
+          { RUN: `echo "${Buffer.from(JSON.stringify(config)).toString('base64')}" | base64 -d > /repo/package.json` },
+        ],
+        IGNORE: [],
+        path: '/repo/package.json',
+      },
+    }),
+  },
+  '/app/build': {
+    deps: { manifest: '/app/file/package.json' },
+    run: ({ manifest }) => ({
+      build: {
+        FROM: 'node:22-alpine',
+        steps: [
+          { COPY: { from: manifest.image, src: manifest.path, dest: '/repo/package.json' } },
+        ],
+        IGNORE: [],
+      },
+    }),
+  },
 }
 ```
 
-A facet is a **function** that returns its targets, not a record of them. That makes expansion an
-evaluation boundary: loading a package reveals which facets exist, and dagr expands only the facet it
-needs. Running `//app:ci:build` never evaluates a `publish` facet, so work that only `publish` targets
-require is not done, and a mistake inside `publish` cannot break `ci`.
+## Node shape
 
-Two consequences worth knowing:
+`deps` is a record of local names to semantic references or plural selections.
+`run(args, host)` receives resolved values under exactly those local names. The optional
+second parameter exposes the host platform (`os`, `arch`, and Linux `libc`).
 
-- A facet's targets are validated when it expands, not when the package loads. An invalid target is
-  reported the first time something asks for that facet.
-- `dagr list` prints every target, so it expands every facet by design.
+Return exactly one of `{ value: anything }` and `{ build: recipe }`. A build recipe
+contains `FROM`, `steps`, `IGNORE`, optional `path` and optional `EXPORT`.
+Without `path`, its dependency value is an image tag. With an absolute normalized image
+path, its value is `{ image, path }`. A path may denote a directory.
 
-A facet may also be written as a static record of targets:
+## Project location and mounts
 
-```js
-export default {
-  ci: { build: { deps: [], run: ... } },
-}
-```
-
-That form still loads, so an index written before facets became functions keeps working. It cannot be
-lazy, because a record is already its own expansion. Write facets as functions.
-
-Facet and target names must match `[A-Za-z0-9][A-Za-z0-9._-]*`. The leading alphanumeric
-requirement prevents names from behaving like command options, hidden paths, or dagr directives.
-In particular, `/` cannot collide with a facet.
-
-Notes on validation:
-
-- `deps` is required. A target with no dependencies writes `deps: []` — there is no implicit
-  default, so a missing `deps` is a validation failure, not an empty list.
-- `run` must be a function. It is *not* called during loading — only when the target is
-  actually built.
-- `ctx.images` maps each dependency string exactly as declared to its built image tag.
-- `ctx.host` describes the user's OS, architecture, and, on Linux, libc.
-- `steps` is required. Use `steps: []` for a target that only re-tags or re-exports its base.
-- `IGNORE` is required, and `IGNORE: []` means "upload the whole context". Also no default —
-  see [`IGNORE`](#ignore) below.
-- Additional target fields are preserved, allowing recipes to attach metadata. `deps` and `run`
-  are still validated.
-
-## Package location
-
-Each `dagr.index.js` can read its canonical logical package location from
-`import.meta.dagr.location`:
-
-```js
-const location = import.meta.dagr.location // `//services/api`
-```
-
-The repository root and the root of every mounted source tree receive `//`. A package `//c` inside a
-mounted tree receives `//c`, regardless of whether that tree was mounted at `//tools`,
-`//vendor/tools`, or anywhere else. A mountee cannot observe its mounter through this API.
-
-The value is read-only and never contains a physical checkout or temporary mount path, so the same
-source tree observes the same locations on every host and under every mounter.
-
-## Mounting volumes
-
-Filesystem composition is defined separately from targets. A directory's `dagr.mount.yaml`
-requests a volume, the root `.dagr/config.js` assigns its global ID, and the root
-`.dagr/volumes.yaml` selects its image recipe.
-
-See [Filesystem composition](03-filesystem-composition.md) for identity, lazy resolution, nested
-`//` traversal, root authority, and implementation rules.
-
-## `run(context)`
-
-`run` is evaluated when a target is built and when its recipe is inspected with `dagr show`.
-During one `dagr run`, each reached target is evaluated at most once because its in-flight build is
-memoized. The `images` object maps each entry of `deps` to that dependency's built **image tag**.
-The keys are the dep strings **exactly as you wrote them**. See
-[Dependencies and `EXPORT`](05-deps-and-exports.md#the-images-map).
-
-`run` must be deterministic and pure. It is evaluated inside the sandbox and has no access to the
-filesystem.
+`import.meta.dagr.location` names the project's logical filesystem address within its
+source root. It is not a node prefix. Mounts are declared separately in `dagr.mount.yaml`.
+See [Filesystem composition](03-filesystem-composition.md).
 
 ## Step reference
 
@@ -174,7 +131,7 @@ With `from`, `src` is an absolute path inside the referenced image and the conte
 involved:
 
 ```js
-{ COPY: { from: images['//libraries/common:ci:pack'], src: '/out/pkg.tgz', dest: '/repo/pkg.tgz' } }
+{ COPY: { from: images['//libraries/common:/pack'], src: '/out/pkg.tgz', dest: '/repo/pkg.tgz' } }
 ```
 
 ## Ordering gotcha: `WORKDIR` creates directories

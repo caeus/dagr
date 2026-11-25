@@ -1,21 +1,8 @@
 # Dagr reusable recipes
 
-> Independently consumable recipes for Dagr. Features own canonical RDK bindings. `input()` combines required exact keys, optional plural patterns, and projection; `one()` and `many()` are its singular and collection conveniences.
+- [Recipe overview](README.md)
+- [TypeScript graph features](typescript/README.md)
+- [Agent guidance](../.agents/skills/dagr-recipes/SKILL.md)
 
-## Start here
-
-- [Recipes overview](https://github.com/caeus/dagr/blob/main/recipes/README.md): recipe boundaries, publication, mounting, and validation.
-- [TypeScript recipe](https://github.com/caeus/dagr/blob/main/recipes/typescript/README.md): RDK inputs, feature-owned bindings, exact capabilities, structural integration protocols, products, and package-manager graphs.
-- [Native libraries](https://github.com/caeus/dagr/blob/main/engine/docs/04-sandbox-and-imports.md): `dagr:rdk`, `dagr:glob`, YAML, and TOML.
-
-## Agent guidance
-
-- [Dagr Recipes Agent Skill](https://github.com/caeus/dagr/tree/main/.agents/skills/dagr-recipes): modeling rules and authoring workflow.
-- [AGENTS.md](https://github.com/caeus/dagr/blob/main/recipes/AGENTS.md): concise instructions for edits under `recipes/`.
-
-## Validation
-
-- `dagr run //recipes:ci:test`
-- `dagr run //recipes:ci:image-typescript`
-- `dagr run //harness:ci:test` (tests needing the recipe and a consuming composition together)
-- `dagr run //recipes:ci:boundaries` (filesystem scan, so it stays a Node test)
+Features return ordinary namespaced node records. Use object spread to compose them.
+Validate with `dagr run //recipes:/composition-test //recipes:/test //harness:/test`.
