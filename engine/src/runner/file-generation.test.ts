@@ -19,7 +19,7 @@ it('returns the image and file path from a build using ordinary RUN', async () =
   })
   const result = await runTarget(
     FQT.parse('//:/file'), target,
-    [{ fqt: FQT.parse('//:/manifest'), value: '{}' }], '.',
+    { manifest: '{}' }, '.',
     {
       renderDockerfile,
       async buildDockerImage(dockerfile, tag) {

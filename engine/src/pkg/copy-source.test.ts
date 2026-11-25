@@ -7,12 +7,10 @@ import { RepositoryPackageLoader, type VolumeMaterializer } from '#pkg/loader.js
 
 const PACKAGE = `
   export default {
-    ci: () => ({
-      build: {
-        deps: [],
-        run: () => ({ FROM: 'alpine', steps: [], IGNORE: [] })
-      }
-    }),
+    '/ci/build': {
+      deps: {},
+      run: () => ({ build: { FROM: 'alpine', steps: [], IGNORE: [] } })
+    },
   }
 `
 

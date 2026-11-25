@@ -1,3 +1,4 @@
+import { Run } from '#pkg/schema.js'
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -42,12 +43,10 @@ inner:
       const declaration = `
         import { image } from '//stack//dagr.stack.js'
         export default {
-          ci: () => ({
-            test: {
-              deps: [],
-              run: () => ({ FROM: image, steps: [], IGNORE: [] })
-            }
-          }),
+          '/ci/test': {
+            deps: {},
+            run: () => ({ build: { FROM: image, steps: [], IGNORE: [] } })
+          },
         }
       `
       const packageNames = ['a', 'b', 'c', 'd']
@@ -65,10 +64,7 @@ inner:
       assert.equal(packages.size, packageNames.length)
 
       for (const name of packageNames) {
-        const run = packages.get(`packages/${name}`)?.facet('ci')?.['test']?.run({
-          images: {},
-          host: { os: 'linux', arch: 'x64' },
-        })
+        const run = Run.parse((packages.get(`packages/${name}`)?.definition['/ci/test']?.run({}, { os: 'linux', arch: 'x64' }) as { build: unknown } | undefined)?.build)
         assert.equal(run?.FROM, 'alpine:3.22')
       }
     } finally {

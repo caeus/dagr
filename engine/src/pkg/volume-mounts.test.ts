@@ -1,3 +1,4 @@
+import { Run } from '#pkg/schema.js'
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -11,12 +12,10 @@ import type { MountImplementation } from '#pkg/schema.js'
 
 const PACKAGE = (image = 'alpine') => `
   export default {
-    ci: () => ({
-      build: {
-        deps: [],
-        run: () => ({ FROM: ${JSON.stringify(image)}, steps: [], IGNORE: [] })
-      }
-    }),
+    '/ci/build': {
+      deps: {},
+      run: () => ({ build: { FROM: ${JSON.stringify(image)}, steps: [], IGNORE: [] } })
+    },
   }
 `
 
@@ -369,9 +368,7 @@ fallback: null
 
     try {
       const local = await loader.loadPackage('tool')
-      assert.equal(local?.facet('ci')?.['build']?.run({
-        images: {}, host: { os: 'linux', arch: 'x64' },
-      }).FROM, 'local')
+      assert.equal(Run.parse((local?.definition['/ci/build']?.run({}, { os: 'linux', arch: 'x64' }) as { build: unknown } | undefined)?.build), 'local')
       assert.equal(calls.length, 0)
 
       assert.ok(await loader.loadPackage('tool//pkg'))
