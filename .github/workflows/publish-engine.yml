@@ -7,22 +7,51 @@ permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: publish-engine
+  cancel-in-progress: false
+
 jobs:
-  publish:
+  resolve:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.release.outputs.sha }}
     steps:
       - name: Check out main
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
 
       - name: Resolve main revision
         id: release
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+  build:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out release revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - name: Inspect runner
+        run: |
+          uname -a
+          docker version
+          docker buildx version
+          docker buildx ls
+          df -h
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -31,32 +60,53 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push platform images with dagr
+      - name: Build and push native image with dagr
         env:
           IMAGE: ghcr.io/${{ github.repository }}
-          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+          ARCH: ${{ matrix.arch }}
+          BUILDKIT_PROGRESS: plain
         run: |
-          for arch in amd64 arm64; do
-            DOCKER_DEFAULT_PLATFORM="linux/$arch" sh .dagr/cli.sh run //engine:/engine/image
-            TAG="dagr-$(printf '%s' '//engine:/engine/image' | sha256sum | cut -d ' ' -f 1)"
-            docker tag "$TAG" "$IMAGE:$RELEASE_SHA-$arch"
-            docker push "$IMAGE:$RELEASE_SHA-$arch"
-          done
+          set -x
+          DOCKER_DEFAULT_PLATFORM="linux/$ARCH" sh .dagr/cli.sh run --verbose //engine:/engine/image
+          TAG="dagr-$(printf '%s' '//engine:/engine/image' | sha256sum | cut -d ' ' -f 1)"
+          test "$(docker image inspect "$TAG" --format '{{.Os}}/{{.Architecture}}')" = "linux/$ARCH"
+          docker tag "$TAG" "$IMAGE:$RELEASE_SHA-$ARCH"
+          docker push "$IMAGE:$RELEASE_SHA-$ARCH"
+
+  publish:
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out release revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish multi-platform manifest
         env:
           IMAGE: ghcr.io/${{ github.repository }}
-          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
           docker buildx imagetools create \
             --tag "$IMAGE:$RELEASE_SHA" \
             --tag "$IMAGE:latest" \
             "$IMAGE:$RELEASE_SHA-amd64" \
             "$IMAGE:$RELEASE_SHA-arm64"
+          docker buildx imagetools inspect "$IMAGE:$RELEASE_SHA"
 
       - name: Advance engine pins
         env:
-          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
 
           sed -i "s|^IMAGE=\"ghcr.io/caeus/dagr:[^\"]*\"$|IMAGE=\"ghcr.io/caeus/dagr:$RELEASE_SHA\"|" engine/examples/starter/.dagr/cli.sh
