@@ -169,7 +169,7 @@ describe('one graph evaluator', () => {
     }, host)
     await runner(FQT.parse('//app:/image'))
     assert.equal(dockerfiles.length, 2)
-    assert.match(dockerfiles[1]!, /COPY --from=dagr-[a-f0-9]+ \/manifest.json \/manifest.json/)
+    assert.match(dockerfiles[1]!, /COPY --from=dagr-[a-f0-9]+ \["\/manifest.json","\/manifest.json"\]/)
   })
 
   it('rejects unknown exact dependencies even in a plural selection', async () => {

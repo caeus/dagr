@@ -35,7 +35,7 @@ const dependencyEntries = (name, scope, deps, versions, runtimePackages) => {
       throw new Error('Local package dependencies must name the npm package')
     const sources = ['target', 'npm'].filter(source => source in dependency)
     if (sources.length !== 1) {
-      throw new Error(`${name}: dependency needs exactly one of facet or npm`)
+      throw new Error(`${name}: dependency needs exactly one of target or npm`)
     }
     if (!['prod', 'dev'].includes(dependency.at)) {
       throw new Error(`${name}: dependency ${dependency.target ?? dependency.npm} needs at prod or dev`)

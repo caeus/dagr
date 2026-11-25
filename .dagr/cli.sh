@@ -3,7 +3,7 @@ set -e
 
 DAGR_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$DAGR_DIR/.." && pwd)"
-PIN="ghcr.io/caeus/dagr:22fe7db5244035f8011bb90217759ce2e34a07bb"
+BOOTSTRAP="dagr-bootstrap"
 
 TARGET_PLATFORM="${DOCKER_DEFAULT_PLATFORM:-}"
 unset DOCKER_DEFAULT_PLATFORM
@@ -38,11 +38,13 @@ dagr_docker_run() {
     "$@"
 }
 
-# DOGFEED=true rebuilds the engine from this working tree with the pinned
-# release, then runs the requested command with that freshly built engine.
+# The repository builds its current engine directly from source. The resulting
+# bootstrap image can evaluate the same graph that will build the release.
+docker build -f "$REPO_ROOT/engine/bootstrap.Dockerfile" -t "$BOOTSTRAP" "$REPO_ROOT" >&2
 if [ "${DOGFEED:-}" = true ]; then
-  dagr_docker_run "$PIN" run //engine:ci:image
-  dagr_docker_run engine-ci-image "$@"
+  dagr_docker_run "$BOOTSTRAP" run //engine:/engine/image
+  TAG="dagr-$(docker run --rm --entrypoint sh "$BOOTSTRAP" -c "printf '%s' '//engine:/engine/image' | sha256sum | cut -d ' ' -f 1")"
+  dagr_docker_run "$TAG" "$@"
 else
-  dagr_docker_run "$PIN" "$@"
+  dagr_docker_run "$BOOTSTRAP" "$@"
 fi

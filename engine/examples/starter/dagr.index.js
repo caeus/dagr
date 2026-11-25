@@ -14,7 +14,7 @@ export default {
       },
     }),
   },
-  '/ci/hello': {
+  '/hello': {
     deps: { manifest: '/file/package.json' },
     run: ({ manifest }) => ({
       build: {

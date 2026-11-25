@@ -11,7 +11,7 @@ export function renderDockerfile({ FROM, steps }: Run): string {
       if ('RUN' in step) return [`RUN ${step.RUN}`]
       if ('COPY' in step) {
         const { from, src, dest } = step.COPY
-        return [from ? `COPY --from=${from} ${src} ${dest}` : `COPY ${src} ${dest}`]
+        return [from ? `COPY --from=${from} ${JSON.stringify([src, dest])}` : `COPY ${JSON.stringify([src, dest])}`]
       }
       if ('WORKDIR' in step) return [`WORKDIR ${step.WORKDIR}`]
       if ('ENV' in step) return Object.entries(step.ENV).map(([k, v]) => `ENV ${k}=${v}`)

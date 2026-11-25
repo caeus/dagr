@@ -1,19 +1,12 @@
 import { derive, value, target, scope } from '//engine/recipes/typescript//dagr.recipe.js'
 import { nodeCli } from '//engine/recipes/dagr.node-cli.js'
+import bootstrap from '//engine/dagr.bootstrap.json'
 
 const SMOKE_RUN = 'mkdir -p /tmp/dagr-smoke/packages'
   + ' && HOST_OS=linux HOST_ARCH=x64 HOST_LIBC=musl REPO_ROOT=/tmp/dagr-smoke'
   + ' node --experimental-vm-modules dist/dagr.js list > /dev/null'
 
-const versions = {
-  '@caeus/wyr': '0.0.0-rc1',
-  '@optique/core': '1.2.0',
-  '@optique/run': '1.2.0',
-  'smol-toml': '1.7.0',
-  tsx: '4.23.7',
-  yaml: '2.8.3',
-  zod: '4.4.3',
-}
+const versions = { ...bootstrap.dependencies, ...bootstrap.devDependencies }
 
 const dagr = name => scope(name, {
   '/package/name': value('@caeus/dagr'),
