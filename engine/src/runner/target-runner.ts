@@ -1,11 +1,12 @@
-import { Run, type HostPlatform, type TargetDef } from '#pkg/schema.js'
+import { Result, type Run, type HostPlatform, type NodeDef } from '#pkg/schema.js'
 import type { ResolvedCopySource } from '#pkg/loader.js'
 import type { Reporter } from '#report/reporter.js'
+import { createHash } from 'node:crypto'
 import type { BuildResult } from '#runner/docker-builder.js'
 import type { FQT, TargetResult } from '#runner/index.js'
 
 export interface TargetRunnerDeps {
-  renderDockerfile(run: ReturnType<TargetDef['run']>): string
+  renderDockerfile(run: Run): string
   buildDockerImage(
     content: string,
     tag: string,
@@ -18,26 +19,30 @@ export interface TargetRunnerDeps {
 
 export async function runTarget(
   fqt: FQT,
-  target: TargetDef,
+  target: NodeDef,
   depResults: TargetResult[],
   packageDir: string,
   deps: TargetRunnerDeps,
   host: HostPlatform,
   resolveCopySource: (source: string) => Promise<ResolvedCopySource>,
 ): Promise<TargetResult> {
-  const tag = fqt.toString().replace(/:/g, '-').replace(/\//g, '_').replace(/^[^a-zA-Z0-9]+/, '')
-
-  const images = Object.fromEntries(
-    target.deps.map((dep, i) => [dep, depResults[i]!.imageTag])
-  )
+  const tag = 'dagr-' + createHash('sha256').update(fqt.toString()).digest('hex')
+  const args = Object.freeze(Object.assign(Object.create(null), Object.fromEntries(
+    Object.keys(target.deps).map((id, i) => [id, depResults[i]!.value])
+  )))
+  const platform = Object.freeze(Object.assign(Object.create(null), host)) as HostPlatform
 
   const startedAt = Date.now()
   deps.reporter.targetStarted(fqt.toString())
 
   try {
-    const parsed = Run.safeParse(target.run({ images, host }))
-    if (!parsed.success) throw new Error(`Invalid run definition for ${fqt}: ${parsed.error.message}`)
-    const runDef = parsed.data
+    const parsed = Result.safeParse(target.run(args, platform))
+    if (!parsed.success) throw new Error(`Invalid result for ${fqt}: ${parsed.error.message}`)
+    if ('value' in parsed.data) {
+      deps.reporter.targetCompleted(fqt.toString(), Date.now() - startedAt)
+      return { fqt, value: parsed.data.value }
+    }
+    const runDef = parsed.data.build
     const resolved = await resolveMountedCopies(runDef, resolveCopySource)
 
     const dockerfileContent = deps.renderDockerfile(resolved.run)
@@ -52,8 +57,8 @@ export async function runTarget(
     deps.reporter.targetCompleted(fqt.toString(), Date.now() - startedAt)
 
     return runDef.EXPORT
-      ? { fqt, imageTag, imageDigest, export: runDef.EXPORT }
-      : { fqt, imageTag, imageDigest }
+      ? { fqt, value: imageTag, build: { imageTag, imageDigest, export: runDef.EXPORT } }
+      : { fqt, value: imageTag, build: { imageTag, imageDigest } }
   } catch (error) {
     deps.reporter.targetFailed(fqt.toString(), Date.now() - startedAt)
     throw error

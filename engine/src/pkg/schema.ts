@@ -1,16 +1,16 @@
 import { z } from "zod";
 import { posix } from "node:path";
 
-// Facet and target names are embedded in FQTs, image tags, log labels, and shell-facing CLI
-// arguments. Keep them to portable filename characters, and require an alphanumeric first
-// character so a name cannot be mistaken for an option, a hidden path, or a directive.
-export const Name = z
-  .string()
-  .regex(
-    /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
-    "must start with an ASCII letter or digit and contain only ASCII letters, digits, '.', '_', or '-'",
-  );
-export type Name = z.infer<typeof Name>;
+// Semantic node paths are independent of the project filesystem.
+export const SemanticPath = z.string().regex(/^\/(?:[A-Za-z0-9][A-Za-z0-9._-]*)(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/, "expected an absolute semantic path");
+export type SemanticPath = z.infer<typeof SemanticPath>;
+export const NodeRef = z.string().refine(ref => {
+  const parts = ref.split(':');
+  return parts.length === 1
+    ? SemanticPath.safeParse(ref).success
+    : parts.length === 2 && parts[0]!.startsWith('//') && SemanticPath.safeParse(parts[1]).success;
+}, "expected /node/path or //project:/node/path");
+export type NodeRef = z.infer<typeof NodeRef>;
 
 export const Copy = z
   .object({ from: z.string().optional(), src: z.string(), dest: z.string() })
@@ -78,42 +78,22 @@ export interface HostPlatform {
   readonly libc?: "glibc" | "musl";
 }
 
-export interface RunContext {
-  readonly images: Readonly<Record<string, string>>;
-  readonly host: HostPlatform;
-}
-
-export type RunFn = (ctx: RunContext) => Run;
-
-export const TargetDef = z
-  .looseObject({
-    deps: z.array(z.string()).readonly(),
-    run: z.custom<RunFn>((v) => typeof v === "function"),
-  })
-  .readonly();
-export interface TargetDef extends z.infer<typeof TargetDef> {}
-
-// What a facet expands into. Validated when a facet is expanded, not when a package is loaded.
-export const FacetDef = z.record(Name, TargetDef).readonly();
-export interface FacetDef extends z.infer<typeof FacetDef> {}
-
-export type FacetFn = () => unknown;
-
-/**
- * A facet is a function returning its targets, which makes expanding it an evaluation boundary:
- * loading a package reveals which facets exist without computing the targets of any of them.
- *
- * A static record of targets is also accepted, and is the older form. It cannot be lazy — a record is
- * already expanded — so it exists only so an engine can read indexes written before this shape. Write
- * facets as functions.
- */
-export const Facet = z.union([
-  z.custom<FacetFn>((value) => typeof value === "function"),
-  FacetDef,
+export type Value = unknown;
+export type Args = Readonly<Record<string, Value>>;
+export const Result = z.union([
+  z.strictObject({ value: z.unknown() }).refine(result => Object.hasOwn(result, 'value')),
+  z.strictObject({ build: Run }),
 ]);
+export type Result = z.infer<typeof Result>;
+export type RunFn = (args: Args, host: HostPlatform) => Result;
 
-export const PackageDef = z.record(Name, Facet).readonly();
-export interface PackageDef extends z.infer<typeof PackageDef> {}
+export const NodeDef = z.strictObject({
+  deps: z.record(z.string(), NodeRef).readonly(),
+  run: z.custom<RunFn>(value => typeof value === 'function'),
+}).readonly();
+export type NodeDef = z.infer<typeof NodeDef>;
+export const PackageDef = z.record(SemanticPath, NodeDef).readonly();
+export type PackageDef = z.infer<typeof PackageDef>;
 
 export const JsonValue = z.json();
 export type JsonValue = z.infer<typeof JsonValue>;
