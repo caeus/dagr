@@ -13,6 +13,8 @@ import {
   FQT,
   packageLogicalPath,
   relativePackageName,
+  dependencyRefs,
+  resolveDependencies,
   type Runner,
 } from "#runner/index.js";
 import type { DockerImageExtractor } from "#runner/docker-extractor.js";
@@ -83,8 +85,8 @@ export class ListCommandRunner implements CommandRunner {
     for (const [packageName, loaded] of packages) {
       for (const [path, node] of Object.entries(loaded.definition)) {
         const fqt = new FQT(canonicalPackageName(packageName), path);
-        graph.set(fqt.toString(), Object.values(node.deps).map(ref =>
-          FQT.parse(ref, { pkg: fqt.pkg }).toString()));
+        const resolved = await resolveDependencies(this.packageLoader, fqt.pkg, loaded.definition, node.deps);
+        graph.set(fqt.toString(), dependencyRefs(resolved).map(ref => ref.toString()));
       }
     }
 
@@ -171,8 +173,9 @@ export class ShowCommandRunner {
       const loaded = await this.packageLoader.loadPackage(packageLogicalPath(fqt.pkg));
       const node = loaded?.definition[fqt.path];
       if (!node) throw new Error(`Unknown node: ${fqt}`);
-      const deps = Object.fromEntries(Object.entries(node.deps).map(([id, ref]) =>
-        [id, FQT.parse(ref, { pkg: fqt.pkg }).toString()]));
+      const resolved = await resolveDependencies(this.packageLoader, fqt.pkg, loaded!.definition, node.deps);
+      const deps = Object.fromEntries(Object.entries(resolved).map(([id, ref]) =>
+        [id, ref instanceof FQT ? ref.toString() : ref.map(item => item.toString())]));
       documents.push(`# ${fqt}\n${stringifyYaml({ deps }, { lineWidth: 0 }).trimEnd()}`);
     }
     this.output.write(documents.join('\n---\n'));

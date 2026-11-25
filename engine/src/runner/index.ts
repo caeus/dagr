@@ -1,3 +1,5 @@
+import { of as globOf } from '#pkg/glob.js'
+import type { PackageDef, Dependency, Args } from '#pkg/schema.js'
 import type { PackageLoader } from '#pkg/loader.js'
 import { ROOT_MARKER } from '#pkg/namespace.js'
 import { SemanticPath, type HostPlatform, type Value } from '#pkg/schema.js'
@@ -22,6 +24,35 @@ export class FQT {
       return new FQT(parts[0]!, parts[1]!)
     throw new Error(`Expected /node/path or //project:/node/path: ${raw}`)
   }
+}
+
+export type ResolvedDependency = FQT | readonly FQT[]
+
+export async function resolveDependencies(
+  loader: PackageLoader,
+  pkg: string,
+  graph: PackageDef,
+  deps: Readonly<Record<string, Dependency>>,
+): Promise<Readonly<Record<string, ResolvedDependency>>> {
+  async function select(pattern: string): Promise<readonly FQT[]> {
+    if (!pattern.includes('*')) return [FQT.parse(pattern, { pkg })]
+    const boundary = pattern.indexOf(':')
+    const project = boundary < 0 ? pkg : pattern.slice(0, boundary)
+    const path = boundary < 0 ? pattern : pattern.slice(boundary + 1)
+    const definition = project === pkg ? graph : (await loader.loadPackage(packageLogicalPath(project)))?.definition
+    if (!definition) throw new Error(`Unknown project: ${project}`)
+    const match = globOf(path.slice(1))
+    return Object.keys(definition).filter(key => match(key.slice(1))).sort().map(key => new FQT(project, key))
+  }
+  return Object.fromEntries(await Promise.all(Object.entries(deps).map(async ([name, dep]) => {
+    if (typeof dep === 'string' && !dep.includes('*')) return [name, FQT.parse(dep, { pkg })] as const
+    const refs = (await Promise.all((typeof dep === 'string' ? [dep] : dep).map(select))).flat()
+    return [name, [...new Map(refs.map(ref => [ref.toString(), ref])).values()]] as const
+  })))
+}
+
+export function dependencyRefs(deps: Readonly<Record<string, ResolvedDependency>>): FQT[] {
+  return Object.values(deps).flatMap(dep => dep instanceof FQT ? [dep] : [...dep])
 }
 
 export interface TargetResult {
@@ -59,12 +90,19 @@ export function buildRunner(packageLoader: PackageLoader, deps: TargetRunnerDeps
     const promise = (async () => {
       const packagePath = packageLogicalPath(fqt.pkg)
       const loaded = await packageLoader.loadPackage(packagePath)
-      const target = loaded?.definition[fqt.path]
+      const target = loaded && Object.hasOwn(loaded.definition, fqt.path) ? loaded.definition[fqt.path] : undefined
       if (!loaded || !target) throw new Error(`Unknown node: ${key}`)
-      const refs = Object.values(target.deps).map(ref => FQT.parse(ref, { pkg: fqt.pkg }))
-      declareEdges(key, refs.map(ref => ref.toString()))
-      const values = await Promise.all(refs.map(run))
-      return runTarget(fqt, target, values, loaded.context, deps, host, source => {
+      const resolved = await resolveDependencies(packageLoader, fqt.pkg, loaded.definition, target.deps)
+      declareEdges(key, dependencyRefs(resolved).map(ref => ref.toString()))
+      const args: Args = Object.freeze(Object.assign(Object.create(null), Object.fromEntries(
+        await Promise.all(Object.entries(resolved).map(async ([id, dep]) => [
+          id, dep instanceof FQT ? (await run(dep)).value :
+            Object.freeze(Object.assign(Object.create(null), Object.fromEntries(await Promise.all(
+              dep.map(async ref => [ref.pkg === fqt.pkg ? ref.path : ref.toString(), (await run(ref)).value])
+            )))),
+        ]))
+      )))
+      return runTarget(fqt, target, args, loaded.context, deps, host, source => {
         if (!packageLoader.resolveCopySource)
           throw new Error(`Package loader cannot resolve mounted COPY source: ${source}`)
         return packageLoader.resolveCopySource(packagePath, source)

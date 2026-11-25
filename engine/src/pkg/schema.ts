@@ -12,6 +12,16 @@ export const NodeRef = z.string().refine(ref => {
 }, "expected /node/path or //project:/node/path");
 export type NodeRef = z.infer<typeof NodeRef>;
 
+export const Selector = z.string().refine(ref => {
+  const parts = ref.split(':');
+  if (parts.length > 2 || (parts.length === 2 && !parts[0]!.startsWith('//'))) return false;
+  const path = parts.at(-1)!;
+  return path.startsWith('/') && path.slice(1).split('/').every(segment =>
+    segment === '*' || segment === '**' || /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(segment));
+}, "expected a semantic path or wildcard selection");
+export const Dependency = z.union([Selector, z.array(Selector).readonly()]);
+export type Dependency = z.infer<typeof Dependency>;
+
 export const Copy = z
   .object({ from: z.string().optional(), src: z.string(), dest: z.string() })
   .strict()
@@ -95,7 +105,7 @@ export type Result = z.infer<typeof Result>;
 export type RunFn = (args: Args, host: HostPlatform) => Result;
 
 export const NodeDef = z.strictObject({
-  deps: z.record(z.string(), NodeRef).readonly(),
+  deps: z.record(z.string(), Dependency).readonly(),
   run: z.custom<RunFn>(value => typeof value === 'function'),
 }).readonly();
 export type NodeDef = z.infer<typeof NodeDef>;

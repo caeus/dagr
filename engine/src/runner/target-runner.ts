@@ -1,4 +1,4 @@
-import { Result, type Run, type HostPlatform, type NodeDef } from '#pkg/schema.js'
+import { Result, type Run, type HostPlatform, type NodeDef, type Args } from '#pkg/schema.js'
 import type { ResolvedCopySource } from '#pkg/loader.js'
 import type { Reporter } from '#report/reporter.js'
 import { createHash } from 'node:crypto'
@@ -20,16 +20,13 @@ export interface TargetRunnerDeps {
 export async function runTarget(
   fqt: FQT,
   target: NodeDef,
-  depResults: TargetResult[],
+  args: Args,
   packageDir: string,
   deps: TargetRunnerDeps,
   host: HostPlatform,
   resolveCopySource: (source: string) => Promise<ResolvedCopySource>,
 ): Promise<TargetResult> {
   const tag = 'dagr-' + createHash('sha256').update(fqt.toString()).digest('hex')
-  const args = Object.freeze(Object.assign(Object.create(null), Object.fromEntries(
-    Object.keys(target.deps).map((id, i) => [id, depResults[i]!.value])
-  )))
   const platform = Object.freeze(Object.assign(Object.create(null), host)) as HostPlatform
 
   const startedAt = Date.now()
